@@ -51,7 +51,7 @@
         "Janela sempre no topo (alwaysOnTop)",
         "Typecheck passa"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-004",

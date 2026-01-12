@@ -1,7 +1,7 @@
 use tauri::{
     image::Image,
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    App, Manager, RunEvent, WindowEvent,
+    App, Manager, PhysicalPosition, RunEvent, WindowEvent,
 };
 
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
@@ -38,6 +38,17 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
                     } else {
+                        // Center window on primary monitor before showing
+                        if let Some(monitor) = window.primary_monitor().ok().flatten() {
+                            let monitor_size = monitor.size();
+                            let monitor_pos = monitor.position();
+                            let window_size = window.outer_size().unwrap_or_default();
+
+                            let x = monitor_pos.x + (monitor_size.width as i32 - window_size.width as i32) / 2;
+                            let y = monitor_pos.y + (monitor_size.height as i32 - window_size.height as i32) / 2;
+
+                            let _ = window.set_position(PhysicalPosition::new(x, y));
+                        }
                         let _ = window.show();
                         let _ = window.set_focus();
                     }

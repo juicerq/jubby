@@ -407,3 +407,19 @@
   - window.is_visible() returns Result<bool> in Tauri v2 - use unwrap_or(false) for safe default
   - Toggle pattern: check visibility first, then show() or hide() based on state
 ---
+
+## 2026-01-12 - US-003 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Updated window size from 400x350 to 600x400 in tauri.conf.json
+  - Added window centering logic in tray.rs before showing the window
+  - Centering uses primary_monitor() to get screen dimensions and calculates center position
+  - Window settings already had: decorations=false, skipTaskbar=true, alwaysOnTop=true
+- Files changed:
+  - Modified: src-tauri/tauri.conf.json (changed width to 600, height to 400)
+  - Modified: src-tauri/src/tray.rs (added centering logic using PhysicalPosition)
+- **Learnings for future iterations:**
+  - window.primary_monitor() returns Result<Option<Monitor>> - use .ok().flatten() for safe access
+  - Monitor provides size() and position() for calculating center position
+  - window.outer_size() gives the actual window dimensions including any borders
+  - Use PhysicalPosition::new(x, y) to set window position with i32 coordinates
+---

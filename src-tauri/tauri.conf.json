@@ -14,8 +14,8 @@
       {
         "title": "Jubby",
         "label": "main",
-        "width": 400,
-        "height": 350,
+        "width": 600,
+        "height": 400,
         "decorations": false,
         "resizable": false,
         "visible": false,
