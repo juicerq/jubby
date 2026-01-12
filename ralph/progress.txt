@@ -305,3 +305,36 @@
   - setData((prev) => ...) pattern allows functional updates to storage data
   - Keep input always visible (not just in empty state) for better UX
 ---
+
+## 2026-01-12 - US-017
+- What was implemented:
+  - Enabled checkbox toggle to mark tasks as completed/uncompleted
+  - Added handleToggle function that updates todo completed state via setData
+  - Removed disabled prop from Checkbox and added onCheckedChange handler
+  - TodoItem now receives onToggle callback prop
+  - Changes persist automatically via usePluginStorage
+- Files changed:
+  - Modified: src/plugins/todo/index.tsx (added handleToggle, updated TodoItem props)
+- **Learnings for future iterations:**
+  - shadcn Checkbox uses onCheckedChange (not onChange) for toggle events
+  - Functional update pattern setData((prev) => ...) works well for modifying items in array
+  - Simple toggle: map over array and flip completed for matching id
+---
+
+## 2026-01-12 - US-018
+- What was implemented:
+  - Added delete button with two-click confirmation pattern
+  - First click shows checkmark icon (confirmation state), second click deletes
+  - Clicking elsewhere cancels confirmation state via parent onClick handler
+  - Used pendingDeleteId state to track which item is pending deletion
+  - Delete button shows trash icon by default, checkmark when pending
+  - Added stopPropagation on TodoItem and Input to prevent unwanted cancellation
+  - Inline SVG icons for trash and checkmark (no external dependency needed)
+- Files changed:
+  - Modified: src/plugins/todo/index.tsx (added delete functionality with confirmation)
+- **Learnings for future iterations:**
+  - Two-click delete pattern: use state to track pending ID, compare on click
+  - Use stopPropagation to prevent parent click handlers from triggering on child elements
+  - Inline SVGs work well for simple icons to avoid adding icon library dependencies
+  - shadcn Button size="icon" with custom h-6 w-6 gives a smaller icon button
+---

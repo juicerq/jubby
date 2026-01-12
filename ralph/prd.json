@@ -241,7 +241,7 @@
       "title": "Marcar tarefa como concluída",
       "description": "Como usuário, quero marcar tarefas como concluídas clicando no checkbox.",
       "shouldCommit": true,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Clicar no checkbox alterna estado completed",
         "Mudança persiste após fechar e reabrir",
@@ -255,7 +255,7 @@
       "title": "Deletar tarefa com confirmação",
       "description": "Como usuário, quero poder deletar tarefas com confirmação para evitar deleções acidentais.",
       "shouldCommit": true,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Botão de deletar (ícone lixeira ou X) visível em cada item",
         "Primeiro clique no botão muda o ícone para checkmark (estado de confirmação)",

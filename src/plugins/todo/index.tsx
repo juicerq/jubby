@@ -3,6 +3,7 @@ import type { PluginManifest } from '@/core/types'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import type { Todo, TodoStorage } from './types'
 
 const defaultStorage: TodoStorage = { todos: [] }
@@ -10,6 +11,7 @@ const defaultStorage: TodoStorage = { todos: [] }
 function TodoApp() {
   const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
   const [newTodoText, setNewTodoText] = useState('')
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTodoText.trim()) {
@@ -36,6 +38,24 @@ function TodoApp() {
     }))
   }
 
+  const handleDeleteClick = (id: string) => {
+    if (pendingDeleteId === id) {
+      // Second click - confirm delete
+      setData((prev) => ({
+        ...prev,
+        todos: prev.todos.filter((todo) => todo.id !== id),
+      }))
+      setPendingDeleteId(null)
+    } else {
+      // First click - enter confirmation state
+      setPendingDeleteId(id)
+    }
+  }
+
+  const handleCancelDelete = () => {
+    setPendingDeleteId(null)
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -48,12 +68,13 @@ function TodoApp() {
   const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
 
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex flex-col gap-2 p-3" onClick={handleCancelDelete}>
       <Input
         placeholder="Add a new task..."
         value={newTodoText}
         onChange={(e) => setNewTodoText(e.target.value)}
         onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
         className="mb-1"
       />
       {sortedTodos.length === 0 ? (
@@ -62,16 +83,32 @@ function TodoApp() {
         </div>
       ) : (
         sortedTodos.map((todo) => (
-          <TodoItem key={todo.id} todo={todo} onToggle={handleToggle} />
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            onToggle={handleToggle}
+            onDeleteClick={handleDeleteClick}
+            isPendingDelete={pendingDeleteId === todo.id}
+          />
         ))
       )}
     </div>
   )
 }
 
-function TodoItem({ todo, onToggle }: { todo: Todo; onToggle: (id: string) => void }) {
+interface TodoItemProps {
+  todo: Todo
+  onToggle: (id: string) => void
+  onDeleteClick: (id: string) => void
+  isPendingDelete: boolean
+}
+
+function TodoItem({ todo, onToggle, onDeleteClick, isPendingDelete }: TodoItemProps) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
+    <div
+      className="flex items-center gap-3 rounded-md border border-border bg-card p-3"
+      onClick={(e) => e.stopPropagation()}
+    >
       <Checkbox
         id={todo.id}
         checked={todo.completed}
@@ -85,6 +122,24 @@ function TodoItem({ todo, onToggle }: { todo: Todo; onToggle: (id: string) => vo
       >
         {todo.text}
       </label>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={`h-6 w-6 shrink-0 ${isPendingDelete ? 'text-destructive hover:text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
+        onClick={() => onDeleteClick(todo.id)}
+      >
+        {isPendingDelete ? (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="M3 6h18" />
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+          </svg>
+        )}
+      </Button>
     </div>
   )
 }
