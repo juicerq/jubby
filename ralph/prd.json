@@ -137,7 +137,7 @@
         "Envolve todo o conteúdo do App",
         "Typecheck passa"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-010",
@@ -155,7 +155,7 @@
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-011",

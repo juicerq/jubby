@@ -508,3 +508,39 @@
   - Combining gradient with solid color: use gradient first, then fallback color in background property
   - Box-shadow with 0 0 0 1px creates a crisp inner/outer border effect
 ---
+
+## 2026-01-12 - US-009 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Created LauncherShell component in src/core/components/LauncherShell.tsx
+  - Component is a simple wrapper that applies the .launcher-shell CSS class
+  - Renders children inside a <main> element with flex column layout, h-screen, and overflow-hidden
+  - Updated App.tsx to import and use LauncherShell instead of inline className
+  - Styling logic (gradient, border-radius, border, box-shadow) stays in CSS class
+- Files changed:
+  - Created: src/core/components/LauncherShell.tsx (wrapper component)
+  - Modified: src/App.tsx (replaced <main className="launcher-shell..."> with <LauncherShell>)
+- **Learnings for future iterations:**
+  - Extracting styling wrappers into components makes App.tsx cleaner and allows reuse
+  - The component is intentionally thin - it just applies existing CSS, no new logic
+  - ReactNode type from 'react' is the standard type for children prop
+---
+
+## 2026-01-12 - US-010 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Redesigned PluginGrid with compact 80x80px cards in a 4-column grid
+  - Removed shadcn Card component in favor of custom button-based cards
+  - Icon size set to 32px with emoji display, name below in 10px font
+  - Grid uses gap-3 (12px) and padding p-4 (16px) as per spec
+  - Plugin card uses CSS pseudo-element (::before) for hover/selected backgrounds
+  - Selection state shows subtle inset border and glow effect
+  - Name truncates with max-width of 72px to fit card width
+  - Changed COLUMNS constant from 3 to 4 for keyboard navigation
+- Files changed:
+  - Modified: src/core/components/PluginGrid.tsx (redesigned with compact cards, button elements)
+  - Modified: src/index.css (added .plugin-card and .plugin-card--selected styles)
+- **Learnings for future iterations:**
+  - Using CSS ::before pseudo-element allows background hover effects without affecting z-index of content
+  - Button elements with type="button" provide better accessibility than div with onClick
+  - text-[32px] with leading-none gives precise emoji sizing without extra line-height
+  - Tailwind text-[10px] allows fine-grained font sizes below the default scale
+---
