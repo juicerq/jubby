@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { LauncherShell } from '@/core/components/LauncherShell'
 import { PluginGrid } from '@/core/components/PluginGrid'
 import { PluginHeader } from '@/core/components/PluginHeader'
+import { ViewTransition } from '@/core/components/ViewTransition'
 import type { PluginManifest } from '@/core/types'
 
 function App() {
@@ -20,22 +21,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // View key changes when switching between grid and plugin views
+  const viewKey = activePlugin ? `plugin:${activePlugin.id}` : 'grid'
+
   return (
     <LauncherShell>
-      {activePlugin ? (
-        <>
-          <PluginHeader
-            pluginName={activePlugin.name}
-            pluginIcon={activePlugin.icon}
-            onBack={() => setActivePlugin(null)}
-          />
-          <div className="flex-1 overflow-auto">
-            <activePlugin.component />
-          </div>
-        </>
-      ) : (
-        <PluginGrid onPluginClick={setActivePlugin} />
-      )}
+      <ViewTransition viewKey={viewKey}>
+        {activePlugin ? (
+          <>
+            <PluginHeader
+              pluginName={activePlugin.name}
+              pluginIcon={activePlugin.icon}
+              onBack={() => setActivePlugin(null)}
+            />
+            <div className="flex-1 overflow-auto">
+              <activePlugin.component />
+            </div>
+          </>
+        ) : (
+          <PluginGrid onPluginClick={setActivePlugin} />
+        )}
+      </ViewTransition>
     </LauncherShell>
   )
 }

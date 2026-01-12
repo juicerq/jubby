@@ -589,3 +589,26 @@
   - 13px font-size with -0.01em letter-spacing gives refined typography feel
   - rgba colors allow consistent opacity control across dark theme
 ---
+
+## 2026-01-12 - US-013 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Created ViewTransition component in src/core/components/ViewTransition.tsx
+  - Component wraps content and applies fade + translateY + scale animations on view change
+  - Uses viewKey prop to detect when view changes (grid vs plugin:id)
+  - Animation timing: 180ms with ease-out easing (within 150-200ms spec)
+  - Exit animation uses shorter 100ms delay for snappy feel
+  - Enter animation: opacity 0→1, translateY(6px)→0, scale(0.98)→1
+  - Uses data-visible attribute and CSS for animation (no JS animation libraries)
+  - Skips animation on first render to avoid initial flash
+  - Updated App.tsx to wrap content in ViewTransition with dynamic viewKey
+  - Added .view-transition CSS styles in index.css
+- Files changed:
+  - Created: src/core/components/ViewTransition.tsx (transition wrapper component)
+  - Modified: src/index.css (added .view-transition CSS animations)
+  - Modified: src/App.tsx (integrated ViewTransition wrapper)
+- **Learnings for future iterations:**
+  - data-visible attribute pattern with CSS selectors is cleaner than class toggling
+  - requestAnimationFrame after state update ensures DOM is ready before animating
+  - Shorter exit duration (100ms) vs enter duration (180ms) feels more responsive
+  - scale(0.98) combined with translateY gives subtle depth effect without being distracting
+---

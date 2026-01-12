@@ -206,7 +206,7 @@
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-014",
