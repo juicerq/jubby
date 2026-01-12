@@ -1,10 +1,23 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { PluginGrid } from '@/core/components/PluginGrid'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginManifest } from '@/core/types'
 
 function App() {
   const [activePlugin, setActivePlugin] = useState<PluginManifest | null>(null)
+
+  // Close window on ESC key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        getCurrentWindow().hide()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <main className="flex min-h-screen flex-col bg-background">
