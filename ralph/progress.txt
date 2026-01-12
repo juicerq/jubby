@@ -564,3 +564,28 @@
   - translate-y-0.5 (2px) provides subtle lift without being distracting
   - Multiple US stories can overlap in implementation - US-010 already implemented most of US-011
 ---
+
+## 2026-01-12 - US-012 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Redesigned PluginHeader component with refined minimalist aesthetic
+  - Header height set to 48px as specified
+  - Back button with custom chevron SVG icon (cleaner than text arrow)
+  - Back button has hover state (rgba(255,255,255,0.06) background, brighter text)
+  - Active/press state with scale(0.92) feedback
+  - Plugin name centered in header with optional icon display
+  - Spacer div balances layout for true center alignment
+  - Bottom border: 1px solid rgba(255,255,255,0.08) as per spec
+  - Added pluginIcon prop to show emoji alongside plugin name
+  - Created dedicated CSS styles in index.css using BEM naming (.plugin-header__)
+  - Removed unused shadcn Button import for cleaner code
+- Files changed:
+  - Modified: src/core/components/PluginHeader.tsx (complete redesign with custom button, SVG icon, centered title)
+  - Modified: src/index.css (added .plugin-header styles for header, back button, title, icon, name)
+  - Modified: src/App.tsx (added pluginIcon prop to PluginHeader)
+- **Learnings for future iterations:**
+  - Custom SVG icons give more control than text characters (←) for consistent sizing
+  - BEM naming (.block__element) keeps CSS organized and scoped
+  - justify-content: space-between with a spacer div achieves true centering
+  - 13px font-size with -0.01em letter-spacing gives refined typography feel
+  - rgba colors allow consistent opacity control across dark theme
+---

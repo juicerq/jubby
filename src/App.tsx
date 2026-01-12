@@ -26,6 +26,7 @@ function App() {
         <>
           <PluginHeader
             pluginName={activePlugin.name}
+            pluginIcon={activePlugin.icon}
             onBack={() => setActivePlugin(null)}
           />
           <div className="flex-1 overflow-auto">
