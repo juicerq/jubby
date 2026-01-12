@@ -1,0 +1,329 @@
+{
+  "title": "Jubby - Hub de Mini-Apps para System Tray",
+  "version": "1.0.0",
+  "created": "2026-01-12",
+  "introduction": "Jubby é um hub de mini-apps pessoais que roda no system tray do Linux. Ao clicar no ícone, abre um popover com um grid de plugins disponíveis. Cada plugin é uma mini-aplicação independente (todo list, timer, notas, etc). A arquitetura é extensível para suportar plugins avançados no futuro (como screen recorder com overlay fullscreen).",
+  "goals": [
+    "Criar um app leve e performático que rode constantemente no system tray",
+    "Implementar sistema de plugins extensível e type-safe",
+    "Entregar primeiro plugin funcional (Todo List) para validar arquitetura",
+    "Manter arquitetura preparada para plugins avançados (overlay, janelas independentes)",
+    "Persistência local em arquivos JSON para fácil backup e debugging"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Setup do projeto Tauri + React + TypeScript",
+      "description": "Como desenvolvedor, preciso do projeto inicializado com Tauri, React e TypeScript para começar a implementação.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Projeto Tauri v2 inicializado com template React + TypeScript",
+        "pnpm tauri dev inicia sem erros",
+        "Janela básica do Tauri abre com conteúdo React",
+        "TypeScript configurado com strict mode",
+        "Typecheck passa (pnpm tsc --noEmit)"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Configurar Tailwind CSS + shadcn/ui",
+      "description": "Como desenvolvedor, preciso do Tailwind e shadcn/ui configurados para estilizar a interface.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Tailwind CSS instalado e funcionando",
+        "shadcn/ui inicializado com tema dark como padrão",
+        "Componente Button do shadcn importado e renderizando corretamente",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Estruturar pastas conforme arquitetura",
+      "description": "Como desenvolvedor, preciso da estrutura de pastas organizada para manter o código limpo e escalável.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Pasta src/core/ criada com subpastas: components, hooks, context",
+        "Pasta src/plugins/ criada com registry.ts",
+        "Pasta src/shared/ criada com subpastas: components, lib",
+        "Arquivo src/core/types.ts criado com interface PluginManifest",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Implementar ícone no system tray",
+      "description": "Como usuário, quero ver o ícone do Jubby no system tray do meu Linux para saber que o app está rodando.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Ícone aparece no system tray ao iniciar o app",
+        "Ícone usa imagem customizada (pode ser placeholder inicial)",
+        "App continua rodando em background quando janela fecha",
+        "Arquivo src-tauri/src/tray.rs criado com lógica do tray",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Implementar popover ao clicar no tray",
+      "description": "Como usuário, quero que ao clicar no ícone do tray, abra um painel/popover próximo ao ícone.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Clicar no ícone do tray abre janela popover (~400x350px)",
+        "Popover posicionado próximo ao tray (não no centro da tela)",
+        "Clicar no ícone novamente fecha o popover",
+        "Popover não tem barra de título (decorations: false)",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Fechar popover ao clicar fora",
+      "description": "Como usuário, quero que o popover feche quando eu clicar fora dele para voltar ao que estava fazendo.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Popover fecha ao perder foco (blur event)",
+        "Popover fecha ao clicar em qualquer lugar fora dele",
+        "Comportamento consistente entre diferentes ambientes de desktop",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Criar componente Grid de plugins",
+      "description": "Como usuário, quero ver um grid com os mini-apps disponíveis ao abrir o popover.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Componente PluginGrid renderiza lista de plugins do registry",
+        "Cada plugin exibido como card com ícone e nome",
+        "Grid responsivo (3 colunas)",
+        "Estilo visual usando shadcn/ui e Tailwind",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Definir types do sistema de plugins",
+      "description": "Como desenvolvedor, preciso de interfaces TypeScript bem definidas para o sistema de plugins.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Interface PluginManifest com: id, name, icon, component, version",
+        "Interface PluginManifest com capabilities opcional (canCreateWindow, requiresOverlay, nativeFeatures)",
+        "Type WindowType definido: 'popover' | 'overlay' | 'window'",
+        "Todos os types exportados de src/core/types.ts",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Criar registry de plugins",
+      "description": "Como desenvolvedor, preciso de um registro central de plugins para o core saber quais plugins existem.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Arquivo src/plugins/registry.ts exporta array de PluginManifest",
+        "Array inicialmente vazio ou com plugin placeholder",
+        "Import/export tipado corretamente",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Implementar navegação grid para plugin",
+      "description": "Como usuário, quero clicar em um plugin no grid e ver o conteúdo desse plugin.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Clicar em um card do grid navega para a view do plugin",
+        "Plugin é renderizado ocupando todo o espaço do popover",
+        "Estado de navegação gerenciado via React state ou context",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Implementar botão voltar para o grid",
+      "description": "Como usuário, quero um botão para voltar ao grid de plugins quando estou dentro de um plugin.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Header exibido quando dentro de um plugin",
+        "Header mostra nome do plugin e botão voltar (←)",
+        "Clicar no botão volta para o grid",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Implementar API de storage no Rust",
+      "description": "Como desenvolvedor, preciso de comandos Rust para ler e salvar arquivos JSON de plugins.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Comando IPC read_plugin_data(plugin_id) retorna JSON string ou null",
+        "Comando IPC write_plugin_data(plugin_id, data) salva JSON",
+        "Dados salvos em ~/.local/share/jubby/{plugin_id}.json",
+        "Diretório criado automaticamente se não existir",
+        "Cargo build passa sem erros"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Implementar hook usePluginStorage no React",
+      "description": "Como desenvolvedor de plugin, preciso de um hook para persistir dados facilmente.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Hook usePluginStorage<T>(pluginId, defaultValue) implementado",
+        "Retorna { data, setData, isLoading }",
+        "Carrega dados do Rust ao montar",
+        "Salva automaticamente quando setData é chamado",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Criar estrutura do plugin Todo",
+      "description": "Como desenvolvedor, preciso da estrutura base do plugin Todo List.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Pasta src/plugins/todo/ criada",
+        "Arquivo index.tsx exportando TodoPlugin (manifest)",
+        "Arquivo types.ts com interfaces Todo e TodoStorage",
+        "Plugin registrado no registry.ts",
+        "Typecheck passa"
+      ]
+    },
+    {
+      "id": "US-015",
+      "title": "Implementar lista de todos",
+      "description": "Como usuário, quero ver minha lista de tarefas ao abrir o plugin Todo.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "TodoApp renderiza lista de todos do storage",
+        "Todos ordenados por data de criação (mais recente primeiro)",
+        "Cada todo exibe checkbox e texto",
+        "Todos concluídos aparecem com estilo diferente (riscado ou opacidade)",
+        "Lista vazia mostra mensagem amigável",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-016",
+      "title": "Adicionar nova tarefa",
+      "description": "Como usuário, quero adicionar novas tarefas à minha lista.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Input de texto para nova tarefa",
+        "Pressionar Enter adiciona tarefa à lista",
+        "Input limpa após adicionar",
+        "Tarefa persiste após fechar e reabrir o app",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-017",
+      "title": "Marcar tarefa como concluída",
+      "description": "Como usuário, quero marcar tarefas como concluídas clicando no checkbox.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Clicar no checkbox alterna estado completed",
+        "Mudança persiste após fechar e reabrir",
+        "Visual do item muda quando concluído",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-018",
+      "title": "Deletar tarefa com confirmação",
+      "description": "Como usuário, quero poder deletar tarefas com confirmação para evitar deleções acidentais.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Botão de deletar (ícone lixeira ou X) visível em cada item",
+        "Primeiro clique no botão muda o ícone para checkmark (estado de confirmação)",
+        "Segundo clique no checkmark confirma e deleta o item",
+        "Se clicar fora ou em outro lugar, cancela o estado de confirmação (volta ao ícone original)",
+        "Mudança persiste após fechar e reabrir",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-019",
+      "title": "Polish visual e UX",
+      "description": "Como usuário, quero uma interface bonita e responsiva.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "Espaçamentos consistentes em toda a UI",
+        "Cores seguindo tema dark do shadcn",
+        "Transições suaves em interações (hover, click)",
+        "Scroll funciona corretamente quando muitos itens",
+        "Typecheck passa",
+        "Verificar no app usando pnpm tauri dev"
+      ]
+    },
+    {
+      "id": "US-020",
+      "title": "Build de produção",
+      "description": "Como usuário, quero um executável que eu possa rodar sem ambiente de desenvolvimento.",
+      "shouldCommit": true,
+      "acceptanceCriteria": [
+        "pnpm tauri build gera executável sem erros",
+        "Executável inicia e mostra ícone no tray",
+        "Todas as funcionalidades funcionam no build",
+        "Tamanho do executável razoável (< 20MB)"
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    "FR-1: O app deve exibir um ícone no system tray do Linux ao iniciar",
+    "FR-2: Clicar no ícone do tray deve abrir/fechar um popover de ~400x350px",
+    "FR-3: O popover deve fechar ao perder foco ou clicar fora",
+    "FR-4: O popover deve exibir um grid de plugins disponíveis",
+    "FR-5: Clicar em um plugin deve navegar para a view desse plugin",
+    "FR-6: Dentro de um plugin, deve haver botão para voltar ao grid",
+    "FR-7: Plugins devem poder persistir dados em arquivos JSON locais",
+    "FR-8: O plugin Todo deve permitir criar, listar (ordenado por mais recente), completar e deletar tarefas (com confirmação em dois cliques)",
+    "FR-9: Dados do plugin Todo devem persistir entre sessões",
+    "FR-10: O sistema de plugins deve suportar campo capabilities para plugins avançados (preparação futura)"
+  ],
+  "nonGoals": [
+    "Não implementar plugins avançados (screen recorder, overlay) nesta versão",
+    "Não implementar sync de dados entre máquinas",
+    "Não implementar sistema de temas customizáveis pelo usuário",
+    "Não implementar carregamento dinâmico de plugins em runtime",
+    "Não implementar notificações ou lembretes no plugin Todo",
+    "Não suportar outros sistemas operacionais além de Linux nesta versão"
+  ],
+  "technicalConsiderations": [
+    "Tauri v2 para runtime com backend Rust e frontend web",
+    "React 18 com TypeScript strict mode",
+    "Tailwind CSS para utilitários de estilo",
+    "shadcn/ui para componentes base (não é dependência, são arquivos copiados)",
+    "Persistência em ~/.local/share/jubby/*.json",
+    "Comunicação Rust ↔ React via Tauri IPC commands",
+    "Gerenciador de pacotes: pnpm"
+  ],
+  "successMetrics": [
+    "App inicia em menos de 2 segundos",
+    "Uso de RAM em idle menor que 50MB",
+    "Tamanho do executável menor que 20MB",
+    "Adicionar novo plugin requer apenas: criar pasta, exportar manifest, adicionar ao registry",
+    "Usuário consegue criar tarefa em menos de 3 segundos após abrir o app"
+  ],
+  "openQuestions": [],
+  "resolvedQuestions": [
+    {
+      "question": "Qual ícone usar para o tray?",
+      "answer": "Placeholder inicial, ícone definitivo será definido depois"
+    },
+    {
+      "question": "Ordenação dos todos?",
+      "answer": "Por data de criação, mais recente primeiro"
+    },
+    {
+      "question": "Deve haver confirmação ao deletar tarefa?",
+      "answer": "Sim. Primeiro clique muda ícone para checkmark, segundo clique confirma deleção. Clicar fora cancela."
+    }
+  ]
+}
