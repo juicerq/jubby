@@ -4,17 +4,23 @@
   "version": "0.1.0",
   "identifier": "com.jui.jubby",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "bun dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "bun build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
         "title": "Jubby",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "width": 400,
+        "height": 350,
+        "decorations": false,
+        "resizable": false,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {
