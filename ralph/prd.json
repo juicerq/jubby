@@ -239,7 +239,7 @@
         "Visual consistente com dev mode",
         "Tamanho do executável razoável (< 25MB)"
       ],
-      "passes": false
+      "passes": true
     }
   ],
   "functionalRequirements": [
