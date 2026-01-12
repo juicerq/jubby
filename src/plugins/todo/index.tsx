@@ -27,6 +27,15 @@ function TodoApp() {
     }
   }
 
+  const handleToggle = (id: string) => {
+    setData((prev) => ({
+      ...prev,
+      todos: prev.todos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+      ),
+    }))
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -53,20 +62,20 @@ function TodoApp() {
         </div>
       ) : (
         sortedTodos.map((todo) => (
-          <TodoItem key={todo.id} todo={todo} />
+          <TodoItem key={todo.id} todo={todo} onToggle={handleToggle} />
         ))
       )}
     </div>
   )
 }
 
-function TodoItem({ todo }: { todo: Todo }) {
+function TodoItem({ todo, onToggle }: { todo: Todo; onToggle: (id: string) => void }) {
   return (
     <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
       <Checkbox
         id={todo.id}
         checked={todo.completed}
-        disabled
+        onCheckedChange={() => onToggle(todo.id)}
       />
       <label
         htmlFor={todo.id}
