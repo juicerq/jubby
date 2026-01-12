@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { LauncherShell } from '@/core/components/LauncherShell'
 import { PluginGrid } from '@/core/components/PluginGrid'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginManifest } from '@/core/types'
@@ -20,7 +21,7 @@ function App() {
   }, [])
 
   return (
-    <main className="launcher-shell flex h-screen flex-col overflow-hidden">
+    <LauncherShell>
       {activePlugin ? (
         <>
           <PluginHeader
@@ -34,7 +35,7 @@ function App() {
       ) : (
         <PluginGrid onPluginClick={setActivePlugin} />
       )}
-    </main>
+    </LauncherShell>
   )
 }
 
