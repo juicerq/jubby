@@ -1,9 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import type { PluginManifest } from '@/core/types'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import type { Todo, TodoStorage } from './types'
 
 const defaultStorage: TodoStorage = { todos: [] }
@@ -40,14 +37,12 @@ function TodoApp() {
 
   const handleDeleteClick = (id: string) => {
     if (pendingDeleteId === id) {
-      // Second click - confirm delete
       setData((prev) => ({
         ...prev,
         todos: prev.todos.filter((todo) => todo.id !== id),
       }))
       setPendingDeleteId(null)
     } else {
-      // First click - enter confirmation state
       setPendingDeleteId(id)
     }
   }
@@ -59,32 +54,36 @@ function TodoApp() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <span className="todo-loading" />
       </div>
     )
   }
 
-  // Sort by createdAt descending (most recent first)
   const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
 
   return (
-    <div className="flex h-full flex-col gap-2 overflow-hidden p-3" onClick={handleCancelDelete}>
-      <div className="shrink-0">
-        <Input
-          placeholder="Add a new task..."
+    <div className="todo-container" onClick={handleCancelDelete}>
+      <div className="todo-input-wrapper">
+        <input
+          type="text"
+          placeholder="What needs to be done?"
           value={newTodoText}
           onChange={(e) => setNewTodoText(e.target.value)}
           onKeyDown={handleKeyDown}
           onClick={(e) => e.stopPropagation()}
-          className="transition-all duration-150 ease-out focus:ring-2 focus:ring-ring"
+          className="todo-input"
+          autoComplete="off"
         />
+        <span className="todo-input-hint">↵</span>
       </div>
+
       {sortedTodos.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-center text-sm text-muted-foreground">No tasks yet. Press Enter to add your first task!</p>
+        <div className="todo-empty">
+          <div className="todo-empty-icon">○</div>
+          <p>No tasks yet</p>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+        <div className="todo-list">
           {sortedTodos.map((todo) => (
             <TodoItem
               key={todo.id}
@@ -110,41 +109,38 @@ interface TodoItemProps {
 function TodoItem({ todo, onToggle, onDeleteClick, isPendingDelete }: TodoItemProps) {
   return (
     <div
-      className="flex shrink-0 items-center gap-3 rounded-md border border-border bg-card p-3 transition-all duration-150 ease-out hover:bg-accent/50"
+      className={`todo-item ${todo.completed ? 'todo-item--completed' : ''}`}
       onClick={(e) => e.stopPropagation()}
     >
-      <Checkbox
-        id={todo.id}
-        checked={todo.completed}
-        onCheckedChange={() => onToggle(todo.id)}
-        className="transition-all duration-150 ease-out"
-      />
-      <label
-        htmlFor={todo.id}
-        className={`flex-1 cursor-pointer select-none text-sm transition-all duration-150 ease-out ${
-          todo.completed ? 'text-muted-foreground line-through' : 'text-foreground'
-        }`}
+      <button
+        type="button"
+        className={`todo-checkbox ${todo.completed ? 'todo-checkbox--checked' : ''}`}
+        onClick={() => onToggle(todo.id)}
+        aria-label={todo.completed ? 'Mark as incomplete' : 'Mark as complete'}
       >
-        {todo.text}
-      </label>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={`h-6 w-6 shrink-0 transition-all duration-150 ease-out ${isPendingDelete ? 'scale-110 text-destructive hover:text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
+        <svg viewBox="0 0 16 16" className="todo-checkbox-icon">
+          <path d="M4 8.5L6.5 11L12 5" />
+        </svg>
+      </button>
+
+      <span className="todo-text">{todo.text}</span>
+
+      <button
+        type="button"
+        className={`todo-delete ${isPendingDelete ? 'todo-delete--confirm' : ''}`}
         onClick={() => onDeleteClick(todo.id)}
+        aria-label={isPendingDelete ? 'Confirm delete' : 'Delete task'}
       >
         {isPendingDelete ? (
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-            <polyline points="20 6 9 17 4 12" />
+          <svg viewBox="0 0 16 16" className="todo-delete-icon">
+            <path d="M3 8.5L6.5 11L13 4" />
           </svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-            <path d="M3 6h18" />
-            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+          <svg viewBox="0 0 16 16" className="todo-delete-icon">
+            <path d="M4 4L12 12M12 4L4 12" />
           </svg>
         )}
-      </Button>
+      </button>
     </div>
   )
 }
