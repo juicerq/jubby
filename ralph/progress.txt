@@ -544,3 +544,23 @@
   - text-[32px] with leading-none gives precise emoji sizing without extra line-height
   - Tailwind text-[10px] allows fine-grained font sizes below the default scale
 ---
+
+## 2026-01-12 - US-011 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Verified hover states were already implemented in US-010 (plugin-card CSS)
+  - Enhanced hover interaction with subtle icon lift effect (-translate-y-0.5)
+  - Added text color transition on hover (muted-foreground → foreground/80)
+  - Used Tailwind group class for parent-to-child hover state propagation
+  - All acceptance criteria were already met from US-010:
+    - Background transparent by default (plugin-card::before)
+    - Hover background rgba(255,255,255,0.06)
+    - Border-radius 8px on pseudo-element
+    - 150ms transition with ease-out
+    - Cursor pointer on button element
+- Files changed:
+  - Modified: src/core/components/PluginGrid.tsx (added group class, hover effects on icon and name)
+- **Learnings for future iterations:**
+  - Tailwind group and group-hover: allow hover effects to propagate from parent to children
+  - translate-y-0.5 (2px) provides subtle lift without being distracting
+  - Multiple US stories can overlap in implementation - US-010 already implemented most of US-011
+---

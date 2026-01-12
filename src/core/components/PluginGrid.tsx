@@ -74,7 +74,7 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
               type="button"
               onClick={() => onPluginClick?.(plugin)}
               className={`
-                plugin-card
+                plugin-card group
                 flex flex-col items-center justify-center
                 w-20 h-20
                 rounded-lg
@@ -87,10 +87,10 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
                 ${isSelected ? 'plugin-card--selected' : ''}
               `}
             >
-              <span className="text-[32px] leading-none mb-1.5 transition-transform duration-150 ease-out">
+              <span className="text-[32px] leading-none mb-1.5 transition-transform duration-150 ease-out group-hover:-translate-y-0.5">
                 {plugin.icon}
               </span>
-              <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[72px] text-center leading-tight">
+              <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[72px] text-center leading-tight transition-colors duration-150 group-hover:text-foreground/80">
                 {plugin.name}
               </span>
             </button>
