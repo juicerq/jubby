@@ -254,3 +254,37 @@
   - Rust snake_case command names are used as-is in invoke (read_plugin_data, not readPluginData)
   - Command parameters use camelCase in JavaScript (pluginId matches Rust plugin_id)
 ---
+
+## 2026-01-12 - US-014
+- What was implemented:
+  - Created src/plugins/todo/ folder with plugin structure
+  - Created types.ts with Todo interface (id, text, completed, createdAt) and TodoStorage interface
+  - Created index.tsx with TodoManifest and placeholder TodoApp component
+  - Registered TodoManifest in src/plugins/registry.ts (first in array to show first in grid)
+- Files changed:
+  - Created: src/plugins/todo/types.ts (Todo and TodoStorage interfaces)
+  - Created: src/plugins/todo/index.tsx (TodoManifest and TodoApp component)
+  - Modified: src/plugins/registry.ts (imported and added TodoManifest)
+- **Learnings for future iterations:**
+  - Follow existing plugin pattern: types.ts for interfaces, index.tsx for manifest + component
+  - Use timestamp (number) for createdAt to enable easy sorting
+  - Plugin order in registry.ts array determines grid display order
+---
+
+## 2026-01-12 - US-015
+- What was implemented:
+  - TodoApp now renders list of todos from usePluginStorage hook
+  - Todos sorted by createdAt descending (most recent first)
+  - Each todo displays checkbox and text
+  - Completed todos have line-through and muted text styling
+  - Empty state shows friendly message "No tasks yet. Add your first task!"
+  - Loading state while fetching data from storage
+  - Added shadcn Checkbox component for todo items
+- Files changed:
+  - Modified: src/plugins/todo/index.tsx (implemented TodoApp and TodoItem components)
+  - Created: src/components/ui/checkbox.tsx (shadcn Checkbox component)
+- **Learnings for future iterations:**
+  - Use `bunx shadcn@latest add <component> --yes` for non-interactive shadcn installs
+  - Sort with `.sort((a, b) => b.createdAt - a.createdAt)` for most recent first
+  - disabled prop on Checkbox prevents interaction (useful for read-only state until US-017)
+---

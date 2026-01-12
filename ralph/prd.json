@@ -196,7 +196,7 @@
       "title": "Criar estrutura do plugin Todo",
       "description": "Como desenvolvedor, preciso da estrutura base do plugin Todo List.",
       "shouldCommit": true,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Pasta src/plugins/todo/ criada",
         "Arquivo index.tsx exportando TodoPlugin (manifest)",
@@ -210,7 +210,7 @@
       "title": "Implementar lista de todos",
       "description": "Como usuário, quero ver minha lista de tarefas ao abrir o plugin Todo.",
       "shouldCommit": true,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "TodoApp renderiza lista de todos do storage",
         "Todos ordenados por data de criação (mais recente primeiro)",
