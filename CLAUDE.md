@@ -9,15 +9,15 @@ Hub de mini-apps pessoais para o system tray do Linux.
 - **Frontend:** React 18 + TypeScript (strict mode)
 - **Estilização:** Tailwind CSS + shadcn/ui
 - **Persistência:** Arquivos JSON em `~/.local/share/jubby/`
-- **Package manager:** pnpm
+- **Package manager:** bun
 
 ## Comandos
 
 ```bash
-pnpm install          # Instalar dependências
-pnpm tauri dev        # Dev mode
-pnpm tauri build      # Build de produção
-pnpm tsc --noEmit     # Typecheck
+bun install           # Instalar dependências
+bun tauri dev         # Dev mode
+bun tauri build       # Build de produção
+bun tsc --noEmit      # Typecheck
 ```
 
 ## Arquitetura
@@ -90,7 +90,7 @@ Dados salvos automaticamente em `~/.local/share/jubby/meu-plugin.json`.
 - Tailwind para utilitários
 - shadcn/ui como base de componentes
 - Tema dark como padrão
-- Evitar CSS custom - preferir Tailwind
+- **NUNCA usar CSS puro - sempre preferir Tailwind**
 
 ### Rust
 - Código mínimo - apenas o necessário para Tauri
@@ -117,3 +117,9 @@ Dados salvos automaticamente em `~/.local/share/jubby/meu-plugin.json`.
 - `ralph/prd.json` - Product Requirements Document
 - `src/core/types.ts` - Tipos centrais do sistema
 - `src/plugins/registry.ts` - Lista de plugins ativos
+
+## Regras para o Claude
+
+- **NUNCA** executar `bun tauri dev` - o usuário roda manualmente
+- Use `cargo check` para verificar compilação do Rust
+- Use `bun tsc --noEmit` para verificar TypeScript

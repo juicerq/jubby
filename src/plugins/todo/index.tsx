@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import type { PluginManifest } from '@/core/types'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
 import type { Todo, TodoStorage } from './types'
@@ -9,6 +9,16 @@ function TodoApp() {
   const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (pendingDeleteId === null) return
+
+    const timeout = setTimeout(() => {
+      setPendingDeleteId(null)
+    }, 1500)
+
+    return () => clearTimeout(timeout)
+  }, [pendingDeleteId])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTodoText.trim()) {

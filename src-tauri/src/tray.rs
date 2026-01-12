@@ -1,8 +1,11 @@
 use tauri::{
     image::Image,
-    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    App, Manager, PhysicalPosition, RunEvent, WindowEvent,
+    menu::{Menu, MenuItem},
+    tray::{TrayIcon, TrayIconBuilder},
+    App, RunEvent, WindowEvent,
 };
+
+use crate::window;
 
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     println!("[Jubby] Setting up tray icon...");
@@ -20,41 +23,24 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
 
     println!("[Jubby] Icon loaded successfully");
 
-    // Build tray without menu - left click opens window directly
+    // Create context menu (required for icon to appear on Linux/KDE)
+    let show_item = MenuItem::with_id(app, "show", "Mostrar Jubby", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+    // Build tray with menu - left click opens window, right click shows menu
     let tray = TrayIconBuilder::with_id("jubby-tray")
         .icon(icon)
         .tooltip("Jubby")
         .icon_as_template(false)
-        .on_tray_icon_event(|tray, event| {
-            // Only respond to left-click release, ignore right-click
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                if let Some(window) = tray.app_handle().get_webview_window("main") {
-                    // Toggle window visibility
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
-                    } else {
-                        // Center window on primary monitor before showing
-                        if let Some(monitor) = window.primary_monitor().ok().flatten() {
-                            let monitor_size = monitor.size();
-                            let monitor_pos = monitor.position();
-                            let window_size = window.outer_size().unwrap_or_default();
-
-                            let x = monitor_pos.x + (monitor_size.width as i32 - window_size.width as i32) / 2;
-                            let y = monitor_pos.y + (monitor_size.height as i32 - window_size.height as i32) / 2;
-
-                            let _ = window.set_position(PhysicalPosition::new(x, y));
-                        }
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
-                }
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "show" => window::show(app),
+                "quit" => app.exit(0),
+                _ => {}
             }
-            // Right-click is ignored (no action)
         })
         .build(app)?;
 
@@ -67,18 +53,12 @@ pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
         if label == "main" {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
-                    // Prevent the window from closing, just hide it
                     api.prevent_close();
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.hide();
-                    }
+                    window::hide(app_handle);
                 }
                 WindowEvent::Focused(focused) => {
-                    // Hide popover when it loses focus (clicked outside)
                     if !focused {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
+                        window::hide_on_blur(app_handle);
                     }
                 }
                 _ => {}

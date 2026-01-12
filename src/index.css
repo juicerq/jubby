@@ -150,35 +150,6 @@
   }
 }
 
-/* Plugin card styles */
-.plugin-card {
-  position: relative;
-}
-
-.plugin-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  background: transparent;
-  transition: background 150ms ease-out;
-}
-
-.plugin-card:hover::before {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.plugin-card--selected::before {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
-    0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-.plugin-card--selected:hover::before {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* Plugin header - refined navigation bar */
 .plugin-header {
   display: flex;
@@ -393,7 +364,9 @@
 
 /* Custom checkbox */
 .todo-checkbox {
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -414,8 +387,8 @@
 }
 
 .todo-checkbox-icon {
-  position: absolute;
-  inset: 2px;
+  width: 12px;
+  height: 12px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;

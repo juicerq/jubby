@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { PluginManifest } from '@/core/types'
 import { plugins } from '@/plugins/registry'
 
@@ -10,12 +10,45 @@ const COLUMNS = 4
 
 export function PluginGrid({ onPluginClick }: PluginGridProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Filter plugins based on search query
+  const filteredPlugins = useMemo(() => {
+    if (!searchQuery.trim()) return plugins
+    const query = searchQuery.toLowerCase()
+    return plugins.filter(plugin =>
+      plugin.name.toLowerCase().includes(query) ||
+      plugin.id.toLowerCase().includes(query)
+    )
+  }, [searchQuery])
+
+  // Reset selection when filtered list changes
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [filteredPlugins.length])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (plugins.length === 0) return
+      // Cmd/Ctrl+K focuses search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
 
-      const total = plugins.length
+      // Don't handle arrow keys when typing in search
+      if (document.activeElement === searchInputRef.current) {
+        if (e.key === 'ArrowDown' || e.key === 'Enter') {
+          e.preventDefault()
+          searchInputRef.current?.blur()
+        }
+        return
+      }
+
+      if (filteredPlugins.length === 0) return
+
+      const total = filteredPlugins.length
       let newIndex = selectedIndex
 
       switch (e.key) {
@@ -29,15 +62,19 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
           break
         case 'ArrowDown':
           e.preventDefault()
-          newIndex = (selectedIndex + COLUMNS) % total
+          newIndex = Math.min(selectedIndex + COLUMNS, total - 1)
           break
         case 'ArrowUp':
           e.preventDefault()
-          newIndex = (selectedIndex - COLUMNS + total) % total
+          if (selectedIndex < COLUMNS) {
+            searchInputRef.current?.focus()
+          } else {
+            newIndex = selectedIndex - COLUMNS
+          }
           break
         case 'Enter':
           e.preventDefault()
-          onPluginClick?.(plugins[selectedIndex])
+          onPluginClick?.(filteredPlugins[selectedIndex])
           return
         default:
           return
@@ -45,7 +82,7 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
 
       setSelectedIndex(newIndex)
     },
-    [selectedIndex, onPluginClick]
+    [selectedIndex, filteredPlugins, onPluginClick]
   )
 
   useEffect(() => {
@@ -53,49 +90,79 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
 
-  if (plugins.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center p-4">
-        <p className="text-muted-foreground text-xs tracking-wide uppercase">
-          Nenhum plugin disponível
-        </p>
-      </div>
-    )
-  }
+  // Focus search on mount
+  useEffect(() => {
+    searchInputRef.current?.focus()
+  }, [])
 
   return (
-    <div className="flex h-full items-start justify-center p-4">
-      <div className="grid grid-cols-4 gap-3">
-        {plugins.map((plugin, index) => {
-          const isSelected = index === selectedIndex
-          return (
-            <button
-              key={plugin.id}
-              type="button"
-              onClick={() => onPluginClick?.(plugin)}
-              className={`
-                plugin-card group
-                flex flex-col items-center justify-center
-                w-20 h-20
-                rounded-lg
-                bg-transparent
-                border border-transparent
-                cursor-pointer
-                transition-all duration-150 ease-out
-                active:scale-95
-                focus:outline-none
-                ${isSelected ? 'plugin-card--selected' : ''}
-              `}
-            >
-              <span className="text-[32px] leading-none mb-1.5 transition-transform duration-150 ease-out group-hover:-translate-y-0.5">
-                {plugin.icon}
-              </span>
-              <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[72px] text-center leading-tight transition-colors duration-150 group-hover:text-foreground/80">
-                {plugin.name}
-              </span>
-            </button>
-          )
-        })}
+    <div className="flex flex-col h-full p-4 gap-4">
+      {/* Search input */}
+      <div className="relative shrink-0">
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="w-full h-9 pl-9 pr-10 text-[13px] font-normal tracking-tight text-white/95 bg-white/[0.04] border border-transparent rounded-[10px] outline-none transition-all duration-200 placeholder:text-white/35 hover:bg-white/[0.06] focus:bg-white/[0.06] focus:border-white/15 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          placeholder="Search plugins..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10ZM14 14l-3.5-3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium tracking-wide text-white/25 bg-white/[0.06] px-1.5 py-0.5 rounded pointer-events-none opacity-70">⌘K</span>
+      </div>
+
+      {/* Grid area */}
+      <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+        <span className="text-[10px] font-semibold tracking-widest uppercase text-white/40">Plugins</span>
+
+        {filteredPlugins.length === 0 ? (
+          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-white/35">
+            <p className="text-[13px] font-normal tracking-tight">No plugins found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(4,80px)] gap-2">
+            {filteredPlugins.map((plugin, index) => {
+              const isSelected = index === selectedIndex
+              return (
+                <button
+                  key={plugin.id}
+                  type="button"
+                  onClick={() => onPluginClick?.(plugin)}
+                  className={`
+                    group relative
+                    flex flex-col items-center justify-center
+                    w-20 h-20
+                    rounded-lg
+                    bg-transparent
+                    border border-transparent
+                    cursor-pointer
+                    transition-all duration-150 ease-out
+                    active:scale-95
+                    focus:outline-none
+                    before:content-[''] before:absolute before:inset-0 before:rounded-lg before:bg-transparent before:transition-all before:duration-150
+                    hover:before:bg-white/[0.06]
+                    ${isSelected ? 'before:bg-white/[0.08] before:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] hover:before:bg-white/10' : ''}
+                  `}
+                >
+                  <span className="relative z-10 text-[32px] leading-none mb-1.5">
+                    {plugin.icon}
+                  </span>
+                  <span className="relative z-10 text-[10px] font-medium text-white/60 truncate max-w-[72px] text-center leading-tight transition-colors duration-150 group-hover:text-white/80">
+                    {plugin.name}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

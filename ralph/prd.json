@@ -1,343 +1,269 @@
 {
-  "title": "Jubby v2 - Launcher Style",
-  "version": "2.0.0",
+  "title": "Todo Plugin - Sistema de Tags",
+  "version": "1.0.0",
   "created": "2026-01-12",
-  "introduction": "Jubby é um hub de mini-apps pessoais que funciona como um launcher centralizado (estilo Raycast). Ao clicar no ícone do system tray, abre uma janela elegante no centro da tela com um grid de plugins. O visual é minimalista escuro com gradients sutis, animações suaves e foco em produtividade.",
+  "introduction": "Adicionar sistema de tags ao plugin Todo para permitir categorização e organização das tarefas. Usuários podem criar tags personalizadas com cores customizáveis e atribuir até 3 tags por tarefa. O gerenciamento de tags (criar, editar, excluir) é feito através de uma tela dedicada.",
   "goals": [
-    "Transformar o Jubby de popover de tray em launcher centralizado",
-    "Criar visual minimalista escuro inspirado no Raycast",
-    "Implementar animações sutis e transições suaves",
-    "Manter arquitetura de plugins extensível",
-    "Suportar navegação por teclado (ESC, setas)",
-    "Persistência local em arquivos JSON"
+    "Permitir criar tags com nome e cor customizável",
+    "Associar até 3 tags por tarefa para categorização",
+    "Fornecer interface para gerenciar tags (CRUD completo)",
+    "Exibir tags visualmente nas tarefas com cores distintas",
+    "Manter consistência visual com o tema escuro existente",
+    "Persistir tags e associações em ~/.local/share/jubby/todo.json"
   ],
   "userStories": [
     {
       "id": "US-001",
-      "title": "Clique no tray abre janela diretamente",
-      "description": "Como usuário, quero que ao clicar no ícone do tray, a janela abra diretamente sem mostrar menu.",
+      "title": "Modelo de dados para tags",
+      "description": "Como desenvolvedor, preciso de uma estrutura de dados para armazenar tags e suas associações com tarefas.",
       "shouldCommit": true,
       "acceptanceCriteria": [
-        "Clique esquerdo no tray abre a janela principal",
-        "Não aparece menu ao clicar",
-        "Clique direito é ignorado (sem ação)",
-        "Cargo build passa sem erros"
-      ],
-      "passes": true
+        "Interface Tag criada com campos: id (string), name (string), color (string hex)",
+        "TodoStorage atualizado com array tags: Tag[]",
+        "Interface Todo atualizada com campo opcional tagIds: string[] (máximo 3)",
+        "Typecheck passa (bun tsc --noEmit)"
+      ]
     },
     {
       "id": "US-002",
-      "title": "Toggle da janela pelo tray",
-      "description": "Como usuário, quero que clicar no tray alterne entre abrir e fechar a janela.",
+      "title": "Botão de acesso ao gerenciador de tags",
+      "description": "Como usuário, quero um botão para acessar a tela de gerenciamento de tags.",
       "shouldCommit": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Se janela está fechada, clique abre",
-        "Se janela está aberta, clique fecha",
-        "Comportamento consistente e sem delays",
-        "Cargo build passa sem erros"
-      ],
-      "passes": true
+        "Ícone/botão de tags visível na área do plugin Todo",
+        "Botão usa ícone de tag (pode ser emoji ou SVG)",
+        "Hover state consistente com tema escuro",
+        "Clique abre a view de gerenciamento de tags",
+        "Typecheck passa",
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-003",
-      "title": "Janela centralizada na tela",
-      "description": "Como usuário, quero que a janela abra no centro da tela para fácil acesso.",
+      "title": "View de gerenciamento de tags",
+      "description": "Como usuário, quero uma tela dedicada para ver e gerenciar minhas tags.",
       "shouldCommit": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Janela abre centralizada horizontalmente e verticalmente",
-        "Tamanho da janela: 600x400px",
-        "Janela sem decorações do sistema (sem barra de título)",
-        "Janela não aparece na taskbar",
-        "Janela sempre no topo (alwaysOnTop)",
-        "Typecheck passa"
-      ],
-      "passes": true
+        "View separada mostrando lista de todas as tags",
+        "Cada tag exibe: badge colorido + nome",
+        "Input para criar nova tag no topo",
+        "Botão de voltar para retornar à lista de tarefas",
+        "Estado vazio amigável quando não há tags",
+        "Typecheck passa",
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-004",
-      "title": "Fechar janela ao clicar fora",
-      "description": "Como usuário, quero que a janela feche quando eu clicar fora dela.",
+      "title": "Criar nova tag",
+      "description": "Como usuário, quero criar uma nova tag definindo nome e cor.",
       "shouldCommit": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Janela fecha ao perder foco (blur event)",
-        "Comportamento consistente em diferentes ambientes desktop Linux",
-        "Cargo build passa sem erros"
-      ],
-      "passes": true
+        "Input de texto para nome da tag",
+        "Seletor de cor com palette predefinida (6-8 cores)",
+        "Cores sugeridas: vermelho, laranja, amarelo, verde, azul, roxo, rosa, cinza",
+        "Validação: nome não pode ser vazio",
+        "Validação: nome deve ser único (case insensitive)",
+        "Tag criada ao pressionar Enter ou clicar em botão de confirmação",
+        "Tag aparece imediatamente na lista",
+        "Dados persistem em ~/.local/share/jubby/todo.json",
+        "Typecheck passa",
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-005",
-      "title": "Fechar janela com ESC",
-      "description": "Como usuário, quero fechar a janela pressionando ESC para acesso rápido.",
+      "title": "Editar tag existente",
+      "description": "Como usuário, quero editar o nome ou cor de uma tag existente.",
       "shouldCommit": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Pressionar ESC fecha a janela de qualquer view (grid ou plugin)",
-        "ESC funciona mesmo com foco em input",
+        "Clique na tag ou botão de edição abre modo de edição inline",
+        "Pode alterar nome da tag",
+        "Pode alterar cor da tag via seletor",
+        "Validação mantida (nome único, não vazio)",
+        "Alterações refletem imediatamente em todas as tarefas que usam a tag",
+        "Dados persistem automaticamente",
         "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-006",
-      "title": "Navegação por setas no grid",
-      "description": "Como usuário, quero navegar pelos plugins usando as setas do teclado.",
+      "title": "Excluir tag",
+      "description": "Como usuário, quero excluir uma tag que não preciso mais.",
       "shouldCommit": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Setas movem seleção entre cards do grid",
-        "Enter abre o plugin selecionado",
-        "Indicador visual mostra qual card está selecionado",
-        "Navegação faz wrap (último → primeiro, primeiro → último)",
+        "Botão de excluir (X) visível em cada tag na lista",
+        "Confirmação com dois cliques (igual deleção de tarefa)",
+        "Primeiro clique mostra estado de confirmação",
+        "Segundo clique confirma exclusão",
+        "Tag removida de todas as tarefas que a utilizavam",
+        "Tag some da lista imediatamente",
+        "Dados persistem automaticamente",
         "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-007",
-      "title": "Tema base escuro",
-      "description": "Como usuário, quero um visual escuro e elegante para o app.",
+      "title": "Exibir tags nos itens de tarefa",
+      "description": "Como usuário, quero ver as tags associadas a cada tarefa na lista.",
       "shouldCommit": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Background principal: #0a0a0a",
-        "Texto primário: branco com alta opacidade",
-        "Texto secundário: branco com opacidade reduzida",
-        "Bordas sutis: rgba(255,255,255,0.08)",
-        "CSS configurado em index.css ou tailwind config",
-        "Typecheck passa"
-      ],
-      "passes": true
+        "Cada tarefa exibe seus badges de tags",
+        "Badges são pequenos, coloridos com a cor da tag",
+        "Badges mostram nome da tag truncado se necessário",
+        "Posição: abaixo do texto da tarefa ou à direita",
+        "Máximo de 3 tags exibidas por tarefa",
+        "Tags de tarefas completadas têm opacidade reduzida",
+        "Visual consistente com tema escuro",
+        "Typecheck passa",
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-008",
-      "title": "Janela com gradient e bordas arredondadas",
-      "description": "Como usuário, quero que a janela tenha visual moderno com gradient sutil e cantos arredondados.",
+      "title": "Atribuir tags ao criar tarefa",
+      "description": "Como usuário, quero poder selecionar tags ao criar uma nova tarefa.",
       "shouldCommit": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Gradient radial sutil no centro (para dar profundidade)",
-        "Border-radius: 12px na janela",
-        "Borda: 1px com cor sutil para separar do desktop",
-        "Overflow hidden para respeitar border-radius",
+        "Área de seleção de tags visível próximo ao input de nova tarefa",
+        "Tags disponíveis mostradas como chips/badges clicáveis",
+        "Clique na tag seleciona/deseleciona",
+        "Limite de 3 tags selecionadas",
+        "Feedback visual quando limite atingido",
+        "Tags selecionadas são associadas à tarefa ao pressionar Enter",
+        "Seleção limpa após criar tarefa",
         "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-009",
-      "title": "Criar LauncherShell wrapper",
-      "description": "Como desenvolvedor, preciso de um componente wrapper que aplique o estilo base da janela.",
+      "title": "Editar tags de tarefa existente",
+      "description": "Como usuário, quero poder adicionar ou remover tags de uma tarefa existente.",
       "shouldCommit": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Componente LauncherShell criado em src/core/components/",
-        "Aplica background, gradient, border-radius, borda",
-        "Envolve todo o conteúdo do App",
-        "Typecheck passa"
-      ],
-      "passes": true
+        "Clique nas tags da tarefa ou botão de editar tags abre seletor",
+        "Seletor mostra todas as tags disponíveis",
+        "Tags já associadas aparecem marcadas",
+        "Pode marcar/desmarcar tags (respeitando limite de 3)",
+        "Alterações salvam automaticamente",
+        "Seletor fecha ao clicar fora",
+        "Typecheck passa",
+        "Verificar no browser usando dev-browser skill"
+      ]
     },
     {
       "id": "US-010",
-      "title": "Grid de cards compactos",
-      "description": "Como usuário, quero ver os plugins em um grid de cards compactos e organizados.",
+      "title": "Persistência e migração de dados",
+      "description": "Como usuário, quero que minhas tags e associações sejam salvas e que dados antigos continuem funcionando.",
       "shouldCommit": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Grid com 3-4 colunas (responsivo ao tamanho)",
-        "Cards compactos: ~80x80px",
-        "Cada card mostra: ícone centralizado (~32px) + nome embaixo",
-        "Nome com font-size pequeno, truncate se necessário",
-        "Gap entre cards: 12px",
-        "Padding do grid: 16px",
+        "Dados salvos em ~/.local/share/jubby/todo.json",
+        "Estrutura atualizada: { todos: Todo[], tags: Tag[] }",
+        "Dados antigos (sem tags) carregam corretamente",
+        "Tarefas antigas funcionam sem tagIds",
         "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-011",
-      "title": "Hover e estados nos cards",
-      "description": "Como usuário, quero feedback visual ao interagir com os cards do grid.",
-      "shouldCommit": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Background do card: transparente por padrão",
-        "Hover: background rgba(255,255,255,0.06)",
-        "Border-radius do card: 8px",
-        "Transição suave no hover (150ms)",
-        "Cursor pointer no hover",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-012",
-      "title": "Redesign do header do plugin",
-      "description": "Como usuário, quero um header limpo quando estou dentro de um plugin.",
-      "shouldCommit": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Header com altura de 48px",
-        "Botão voltar (ícone ←) à esquerda",
-        "Nome do plugin centralizado ou à direita do botão",
-        "Borda inferior sutil: 1px rgba(255,255,255,0.08)",
-        "Estilo consistente com tema escuro",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-013",
-      "title": "Animações de transição entre views",
-      "description": "Como usuário, quero transições suaves ao navegar entre grid e plugin.",
-      "shouldCommit": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Transição de fade ao trocar de view",
-        "Leve translateY ou scale na entrada",
-        "Duration: 150-200ms",
-        "Easing: ease-out",
-        "Animação não bloqueia interação",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-014",
-      "title": "Polish visual do plugin Todo",
-      "description": "Como usuário, quero que o plugin Todo tenha visual consistente com o novo design.",
-      "shouldCommit": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Input de nova tarefa: clean, sem bordas pesadas, placeholder sutil",
-        "Checkbox minimalista",
-        "Items com hover state sutil",
-        "Espaçamentos consistentes com o resto do app",
-        "Cores seguindo tema escuro",
-        "Funcionalidade existente mantida (CRUD, persistência)",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ],
-      "passes": true
-    },
-    {
-      "id": "US-015",
-      "title": "Build de produção",
-      "description": "Como usuário, quero um executável funcional com todas as novas features.",
-      "shouldCommit": true,
-      "acceptanceCriteria": [
-        "bun tauri build gera executável sem erros",
-        "Executável inicia e mostra ícone no tray",
-        "Clique no tray abre janela centralizada",
-        "Todas as funcionalidades funcionam no build",
-        "Visual consistente com dev mode",
-        "Tamanho do executável razoável (< 25MB)"
-      ],
-      "passes": true
+        "Cargo check passa"
+      ]
     }
   ],
   "functionalRequirements": [
-    "FR-1: Clique esquerdo no tray abre/fecha janela (toggle)",
-    "FR-2: Clique direito no tray é ignorado",
-    "FR-3: Janela abre centralizada na tela (600x400px)",
-    "FR-4: Janela fecha ao perder foco (clicar fora)",
-    "FR-5: Janela fecha ao pressionar ESC",
-    "FR-6: Grid de plugins navegável por setas do teclado",
-    "FR-7: Enter abre plugin selecionado no grid",
-    "FR-8: Visual minimalista escuro com gradient sutil",
-    "FR-9: Cards compactos em grid 3-4 colunas",
-    "FR-10: Transições suaves entre views (150-200ms)",
-    "FR-11: Header com botão voltar ao entrar em plugin",
-    "FR-12: Plugin Todo funcional com visual atualizado",
-    "FR-13: Dados persistem em ~/.local/share/jubby/"
+    "FR-1: Sistema deve suportar criação de tags com nome e cor customizável",
+    "FR-2: Cada tag deve ter ID único gerado automaticamente (UUID)",
+    "FR-3: Nome de tag deve ser único (validação case insensitive)",
+    "FR-4: Cores disponíveis: vermelho (#ef4444), laranja (#f97316), amarelo (#eab308), verde (#22c55e), azul (#3b82f6), roxo (#8b5cf6), rosa (#ec4899), cinza (#6b7280)",
+    "FR-5: Cada tarefa pode ter no máximo 3 tags associadas",
+    "FR-6: Tags são associadas a tarefas via array de IDs (tagIds)",
+    "FR-7: Ao excluir tag, remover referência de todas as tarefas",
+    "FR-8: Ao editar tag, mudanças refletem em todas as tarefas",
+    "FR-9: View de gerenciamento acessível via botão no plugin Todo",
+    "FR-10: Navegação: Lista de tarefas <-> Gerenciamento de tags",
+    "FR-11: Dados persistem automaticamente após cada alteração",
+    "FR-12: Compatibilidade com dados existentes (migração transparente)"
   ],
   "nonGoals": [
-    "Não implementar atalho global para abrir (ex: Super+J) nesta versão",
-    "Não implementar busca/filtro de plugins",
-    "Não implementar novos plugins além do Todo",
-    "Não implementar temas customizáveis",
-    "Não implementar sync entre máquinas",
-    "Não suportar outros sistemas operacionais além de Linux",
-    "Não implementar drag and drop para reordenar plugins"
+    "Não implementar filtro de tarefas por tags",
+    "Não implementar ordenação de tarefas por tags",
+    "Não implementar tags hierárquicas ou aninhadas",
+    "Não implementar cores customizadas além da palette predefinida",
+    "Não implementar ícones nas tags",
+    "Não implementar atalhos de teclado para tags",
+    "Não implementar drag and drop para reordenar tags",
+    "Não implementar importação/exportação de tags"
   ],
   "designConsiderations": {
-    "styleReference": "Raycast - minimalista, escuro, clean com gradients sutis",
-    "colors": {
-      "background": "#0a0a0a",
-      "backgroundGradient": "radial-gradient sutil no centro",
-      "border": "rgba(255,255,255,0.08)",
-      "textPrimary": "rgba(255,255,255,0.95)",
-      "textSecondary": "rgba(255,255,255,0.6)",
-      "hover": "rgba(255,255,255,0.06)"
+    "tagBadge": {
+      "height": "20-24px",
+      "padding": "4px 8px",
+      "borderRadius": "4px",
+      "fontSize": "11-12px",
+      "fontWeight": "500"
     },
-    "dimensions": {
-      "window": "600x400px",
-      "borderRadius": "12px",
-      "cardSize": "~80x80px",
-      "headerHeight": "48px",
-      "gridGap": "12px",
-      "padding": "16px"
+    "colorPalette": [
+      { "name": "red", "hex": "#ef4444" },
+      { "name": "orange", "hex": "#f97316" },
+      { "name": "yellow", "hex": "#eab308" },
+      { "name": "green", "hex": "#22c55e" },
+      { "name": "blue", "hex": "#3b82f6" },
+      { "name": "purple", "hex": "#8b5cf6" },
+      { "name": "pink", "hex": "#ec4899" },
+      { "name": "gray", "hex": "#6b7280" }
+    ],
+    "tagManagementView": {
+      "layout": "Lista vertical de tags",
+      "itemHeight": "40-48px",
+      "createInputPosition": "Topo da view"
     },
-    "animations": {
-      "duration": "150-200ms",
-      "easing": "ease-out",
-      "effects": ["fade", "translateY", "scale"]
+    "tagSelectorInTask": {
+      "position": "Abaixo do input de nova tarefa ou popover",
+      "style": "Chips horizontais clicáveis"
     }
   },
   "technicalConsiderations": [
-    "Tauri v2 para runtime com backend Rust e frontend web",
-    "React 18 com TypeScript strict mode",
-    "Tailwind CSS para utilitários de estilo",
-    "shadcn/ui para componentes base",
-    "Persistência em ~/.local/share/jubby/*.json",
-    "Comunicação Rust <-> React via Tauri IPC commands",
-    "Gerenciador de pacotes: bun",
-    "Usar on_tray_icon_event para capturar cliques no tray",
-    "framer-motion opcional para animações (ou CSS puro)"
+    "Reutilizar hook usePluginStorage para persistência",
+    "Adicionar tipos Tag e atualizar Todo em types.ts",
+    "Criar componentes: TagBadge, TagSelector, TagManager",
+    "Manter estado de view (lista/gerenciamento) no componente principal",
+    "Usar crypto.randomUUID() para IDs de tags",
+    "Validação de limite de tags no frontend antes de salvar"
   ],
   "successMetrics": [
-    "App inicia em menos de 2 segundos",
-    "Janela abre em menos de 100ms após clique no tray",
-    "Uso de RAM em idle menor que 60MB",
-    "Tamanho do executável menor que 25MB",
-    "Transições percebidas como suaves (sem jank)",
-    "Navegação por teclado funciona sem bugs"
+    "Criar tag em menos de 3 cliques",
+    "Atribuir tag a tarefa em menos de 2 cliques",
+    "Tags carregam instantaneamente com os dados",
+    "Nenhuma regressão na funcionalidade existente do Todo"
   ],
   "openQuestions": [],
   "resolvedQuestions": [
     {
-      "question": "Qual estilo visual seguir?",
-      "answer": "Minimalista escuro inspirado no Raycast, com gradients sutis"
+      "question": "Qual o objetivo das tags?",
+      "answer": "Categorização + organização visual (sem filtro por enquanto)"
     },
     {
-      "question": "Onde posicionar a janela?",
-      "answer": "Centro da tela (estilo launcher), não mais acima do tray"
+      "question": "Como criar tags?",
+      "answer": "Pré-definidas pelo usuário em tela de gerenciamento"
     },
     {
-      "question": "Como fechar a janela?",
-      "answer": "Três formas: clicar no tray novamente, pressionar ESC, ou clicar fora"
+      "question": "Quantas tags por tarefa?",
+      "answer": "Até 3 tags por tarefa"
     },
     {
-      "question": "Clique direito no tray faz o quê?",
-      "answer": "Ignorado - sem menu de contexto"
+      "question": "Tags têm cores?",
+      "answer": "Sim, cores customizáveis via palette predefinida de 8 cores"
     },
     {
-      "question": "Suportar navegação por teclado?",
-      "answer": "Sim - ESC fecha, setas navegam no grid, Enter abre plugin"
-    },
-    {
-      "question": "Qual layout do grid?",
-      "answer": "Cards compactos 3-4 colunas, ícone + nome apenas"
-    },
-    {
-      "question": "Qual intensidade das animações?",
-      "answer": "Sutis - fade + scale/translateY, 150-200ms, ease-out"
+      "question": "Escopo do CRUD de tags?",
+      "answer": "Criar, atribuir, editar, excluir (sem filtro por tags)"
     }
   ]
 }
