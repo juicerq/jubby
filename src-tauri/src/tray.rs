@@ -26,7 +26,7 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
         .tooltip("Jubby")
         .icon_as_template(false)
         .on_tray_icon_event(|tray, event| {
-            // Only respond to left-click press, ignore right-click
+            // Only respond to left-click release, ignore right-click
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
@@ -34,8 +34,13 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
             } = event
             {
                 if let Some(window) = tray.app_handle().get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    // Toggle window visibility
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
             }
             // Right-click is ignored (no action)

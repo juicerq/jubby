@@ -36,7 +36,7 @@
         "Comportamento consistente e sem delays",
         "Cargo build passa sem erros"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-003",

@@ -395,3 +395,15 @@
   - Pattern matching with if let TrayIconEvent::Click { button: MouseButton::Left, ... } = event for specific click handling
   - Previous PRD progress.txt entries are from v1; this is a new PRD (v2 Launcher Style) that changes the UX from popover to centered launcher
 ---
+
+## 2026-01-12 - US-002 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Added toggle behavior to tray icon click: shows window if hidden, hides if visible
+  - Used window.is_visible().unwrap_or(false) to check current visibility state
+  - If visible: hide(). If hidden: show() + set_focus()
+- Files changed:
+  - Modified: src-tauri/src/tray.rs (added toggle logic in on_tray_icon_event)
+- **Learnings for future iterations:**
+  - window.is_visible() returns Result<bool> in Tauri v2 - use unwrap_or(false) for safe default
+  - Toggle pattern: check visibility first, then show() or hide() based on state
+---
