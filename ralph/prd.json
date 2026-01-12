@@ -107,7 +107,7 @@
         "CSS configurado em index.css ou tailwind config",
         "Typecheck passa"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-008",

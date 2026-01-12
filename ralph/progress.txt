@@ -469,3 +469,20 @@
   - ring-offset-background matches the current background color for proper ring offset appearance
   - Multiple keydown listeners (ESC in App.tsx, arrows in PluginGrid) can coexist without conflict
 ---
+
+## 2026-01-12 - US-007 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Updated .dark CSS variables in src/index.css to match Raycast-inspired theme
+  - Background: #0a0a0a (deep black)
+  - Text primary (foreground): rgba(255, 255, 255, 0.95)
+  - Text secondary (muted-foreground): rgba(255, 255, 255, 0.6)
+  - Borders: rgba(255, 255, 255, 0.08)
+  - Updated all related variables (card, popover, accent, muted, input, ring, sidebar)
+- Files changed:
+  - Modified: src/index.css (updated .dark CSS variables block)
+- **Learnings for future iterations:**
+  - shadcn/ui uses CSS custom properties that map to Tailwind variables via @theme inline
+  - Changing --background, --foreground, --border etc. propagates to all shadcn components
+  - rgba() values work well alongside hex values in CSS variables
+  - PRD color spec rgba(255,255,255,0.08) maps to --border for subtle borders
+---
