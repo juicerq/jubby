@@ -423,3 +423,49 @@
   - window.outer_size() gives the actual window dimensions including any borders
   - Use PhysicalPosition::new(x, y) to set window position with i32 coordinates
 ---
+
+## 2026-01-12 - US-004 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Verified that close-on-blur functionality was already implemented in v1 PRD (US-006)
+  - WindowEvent::Focused(focused) handler in handle_run_event already hides window when focus is lost
+  - Cargo build passes without errors
+- Files changed:
+  - None (already implemented in src-tauri/src/tray.rs lines 76-83)
+- **Learnings for future iterations:**
+  - Check if functionality from v1 PRD already satisfies v2 PRD requirements
+  - Focus loss event in Tauri v2 fires reliably on Linux desktop environments
+---
+
+## 2026-01-12 - US-005 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Added global keydown listener in App.tsx to close window on ESC
+  - Uses getCurrentWindow().hide() from @tauri-apps/api/window
+  - Added core:window:allow-hide permission to capabilities/default.json
+  - ESC works from any view (grid or plugin) and even with focus in inputs
+- Files changed:
+  - Modified: src/App.tsx (added useEffect with keydown listener for ESC)
+  - Modified: src-tauri/capabilities/default.json (added window:allow-hide permission)
+- **Learnings for future iterations:**
+  - Tauri v2 window API uses getCurrentWindow() from '@tauri-apps/api/window'
+  - Window operations need explicit permissions in capabilities (core:window:allow-hide)
+  - Global window.addEventListener('keydown') catches keys from all elements including inputs
+  - The Todo plugin's onKeyDown only handles Enter, so ESC bubbles up to the global handler
+---
+
+## 2026-01-12 - US-006 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Added arrow key navigation to PluginGrid component
+  - Arrow keys (Left/Right/Up/Down) move selection between cards
+  - Enter key opens the selected plugin
+  - Visual indicator: selected card has ring-2 ring-primary ring-offset-2
+  - Wrap navigation: moving past last goes to first, moving before first goes to last
+  - Uses modulo arithmetic for wrap: (index + delta + total) % total
+  - Grid uses 3 columns, ArrowUp/Down skip by 3 for vertical navigation
+- Files changed:
+  - Modified: src/core/components/PluginGrid.tsx (added keyboard navigation with useState, useCallback, useEffect)
+- **Learnings for future iterations:**
+  - Use useCallback for event handlers that depend on state to avoid stale closures
+  - Modulo with addition handles negative indices: (index - step + total) % total
+  - ring-offset-background matches the current background color for proper ring offset appearance
+  - Multiple keydown listeners (ESC in App.tsx, arrows in PluginGrid) can coexist without conflict
+---

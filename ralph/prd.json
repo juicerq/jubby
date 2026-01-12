@@ -63,7 +63,7 @@
         "Comportamento consistente em diferentes ambientes desktop Linux",
         "Cargo build passa sem erros"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-005",
@@ -76,7 +76,7 @@
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",
@@ -91,7 +91,7 @@
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-007",
