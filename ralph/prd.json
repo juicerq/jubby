@@ -226,7 +226,7 @@
       "title": "Adicionar nova tarefa",
       "description": "Como usuário, quero adicionar novas tarefas à minha lista.",
       "shouldCommit": true,
-      "passes": false,
+      "passes": true,
       "acceptanceCriteria": [
         "Input de texto para nova tarefa",
         "Pressionar Enter adiciona tarefa à lista",

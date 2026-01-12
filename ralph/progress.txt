@@ -288,3 +288,20 @@
   - Sort with `.sort((a, b) => b.createdAt - a.createdAt)` for most recent first
   - disabled prop on Checkbox prevents interaction (useful for read-only state until US-017)
 ---
+
+## 2026-01-12 - US-016
+- What was implemented:
+  - Added Input field for adding new tasks to TodoApp
+  - Enter key handler adds task to list and clears input
+  - Uses crypto.randomUUID() for unique task IDs
+  - Tasks persist automatically via setData from usePluginStorage
+  - Added shadcn Input component
+  - Refactored empty state to show input field with helpful message
+- Files changed:
+  - Modified: src/plugins/todo/index.tsx (added useState, Input, handleKeyDown)
+  - Created: src/components/ui/input.tsx (shadcn Input component)
+- **Learnings for future iterations:**
+  - crypto.randomUUID() is available in modern browsers for generating unique IDs
+  - setData((prev) => ...) pattern allows functional updates to storage data
+  - Keep input always visible (not just in empty state) for better UX
+---
