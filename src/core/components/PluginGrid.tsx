@@ -20,11 +20,11 @@ export function PluginGrid({ onPluginClick }: PluginGridProps) {
       {plugins.map((plugin) => (
         <Card
           key={plugin.id}
-          className="cursor-pointer transition-colors hover:bg-accent"
+          className="cursor-pointer transition-all duration-150 ease-out hover:bg-accent active:scale-95"
           onClick={() => onPluginClick?.(plugin)}
         >
           <CardContent className="flex flex-col items-center justify-center gap-2 p-4">
-            <span className="text-3xl">{plugin.icon}</span>
+            <span className="text-3xl transition-transform duration-150 ease-out group-hover:scale-110">{plugin.icon}</span>
             <span className="text-center text-sm font-medium">{plugin.name}</span>
           </CardContent>
         </Card>

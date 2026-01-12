@@ -7,12 +7,13 @@ interface PluginHeaderProps {
 
 export function PluginHeader({ pluginName, onBack }: PluginHeaderProps) {
   return (
-    <header className="flex items-center gap-2 border-b border-border px-3 py-2">
+    <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
       <Button
         variant="ghost"
         size="icon-sm"
         onClick={onBack}
         aria-label="Voltar para o grid"
+        className="transition-all duration-150 ease-out active:scale-90"
       >
         ←
       </Button>

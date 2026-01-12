@@ -68,29 +68,33 @@ function TodoApp() {
   const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
 
   return (
-    <div className="flex flex-col gap-2 p-3" onClick={handleCancelDelete}>
-      <Input
-        placeholder="Add a new task..."
-        value={newTodoText}
-        onChange={(e) => setNewTodoText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onClick={(e) => e.stopPropagation()}
-        className="mb-1"
-      />
+    <div className="flex h-full flex-col gap-2 overflow-hidden p-3" onClick={handleCancelDelete}>
+      <div className="shrink-0">
+        <Input
+          placeholder="Add a new task..."
+          value={newTodoText}
+          onChange={(e) => setNewTodoText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onClick={(e) => e.stopPropagation()}
+          className="transition-all duration-150 ease-out focus:ring-2 focus:ring-ring"
+        />
+      </div>
       {sortedTodos.length === 0 ? (
-        <div className="flex h-32 items-center justify-center">
-          <p className="text-muted-foreground">No tasks yet. Press Enter to add your first task!</p>
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-center text-sm text-muted-foreground">No tasks yet. Press Enter to add your first task!</p>
         </div>
       ) : (
-        sortedTodos.map((todo) => (
-          <TodoItem
-            key={todo.id}
-            todo={todo}
-            onToggle={handleToggle}
-            onDeleteClick={handleDeleteClick}
-            isPendingDelete={pendingDeleteId === todo.id}
-          />
-        ))
+        <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+          {sortedTodos.map((todo) => (
+            <TodoItem
+              key={todo.id}
+              todo={todo}
+              onToggle={handleToggle}
+              onDeleteClick={handleDeleteClick}
+              isPendingDelete={pendingDeleteId === todo.id}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -106,17 +110,18 @@ interface TodoItemProps {
 function TodoItem({ todo, onToggle, onDeleteClick, isPendingDelete }: TodoItemProps) {
   return (
     <div
-      className="flex items-center gap-3 rounded-md border border-border bg-card p-3"
+      className="flex shrink-0 items-center gap-3 rounded-md border border-border bg-card p-3 transition-all duration-150 ease-out hover:bg-accent/50"
       onClick={(e) => e.stopPropagation()}
     >
       <Checkbox
         id={todo.id}
         checked={todo.completed}
         onCheckedChange={() => onToggle(todo.id)}
+        className="transition-all duration-150 ease-out"
       />
       <label
         htmlFor={todo.id}
-        className={`flex-1 text-sm ${
+        className={`flex-1 cursor-pointer select-none text-sm transition-all duration-150 ease-out ${
           todo.completed ? 'text-muted-foreground line-through' : 'text-foreground'
         }`}
       >
@@ -125,7 +130,7 @@ function TodoItem({ todo, onToggle, onDeleteClick, isPendingDelete }: TodoItemPr
       <Button
         variant="ghost"
         size="icon"
-        className={`h-6 w-6 shrink-0 ${isPendingDelete ? 'text-destructive hover:text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
+        className={`h-6 w-6 shrink-0 transition-all duration-150 ease-out ${isPendingDelete ? 'scale-110 text-destructive hover:text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
         onClick={() => onDeleteClick(todo.id)}
       >
         {isPendingDelete ? (

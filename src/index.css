@@ -121,3 +121,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Global smooth transitions and scrollbar styling */
+@layer utilities {
+  .transition-smooth {
+    @apply transition-all duration-150 ease-out;
+  }
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.4 0 0 / 40%);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.5 0 0 / 50%);
+}
