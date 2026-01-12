@@ -72,17 +72,25 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
 }
 
 pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
-    if let RunEvent::WindowEvent {
-        label,
-        event: WindowEvent::CloseRequested { api, .. },
-        ..
-    } = event
-    {
+    if let RunEvent::WindowEvent { label, event, .. } = event {
         if label == "main" {
-            // Prevent the window from closing, just hide it
-            api.prevent_close();
-            if let Some(window) = app_handle.get_webview_window("main") {
-                let _ = window.hide();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    // Prevent the window from closing, just hide it
+                    api.prevent_close();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                WindowEvent::Focused(focused) => {
+                    // Hide popover when it loses focus (clicked outside)
+                    if !focused {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
