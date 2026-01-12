@@ -16,12 +16,13 @@
       "title": "Setup do projeto Tauri + React + TypeScript",
       "description": "Como desenvolvedor, preciso do projeto inicializado com Tauri, React e TypeScript para começar a implementação.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Projeto Tauri v2 inicializado com template React + TypeScript",
-        "pnpm tauri dev inicia sem erros",
+        "bun tauri dev inicia sem erros",
         "Janela básica do Tauri abre com conteúdo React",
         "TypeScript configurado com strict mode",
-        "Typecheck passa (pnpm tsc --noEmit)"
+        "Typecheck passa (bun tsc --noEmit)"
       ]
     },
     {
@@ -29,6 +30,7 @@
       "title": "Configurar Tailwind CSS + shadcn/ui",
       "description": "Como desenvolvedor, preciso do Tailwind e shadcn/ui configurados para estilizar a interface.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Tailwind CSS instalado e funcionando",
         "shadcn/ui inicializado com tema dark como padrão",
@@ -41,6 +43,7 @@
       "title": "Estruturar pastas conforme arquitetura",
       "description": "Como desenvolvedor, preciso da estrutura de pastas organizada para manter o código limpo e escalável.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Pasta src/core/ criada com subpastas: components, hooks, context",
         "Pasta src/plugins/ criada com registry.ts",
@@ -54,6 +57,7 @@
       "title": "Implementar ícone no system tray",
       "description": "Como usuário, quero ver o ícone do Jubby no system tray do meu Linux para saber que o app está rodando.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Ícone aparece no system tray ao iniciar o app",
         "Ícone usa imagem customizada (pode ser placeholder inicial)",
@@ -67,6 +71,7 @@
       "title": "Implementar popover ao clicar no tray",
       "description": "Como usuário, quero que ao clicar no ícone do tray, abra um painel/popover próximo ao ícone.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Clicar no ícone do tray abre janela popover (~400x350px)",
         "Popover posicionado próximo ao tray (não no centro da tela)",
@@ -80,6 +85,7 @@
       "title": "Fechar popover ao clicar fora",
       "description": "Como usuário, quero que o popover feche quando eu clicar fora dele para voltar ao que estava fazendo.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Popover fecha ao perder foco (blur event)",
         "Popover fecha ao clicar em qualquer lugar fora dele",
@@ -92,13 +98,14 @@
       "title": "Criar componente Grid de plugins",
       "description": "Como usuário, quero ver um grid com os mini-apps disponíveis ao abrir o popover.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Componente PluginGrid renderiza lista de plugins do registry",
         "Cada plugin exibido como card com ícone e nome",
         "Grid responsivo (3 colunas)",
         "Estilo visual usando shadcn/ui e Tailwind",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -106,6 +113,7 @@
       "title": "Definir types do sistema de plugins",
       "description": "Como desenvolvedor, preciso de interfaces TypeScript bem definidas para o sistema de plugins.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Interface PluginManifest com: id, name, icon, component, version",
         "Interface PluginManifest com capabilities opcional (canCreateWindow, requiresOverlay, nativeFeatures)",
@@ -119,6 +127,7 @@
       "title": "Criar registry de plugins",
       "description": "Como desenvolvedor, preciso de um registro central de plugins para o core saber quais plugins existem.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Arquivo src/plugins/registry.ts exporta array de PluginManifest",
         "Array inicialmente vazio ou com plugin placeholder",
@@ -131,12 +140,13 @@
       "title": "Implementar navegação grid para plugin",
       "description": "Como usuário, quero clicar em um plugin no grid e ver o conteúdo desse plugin.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Clicar em um card do grid navega para a view do plugin",
         "Plugin é renderizado ocupando todo o espaço do popover",
         "Estado de navegação gerenciado via React state ou context",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -144,12 +154,13 @@
       "title": "Implementar botão voltar para o grid",
       "description": "Como usuário, quero um botão para voltar ao grid de plugins quando estou dentro de um plugin.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Header exibido quando dentro de um plugin",
         "Header mostra nome do plugin e botão voltar (←)",
         "Clicar no botão volta para o grid",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -157,6 +168,7 @@
       "title": "Implementar API de storage no Rust",
       "description": "Como desenvolvedor, preciso de comandos Rust para ler e salvar arquivos JSON de plugins.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Comando IPC read_plugin_data(plugin_id) retorna JSON string ou null",
         "Comando IPC write_plugin_data(plugin_id, data) salva JSON",
@@ -170,7 +182,8 @@
       "title": "Implementar hook usePluginStorage no React",
       "description": "Como desenvolvedor de plugin, preciso de um hook para persistir dados facilmente.",
       "shouldCommit": true,
-      "acceptanceCriteria": [
+      "passes": true,
+        "acceptanceCriteria": [
         "Hook usePluginStorage<T>(pluginId, defaultValue) implementado",
         "Retorna { data, setData, isLoading }",
         "Carrega dados do Rust ao montar",
@@ -183,6 +196,7 @@
       "title": "Criar estrutura do plugin Todo",
       "description": "Como desenvolvedor, preciso da estrutura base do plugin Todo List.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "Pasta src/plugins/todo/ criada",
         "Arquivo index.tsx exportando TodoPlugin (manifest)",
@@ -196,6 +210,7 @@
       "title": "Implementar lista de todos",
       "description": "Como usuário, quero ver minha lista de tarefas ao abrir o plugin Todo.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "TodoApp renderiza lista de todos do storage",
         "Todos ordenados por data de criação (mais recente primeiro)",
@@ -203,7 +218,7 @@
         "Todos concluídos aparecem com estilo diferente (riscado ou opacidade)",
         "Lista vazia mostra mensagem amigável",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -211,13 +226,14 @@
       "title": "Adicionar nova tarefa",
       "description": "Como usuário, quero adicionar novas tarefas à minha lista.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "Input de texto para nova tarefa",
         "Pressionar Enter adiciona tarefa à lista",
         "Input limpa após adicionar",
         "Tarefa persiste após fechar e reabrir o app",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -225,12 +241,13 @@
       "title": "Marcar tarefa como concluída",
       "description": "Como usuário, quero marcar tarefas como concluídas clicando no checkbox.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "Clicar no checkbox alterna estado completed",
         "Mudança persiste após fechar e reabrir",
         "Visual do item muda quando concluído",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -238,6 +255,7 @@
       "title": "Deletar tarefa com confirmação",
       "description": "Como usuário, quero poder deletar tarefas com confirmação para evitar deleções acidentais.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "Botão de deletar (ícone lixeira ou X) visível em cada item",
         "Primeiro clique no botão muda o ícone para checkmark (estado de confirmação)",
@@ -245,7 +263,7 @@
         "Se clicar fora ou em outro lugar, cancela o estado de confirmação (volta ao ícone original)",
         "Mudança persiste após fechar e reabrir",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -253,13 +271,14 @@
       "title": "Polish visual e UX",
       "description": "Como usuário, quero uma interface bonita e responsiva.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
         "Espaçamentos consistentes em toda a UI",
         "Cores seguindo tema dark do shadcn",
         "Transições suaves em interações (hover, click)",
         "Scroll funciona corretamente quando muitos itens",
         "Typecheck passa",
-        "Verificar no app usando pnpm tauri dev"
+        "Verificar no app usando bun tauri dev"
       ]
     },
     {
@@ -267,8 +286,9 @@
       "title": "Build de produção",
       "description": "Como usuário, quero um executável que eu possa rodar sem ambiente de desenvolvimento.",
       "shouldCommit": true,
+      "passes": false,
       "acceptanceCriteria": [
-        "pnpm tauri build gera executável sem erros",
+        "bun tauri build gera executável sem erros",
         "Executável inicia e mostra ícone no tray",
         "Todas as funcionalidades funcionam no build",
         "Tamanho do executável razoável (< 20MB)"
@@ -302,7 +322,7 @@
     "shadcn/ui para componentes base (não é dependência, são arquivos copiados)",
     "Persistência em ~/.local/share/jubby/*.json",
     "Comunicação Rust ↔ React via Tauri IPC commands",
-    "Gerenciador de pacotes: pnpm"
+    "Gerenciador de pacotes: bun"
   ],
   "successMetrics": [
     "App inicia em menos de 2 segundos",
