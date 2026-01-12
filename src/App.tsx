@@ -20,7 +20,7 @@ function App() {
   }, [])
 
   return (
-    <main className="flex min-h-screen flex-col bg-background">
+    <main className="launcher-shell flex h-screen flex-col overflow-hidden">
       {activePlugin ? (
         <>
           <PluginHeader

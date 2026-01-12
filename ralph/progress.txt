@@ -486,3 +486,25 @@
   - rgba() values work well alongside hex values in CSS variables
   - PRD color spec rgba(255,255,255,0.08) maps to --border for subtle borders
 ---
+
+## 2026-01-12 - US-008 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Added .launcher-shell CSS class with radial gradient for depth effect
+  - Gradient is an ellipse (80% 60%) positioned at center-top (50% 40%) with subtle white glow (0.03 opacity)
+  - Applied border-radius: 12px to the main window container
+  - Added 1px border with rgba(255, 255, 255, 0.08) for subtle desktop separation
+  - Added box-shadow with inner dark outline and ambient shadow for depth
+  - Enabled transparent: true in Tauri window config for rounded corners to show
+  - Made html/body backgrounds transparent so launcher-shell corners render properly
+  - Updated App.tsx main element to use launcher-shell class with overflow-hidden
+- Files changed:
+  - Modified: src/App.tsx (changed main class to launcher-shell with overflow-hidden)
+  - Modified: src/index.css (added .launcher-shell styles, made html/body transparent)
+  - Modified: src-tauri/tauri.conf.json (added transparent: true to window config)
+- **Learnings for future iterations:**
+  - Tauri needs transparent: true in window config for rounded corners to show on Linux
+  - html/body must have transparent background for the webview transparency to work
+  - Radial gradient at low opacity (0.03) creates subtle ambient light effect without being distracting
+  - Combining gradient with solid color: use gradient first, then fallback color in background property
+  - Box-shadow with 0 0 0 1px creates a crisp inner/outer border effect
+---
