@@ -1,349 +1,343 @@
 {
-  "title": "Jubby - Hub de Mini-Apps para System Tray",
-  "version": "1.0.0",
+  "title": "Jubby v2 - Launcher Style",
+  "version": "2.0.0",
   "created": "2026-01-12",
-  "introduction": "Jubby é um hub de mini-apps pessoais que roda no system tray do Linux. Ao clicar no ícone, abre um popover com um grid de plugins disponíveis. Cada plugin é uma mini-aplicação independente (todo list, timer, notas, etc). A arquitetura é extensível para suportar plugins avançados no futuro (como screen recorder com overlay fullscreen).",
+  "introduction": "Jubby é um hub de mini-apps pessoais que funciona como um launcher centralizado (estilo Raycast). Ao clicar no ícone do system tray, abre uma janela elegante no centro da tela com um grid de plugins. O visual é minimalista escuro com gradients sutis, animações suaves e foco em produtividade.",
   "goals": [
-    "Criar um app leve e performático que rode constantemente no system tray",
-    "Implementar sistema de plugins extensível e type-safe",
-    "Entregar primeiro plugin funcional (Todo List) para validar arquitetura",
-    "Manter arquitetura preparada para plugins avançados (overlay, janelas independentes)",
-    "Persistência local em arquivos JSON para fácil backup e debugging"
+    "Transformar o Jubby de popover de tray em launcher centralizado",
+    "Criar visual minimalista escuro inspirado no Raycast",
+    "Implementar animações sutis e transições suaves",
+    "Manter arquitetura de plugins extensível",
+    "Suportar navegação por teclado (ESC, setas)",
+    "Persistência local em arquivos JSON"
   ],
   "userStories": [
     {
       "id": "US-001",
-      "title": "Setup do projeto Tauri + React + TypeScript",
-      "description": "Como desenvolvedor, preciso do projeto inicializado com Tauri, React e TypeScript para começar a implementação.",
+      "title": "Clique no tray abre janela diretamente",
+      "description": "Como usuário, quero que ao clicar no ícone do tray, a janela abra diretamente sem mostrar menu.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Projeto Tauri v2 inicializado com template React + TypeScript",
-        "bun tauri dev inicia sem erros",
-        "Janela básica do Tauri abre com conteúdo React",
-        "TypeScript configurado com strict mode",
-        "Typecheck passa (bun tsc --noEmit)"
-      ]
+        "Clique esquerdo no tray abre a janela principal",
+        "Não aparece menu ao clicar",
+        "Clique direito é ignorado (sem ação)",
+        "Cargo build passa sem erros"
+      ],
+      "passes": true
     },
     {
       "id": "US-002",
-      "title": "Configurar Tailwind CSS + shadcn/ui",
-      "description": "Como desenvolvedor, preciso do Tailwind e shadcn/ui configurados para estilizar a interface.",
+      "title": "Toggle da janela pelo tray",
+      "description": "Como usuário, quero que clicar no tray alterne entre abrir e fechar a janela.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Tailwind CSS instalado e funcionando",
-        "shadcn/ui inicializado com tema dark como padrão",
-        "Componente Button do shadcn importado e renderizando corretamente",
-        "Typecheck passa"
-      ]
+        "Se janela está fechada, clique abre",
+        "Se janela está aberta, clique fecha",
+        "Comportamento consistente e sem delays",
+        "Cargo build passa sem erros"
+      ],
+      "passes": false
     },
     {
       "id": "US-003",
-      "title": "Estruturar pastas conforme arquitetura",
-      "description": "Como desenvolvedor, preciso da estrutura de pastas organizada para manter o código limpo e escalável.",
+      "title": "Janela centralizada na tela",
+      "description": "Como usuário, quero que a janela abra no centro da tela para fácil acesso.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Pasta src/core/ criada com subpastas: components, hooks, context",
-        "Pasta src/plugins/ criada com registry.ts",
-        "Pasta src/shared/ criada com subpastas: components, lib",
-        "Arquivo src/core/types.ts criado com interface PluginManifest",
+        "Janela abre centralizada horizontalmente e verticalmente",
+        "Tamanho da janela: 600x400px",
+        "Janela sem decorações do sistema (sem barra de título)",
+        "Janela não aparece na taskbar",
+        "Janela sempre no topo (alwaysOnTop)",
         "Typecheck passa"
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-004",
-      "title": "Implementar ícone no system tray",
-      "description": "Como usuário, quero ver o ícone do Jubby no system tray do meu Linux para saber que o app está rodando.",
+      "title": "Fechar janela ao clicar fora",
+      "description": "Como usuário, quero que a janela feche quando eu clicar fora dela.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Ícone aparece no system tray ao iniciar o app",
-        "Ícone usa imagem customizada (pode ser placeholder inicial)",
-        "App continua rodando em background quando janela fecha",
-        "Arquivo src-tauri/src/tray.rs criado com lógica do tray",
-        "Typecheck passa"
-      ]
+        "Janela fecha ao perder foco (blur event)",
+        "Comportamento consistente em diferentes ambientes desktop Linux",
+        "Cargo build passa sem erros"
+      ],
+      "passes": false
     },
     {
       "id": "US-005",
-      "title": "Implementar popover ao clicar no tray",
-      "description": "Como usuário, quero que ao clicar no ícone do tray, abra um painel/popover próximo ao ícone.",
+      "title": "Fechar janela com ESC",
+      "description": "Como usuário, quero fechar a janela pressionando ESC para acesso rápido.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Clicar no ícone do tray abre janela popover (~400x350px)",
-        "Popover posicionado próximo ao tray (não no centro da tela)",
-        "Clicar no ícone novamente fecha o popover",
-        "Popover não tem barra de título (decorations: false)",
-        "Typecheck passa"
-      ]
+        "Pressionar ESC fecha a janela de qualquer view (grid ou plugin)",
+        "ESC funciona mesmo com foco em input",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-006",
-      "title": "Fechar popover ao clicar fora",
-      "description": "Como usuário, quero que o popover feche quando eu clicar fora dele para voltar ao que estava fazendo.",
+      "title": "Navegação por setas no grid",
+      "description": "Como usuário, quero navegar pelos plugins usando as setas do teclado.",
       "shouldCommit": true,
-      "passes": true,
       "acceptanceCriteria": [
-        "Popover fecha ao perder foco (blur event)",
-        "Popover fecha ao clicar em qualquer lugar fora dele",
-        "Comportamento consistente entre diferentes ambientes de desktop",
-        "Typecheck passa"
-      ]
+        "Setas movem seleção entre cards do grid",
+        "Enter abre o plugin selecionado",
+        "Indicador visual mostra qual card está selecionado",
+        "Navegação faz wrap (último → primeiro, primeiro → último)",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-007",
-      "title": "Criar componente Grid de plugins",
-      "description": "Como usuário, quero ver um grid com os mini-apps disponíveis ao abrir o popover.",
+      "title": "Tema base escuro",
+      "description": "Como usuário, quero um visual escuro e elegante para o app.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Componente PluginGrid renderiza lista de plugins do registry",
-        "Cada plugin exibido como card com ícone e nome",
-        "Grid responsivo (3 colunas)",
-        "Estilo visual usando shadcn/ui e Tailwind",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
+        "Background principal: #0a0a0a",
+        "Texto primário: branco com alta opacidade",
+        "Texto secundário: branco com opacidade reduzida",
+        "Bordas sutis: rgba(255,255,255,0.08)",
+        "CSS configurado em index.css ou tailwind config",
+        "Typecheck passa"
+      ],
+      "passes": false
     },
     {
       "id": "US-008",
-      "title": "Definir types do sistema de plugins",
-      "description": "Como desenvolvedor, preciso de interfaces TypeScript bem definidas para o sistema de plugins.",
+      "title": "Janela com gradient e bordas arredondadas",
+      "description": "Como usuário, quero que a janela tenha visual moderno com gradient sutil e cantos arredondados.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Interface PluginManifest com: id, name, icon, component, version",
-        "Interface PluginManifest com capabilities opcional (canCreateWindow, requiresOverlay, nativeFeatures)",
-        "Type WindowType definido: 'popover' | 'overlay' | 'window'",
-        "Todos os types exportados de src/core/types.ts",
-        "Typecheck passa"
-      ]
+        "Gradient radial sutil no centro (para dar profundidade)",
+        "Border-radius: 12px na janela",
+        "Borda: 1px com cor sutil para separar do desktop",
+        "Overflow hidden para respeitar border-radius",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-009",
-      "title": "Criar registry de plugins",
-      "description": "Como desenvolvedor, preciso de um registro central de plugins para o core saber quais plugins existem.",
+      "title": "Criar LauncherShell wrapper",
+      "description": "Como desenvolvedor, preciso de um componente wrapper que aplique o estilo base da janela.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Arquivo src/plugins/registry.ts exporta array de PluginManifest",
-        "Array inicialmente vazio ou com plugin placeholder",
-        "Import/export tipado corretamente",
+        "Componente LauncherShell criado em src/core/components/",
+        "Aplica background, gradient, border-radius, borda",
+        "Envolve todo o conteúdo do App",
         "Typecheck passa"
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-010",
-      "title": "Implementar navegação grid para plugin",
-      "description": "Como usuário, quero clicar em um plugin no grid e ver o conteúdo desse plugin.",
+      "title": "Grid de cards compactos",
+      "description": "Como usuário, quero ver os plugins em um grid de cards compactos e organizados.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Clicar em um card do grid navega para a view do plugin",
-        "Plugin é renderizado ocupando todo o espaço do popover",
-        "Estado de navegação gerenciado via React state ou context",
+        "Grid com 3-4 colunas (responsivo ao tamanho)",
+        "Cards compactos: ~80x80px",
+        "Cada card mostra: ícone centralizado (~32px) + nome embaixo",
+        "Nome com font-size pequeno, truncate se necessário",
+        "Gap entre cards: 12px",
+        "Padding do grid: 16px",
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-011",
-      "title": "Implementar botão voltar para o grid",
-      "description": "Como usuário, quero um botão para voltar ao grid de plugins quando estou dentro de um plugin.",
+      "title": "Hover e estados nos cards",
+      "description": "Como usuário, quero feedback visual ao interagir com os cards do grid.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Header exibido quando dentro de um plugin",
-        "Header mostra nome do plugin e botão voltar (←)",
-        "Clicar no botão volta para o grid",
+        "Background do card: transparente por padrão",
+        "Hover: background rgba(255,255,255,0.06)",
+        "Border-radius do card: 8px",
+        "Transição suave no hover (150ms)",
+        "Cursor pointer no hover",
         "Typecheck passa",
         "Verificar no app usando bun tauri dev"
-      ]
+      ],
+      "passes": false
     },
     {
       "id": "US-012",
-      "title": "Implementar API de storage no Rust",
-      "description": "Como desenvolvedor, preciso de comandos Rust para ler e salvar arquivos JSON de plugins.",
+      "title": "Redesign do header do plugin",
+      "description": "Como usuário, quero um header limpo quando estou dentro de um plugin.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Comando IPC read_plugin_data(plugin_id) retorna JSON string ou null",
-        "Comando IPC write_plugin_data(plugin_id, data) salva JSON",
-        "Dados salvos em ~/.local/share/jubby/{plugin_id}.json",
-        "Diretório criado automaticamente se não existir",
-        "Cargo build passa sem erros"
-      ]
+        "Header com altura de 48px",
+        "Botão voltar (ícone ←) à esquerda",
+        "Nome do plugin centralizado ou à direita do botão",
+        "Borda inferior sutil: 1px rgba(255,255,255,0.08)",
+        "Estilo consistente com tema escuro",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-013",
-      "title": "Implementar hook usePluginStorage no React",
-      "description": "Como desenvolvedor de plugin, preciso de um hook para persistir dados facilmente.",
+      "title": "Animações de transição entre views",
+      "description": "Como usuário, quero transições suaves ao navegar entre grid e plugin.",
       "shouldCommit": true,
-      "passes": true,
-        "acceptanceCriteria": [
-        "Hook usePluginStorage<T>(pluginId, defaultValue) implementado",
-        "Retorna { data, setData, isLoading }",
-        "Carrega dados do Rust ao montar",
-        "Salva automaticamente quando setData é chamado",
-        "Typecheck passa"
-      ]
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
+      "acceptanceCriteria": [
+        "Transição de fade ao trocar de view",
+        "Leve translateY ou scale na entrada",
+        "Duration: 150-200ms",
+        "Easing: ease-out",
+        "Animação não bloqueia interação",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-014",
-      "title": "Criar estrutura do plugin Todo",
-      "description": "Como desenvolvedor, preciso da estrutura base do plugin Todo List.",
+      "title": "Polish visual do plugin Todo",
+      "description": "Como usuário, quero que o plugin Todo tenha visual consistente com o novo design.",
       "shouldCommit": true,
-      "passes": true,
+      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
-        "Pasta src/plugins/todo/ criada",
-        "Arquivo index.tsx exportando TodoPlugin (manifest)",
-        "Arquivo types.ts com interfaces Todo e TodoStorage",
-        "Plugin registrado no registry.ts",
-        "Typecheck passa"
-      ]
+        "Input de nova tarefa: clean, sem bordas pesadas, placeholder sutil",
+        "Checkbox minimalista",
+        "Items com hover state sutil",
+        "Espaçamentos consistentes com o resto do app",
+        "Cores seguindo tema escuro",
+        "Funcionalidade existente mantida (CRUD, persistência)",
+        "Typecheck passa",
+        "Verificar no app usando bun tauri dev"
+      ],
+      "passes": false
     },
     {
       "id": "US-015",
-      "title": "Implementar lista de todos",
-      "description": "Como usuário, quero ver minha lista de tarefas ao abrir o plugin Todo.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "TodoApp renderiza lista de todos do storage",
-        "Todos ordenados por data de criação (mais recente primeiro)",
-        "Cada todo exibe checkbox e texto",
-        "Todos concluídos aparecem com estilo diferente (riscado ou opacidade)",
-        "Lista vazia mostra mensagem amigável",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
-    },
-    {
-      "id": "US-016",
-      "title": "Adicionar nova tarefa",
-      "description": "Como usuário, quero adicionar novas tarefas à minha lista.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Input de texto para nova tarefa",
-        "Pressionar Enter adiciona tarefa à lista",
-        "Input limpa após adicionar",
-        "Tarefa persiste após fechar e reabrir o app",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
-    },
-    {
-      "id": "US-017",
-      "title": "Marcar tarefa como concluída",
-      "description": "Como usuário, quero marcar tarefas como concluídas clicando no checkbox.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Clicar no checkbox alterna estado completed",
-        "Mudança persiste após fechar e reabrir",
-        "Visual do item muda quando concluído",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
-    },
-    {
-      "id": "US-018",
-      "title": "Deletar tarefa com confirmação",
-      "description": "Como usuário, quero poder deletar tarefas com confirmação para evitar deleções acidentais.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Botão de deletar (ícone lixeira ou X) visível em cada item",
-        "Primeiro clique no botão muda o ícone para checkmark (estado de confirmação)",
-        "Segundo clique no checkmark confirma e deleta o item",
-        "Se clicar fora ou em outro lugar, cancela o estado de confirmação (volta ao ícone original)",
-        "Mudança persiste após fechar e reabrir",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
-    },
-    {
-      "id": "US-019",
-      "title": "Polish visual e UX",
-      "description": "Como usuário, quero uma interface bonita e responsiva.",
-      "shouldCommit": true,
-      "passes": false,
-      "acceptanceCriteria": [
-        "Espaçamentos consistentes em toda a UI",
-        "Cores seguindo tema dark do shadcn",
-        "Transições suaves em interações (hover, click)",
-        "Scroll funciona corretamente quando muitos itens",
-        "Typecheck passa",
-        "Verificar no app usando bun tauri dev"
-      ]
-    },
-    {
-      "id": "US-020",
       "title": "Build de produção",
-      "description": "Como usuário, quero um executável que eu possa rodar sem ambiente de desenvolvimento.",
+      "description": "Como usuário, quero um executável funcional com todas as novas features.",
       "shouldCommit": true,
-      "passes": false,
       "acceptanceCriteria": [
         "bun tauri build gera executável sem erros",
         "Executável inicia e mostra ícone no tray",
+        "Clique no tray abre janela centralizada",
         "Todas as funcionalidades funcionam no build",
-        "Tamanho do executável razoável (< 20MB)"
-      ]
+        "Visual consistente com dev mode",
+        "Tamanho do executável razoável (< 25MB)"
+      ],
+      "passes": false
     }
   ],
   "functionalRequirements": [
-    "FR-1: O app deve exibir um ícone no system tray do Linux ao iniciar",
-    "FR-2: Clicar no ícone do tray deve abrir/fechar um popover de ~400x350px",
-    "FR-3: O popover deve fechar ao perder foco ou clicar fora",
-    "FR-4: O popover deve exibir um grid de plugins disponíveis",
-    "FR-5: Clicar em um plugin deve navegar para a view desse plugin",
-    "FR-6: Dentro de um plugin, deve haver botão para voltar ao grid",
-    "FR-7: Plugins devem poder persistir dados em arquivos JSON locais",
-    "FR-8: O plugin Todo deve permitir criar, listar (ordenado por mais recente), completar e deletar tarefas (com confirmação em dois cliques)",
-    "FR-9: Dados do plugin Todo devem persistir entre sessões",
-    "FR-10: O sistema de plugins deve suportar campo capabilities para plugins avançados (preparação futura)"
+    "FR-1: Clique esquerdo no tray abre/fecha janela (toggle)",
+    "FR-2: Clique direito no tray é ignorado",
+    "FR-3: Janela abre centralizada na tela (600x400px)",
+    "FR-4: Janela fecha ao perder foco (clicar fora)",
+    "FR-5: Janela fecha ao pressionar ESC",
+    "FR-6: Grid de plugins navegável por setas do teclado",
+    "FR-7: Enter abre plugin selecionado no grid",
+    "FR-8: Visual minimalista escuro com gradient sutil",
+    "FR-9: Cards compactos em grid 3-4 colunas",
+    "FR-10: Transições suaves entre views (150-200ms)",
+    "FR-11: Header com botão voltar ao entrar em plugin",
+    "FR-12: Plugin Todo funcional com visual atualizado",
+    "FR-13: Dados persistem em ~/.local/share/jubby/"
   ],
   "nonGoals": [
-    "Não implementar plugins avançados (screen recorder, overlay) nesta versão",
-    "Não implementar sync de dados entre máquinas",
-    "Não implementar sistema de temas customizáveis pelo usuário",
-    "Não implementar carregamento dinâmico de plugins em runtime",
-    "Não implementar notificações ou lembretes no plugin Todo",
-    "Não suportar outros sistemas operacionais além de Linux nesta versão"
+    "Não implementar atalho global para abrir (ex: Super+J) nesta versão",
+    "Não implementar busca/filtro de plugins",
+    "Não implementar novos plugins além do Todo",
+    "Não implementar temas customizáveis",
+    "Não implementar sync entre máquinas",
+    "Não suportar outros sistemas operacionais além de Linux",
+    "Não implementar drag and drop para reordenar plugins"
   ],
+  "designConsiderations": {
+    "styleReference": "Raycast - minimalista, escuro, clean com gradients sutis",
+    "colors": {
+      "background": "#0a0a0a",
+      "backgroundGradient": "radial-gradient sutil no centro",
+      "border": "rgba(255,255,255,0.08)",
+      "textPrimary": "rgba(255,255,255,0.95)",
+      "textSecondary": "rgba(255,255,255,0.6)",
+      "hover": "rgba(255,255,255,0.06)"
+    },
+    "dimensions": {
+      "window": "600x400px",
+      "borderRadius": "12px",
+      "cardSize": "~80x80px",
+      "headerHeight": "48px",
+      "gridGap": "12px",
+      "padding": "16px"
+    },
+    "animations": {
+      "duration": "150-200ms",
+      "easing": "ease-out",
+      "effects": ["fade", "translateY", "scale"]
+    }
+  },
   "technicalConsiderations": [
     "Tauri v2 para runtime com backend Rust e frontend web",
     "React 18 com TypeScript strict mode",
     "Tailwind CSS para utilitários de estilo",
-    "shadcn/ui para componentes base (não é dependência, são arquivos copiados)",
+    "shadcn/ui para componentes base",
     "Persistência em ~/.local/share/jubby/*.json",
-    "Comunicação Rust ↔ React via Tauri IPC commands",
-    "Gerenciador de pacotes: bun"
+    "Comunicação Rust <-> React via Tauri IPC commands",
+    "Gerenciador de pacotes: bun",
+    "Usar on_tray_icon_event para capturar cliques no tray",
+    "framer-motion opcional para animações (ou CSS puro)"
   ],
   "successMetrics": [
     "App inicia em menos de 2 segundos",
-    "Uso de RAM em idle menor que 50MB",
-    "Tamanho do executável menor que 20MB",
-    "Adicionar novo plugin requer apenas: criar pasta, exportar manifest, adicionar ao registry",
-    "Usuário consegue criar tarefa em menos de 3 segundos após abrir o app"
+    "Janela abre em menos de 100ms após clique no tray",
+    "Uso de RAM em idle menor que 60MB",
+    "Tamanho do executável menor que 25MB",
+    "Transições percebidas como suaves (sem jank)",
+    "Navegação por teclado funciona sem bugs"
   ],
   "openQuestions": [],
   "resolvedQuestions": [
     {
-      "question": "Qual ícone usar para o tray?",
-      "answer": "Placeholder inicial, ícone definitivo será definido depois"
+      "question": "Qual estilo visual seguir?",
+      "answer": "Minimalista escuro inspirado no Raycast, com gradients sutis"
     },
     {
-      "question": "Ordenação dos todos?",
-      "answer": "Por data de criação, mais recente primeiro"
+      "question": "Onde posicionar a janela?",
+      "answer": "Centro da tela (estilo launcher), não mais acima do tray"
     },
     {
-      "question": "Deve haver confirmação ao deletar tarefa?",
-      "answer": "Sim. Primeiro clique muda ícone para checkmark, segundo clique confirma deleção. Clicar fora cancela."
+      "question": "Como fechar a janela?",
+      "answer": "Três formas: clicar no tray novamente, pressionar ESC, ou clicar fora"
+    },
+    {
+      "question": "Clique direito no tray faz o quê?",
+      "answer": "Ignorado - sem menu de contexto"
+    },
+    {
+      "question": "Suportar navegação por teclado?",
+      "answer": "Sim - ESC fecha, setas navegam no grid, Enter abre plugin"
+    },
+    {
+      "question": "Qual layout do grid?",
+      "answer": "Cards compactos 3-4 colunas, ícone + nome apenas"
+    },
+    {
+      "question": "Qual intensidade das animações?",
+      "answer": "Sutis - fade + scale/translateY, 150-200ms, ease-out"
     }
   ]
 }

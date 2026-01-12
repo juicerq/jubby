@@ -338,3 +338,60 @@
   - Inline SVGs work well for simple icons to avoid adding icon library dependencies
   - shadcn Button size="icon" with custom h-6 w-6 gives a smaller icon button
 ---
+
+## 2026-01-12 - US-019
+- What was implemented:
+  - Added smooth transitions (150ms duration) to all interactive elements
+  - Plugin grid cards now have hover:bg-accent and active:scale-95 feedback
+  - PluginHeader back button has active:scale-90 press feedback
+  - TodoItem has hover:bg-accent/50 highlight effect
+  - Delete button scales up (scale-110) when in confirmation state
+  - Custom scrollbar styling for dark theme (6px width, subtle colors)
+  - Fixed scroll container for todo list to handle many items
+  - Input field has focus:ring-2 effect for better visibility
+  - Label text is now selectable with cursor-pointer for better UX
+- Files changed:
+  - Modified: src/index.css (added custom scrollbar styles, transition utility)
+  - Modified: src/core/components/PluginGrid.tsx (added transition and active states)
+  - Modified: src/core/components/PluginHeader.tsx (added shrink-0 and transition)
+  - Modified: src/plugins/todo/index.tsx (restructured layout for scrolling, added transitions)
+- **Learnings for future iterations:**
+  - Use consistent transition timing: `transition-all duration-150 ease-out` across the app
+  - active:scale-* provides good tactile feedback for buttons
+  - Custom scrollbars via ::-webkit-scrollbar work well in Tauri webview
+  - Use shrink-0 on fixed elements and flex-1 overflow-y-auto on scrollable containers
+  - hover:bg-accent/50 provides subtle highlight without being too aggressive
+---
+
+## 2026-01-12 - US-020
+- What was implemented:
+  - Fixed beforeBuildCommand in tauri.conf.json from "bun build" to "bun run build"
+  - Successfully built production executable with bun tauri build
+  - Generated binary (13MB), .deb package (4.2MB), and .rpm package
+  - Verified executable starts and shows tray icon correctly
+- Files changed:
+  - Modified: src-tauri/tauri.conf.json (fixed beforeBuildCommand)
+- **Learnings for future iterations:**
+  - Use `bun run <script>` to run npm scripts, `bun <file>` is for direct file execution
+  - Tauri build creates binary at src-tauri/target/release/<app_name>
+  - Tauri bundles are created in src-tauri/target/release/bundle/{deb,rpm,appimage}
+  - AppImage bundling may fail due to linuxdeploy issues, but binary/deb/rpm still work
+  - Production binary size is significantly smaller than development build
+---
+
+## 2026-01-12 - US-001 (v2 PRD - Launcher Style)
+- What was implemented:
+  - Removed menu-based tray approach in favor of direct window open on left click
+  - Changed from show_menu_on_left_click(true) with menu to on_tray_icon_event handler
+  - Left click now shows window directly without any menu
+  - Right click is completely ignored (no action)
+  - Added passes fields to all user stories in prd.json for tracking
+- Files changed:
+  - Modified: src-tauri/src/tray.rs (removed menu, added on_tray_icon_event with MouseButton::Left handling)
+  - Modified: ralph/prd.json (added passes field to all 15 user stories)
+- **Learnings for future iterations:**
+  - TrayIconEvent::Click has button (Left/Right/Middle) and button_state (Up/Down) fields
+  - Use MouseButtonState::Up to trigger on button release (feels more natural)
+  - Pattern matching with if let TrayIconEvent::Click { button: MouseButton::Left, ... } = event for specific click handling
+  - Previous PRD progress.txt entries are from v1; this is a new PRD (v2 Launcher Style) that changes the UX from popover to centered launcher
+---
