@@ -124,6 +124,18 @@ function TodoPlugin() {
     return true
   }
 
+  const handleDeleteTag = (id: string) => {
+    setData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag.id !== id),
+      todos: prev.todos.map((todo) =>
+        todo.tagIds
+          ? { ...todo, tagIds: todo.tagIds.filter((tagId) => tagId !== id) }
+          : todo
+      ),
+    }))
+  }
+
   if (view === 'tags') {
     return (
       <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
@@ -132,6 +144,7 @@ function TodoPlugin() {
           onBack={() => setView('list')}
           onCreateTag={handleCreateTag}
           onEditTag={handleEditTag}
+          onDeleteTag={handleDeleteTag}
         />
       </div>
     )
@@ -211,9 +224,10 @@ interface TodoPluginTagManagerProps {
   onBack: () => void
   onCreateTag: (name: string, color: string) => boolean
   onEditTag: (id: string, name: string, color: string) => boolean | string
+  onDeleteTag: (id: string) => void
 }
 
-function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag }: TodoPluginTagManagerProps) {
+function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag, onDeleteTag }: TodoPluginTagManagerProps) {
   const [newTagName, setNewTagName] = useState('')
   const [selectedColor, setSelectedColor] = useState<string>(TAG_COLORS[0].hex)
   const [error, setError] = useState<string | null>(null)
@@ -301,7 +315,7 @@ function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag }: TodoPlug
       {tags.length === 0 ? (
         <TodoPluginTagManagerEmptyState />
       ) : (
-        <TodoPluginTagManagerList tags={tags} onEditTag={onEditTag} />
+        <TodoPluginTagManagerList tags={tags} onEditTag={onEditTag} onDeleteTag={onDeleteTag} />
       )}
     </div>
   )
@@ -320,10 +334,32 @@ function TodoPluginTagManagerEmptyState() {
 interface TodoPluginTagManagerListProps {
   tags: TagType[]
   onEditTag: (id: string, name: string, color: string) => boolean | string
+  onDeleteTag: (id: string) => void
 }
 
-function TodoPluginTagManagerList({ tags, onEditTag }: TodoPluginTagManagerListProps) {
+function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTagManagerListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  // Reset pending delete after timeout
+  useEffect(() => {
+    if (pendingDeleteId === null) return
+
+    const timeout = setTimeout(() => {
+      setPendingDeleteId(null)
+    }, 1500)
+
+    return () => clearTimeout(timeout)
+  }, [pendingDeleteId])
+
+  const handleDeleteClick = (id: string) => {
+    if (pendingDeleteId === id) {
+      onDeleteTag(id)
+      setPendingDeleteId(null)
+    } else {
+      setPendingDeleteId(id)
+    }
+  }
 
   return (
     <div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
@@ -332,6 +368,7 @@ function TodoPluginTagManagerList({ tags, onEditTag }: TodoPluginTagManagerListP
           key={tag.id}
           tag={tag}
           isEditing={editingId === tag.id}
+          isPendingDelete={pendingDeleteId === tag.id}
           onStartEdit={() => setEditingId(tag.id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={(name, color) => {
@@ -342,6 +379,7 @@ function TodoPluginTagManagerList({ tags, onEditTag }: TodoPluginTagManagerListP
             }
             return result
           }}
+          onDeleteClick={() => handleDeleteClick(tag.id)}
         />
       ))}
     </div>
@@ -351,12 +389,14 @@ function TodoPluginTagManagerList({ tags, onEditTag }: TodoPluginTagManagerListP
 interface TodoPluginTagManagerItemProps {
   tag: TagType
   isEditing: boolean
+  isPendingDelete: boolean
   onStartEdit: () => void
   onCancelEdit: () => void
   onSaveEdit: (name: string, color: string) => boolean | string
+  onDeleteClick: () => void
 }
 
-function TodoPluginTagManagerItem({ tag, isEditing, onStartEdit, onCancelEdit, onSaveEdit }: TodoPluginTagManagerItemProps) {
+function TodoPluginTagManagerItem({ tag, isEditing, isPendingDelete, onStartEdit, onCancelEdit, onSaveEdit, onDeleteClick }: TodoPluginTagManagerItemProps) {
   const [editName, setEditName] = useState(tag.name)
   const [editColor, setEditColor] = useState(tag.color)
   const [error, setError] = useState<string | null>(null)
@@ -446,24 +486,45 @@ function TodoPluginTagManagerItem({ tag, isEditing, onStartEdit, onCancelEdit, o
   }
 
   return (
-    <button
-      type="button"
-      onClick={onStartEdit}
-      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border-none bg-transparent px-2 py-2.5 text-left transition-[background] duration-150 ease-out hover:bg-white/4"
-    >
-      <span
-        className="inline-flex h-6 shrink-0 items-center rounded px-2 text-[12px] font-medium tracking-[-0.01em]"
-        style={{
-          backgroundColor: `${tag.color}20`,
-          color: tag.color,
-        }}
+    <div className="group flex w-full items-center gap-3 rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4">
+      <button
+        type="button"
+        onClick={onStartEdit}
+        className="flex flex-1 cursor-pointer items-center gap-3 border-none bg-transparent p-0 text-left"
       >
-        {tag.name}
-      </span>
-      <span className="ml-auto text-[11px] text-white/25 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100">
-        Click to edit
-      </span>
-    </button>
+        <span
+          className="inline-flex h-6 shrink-0 items-center rounded px-2 text-[12px] font-medium tracking-[-0.01em]"
+          style={{
+            backgroundColor: `${tag.color}20`,
+            color: tag.color,
+          }}
+        >
+          {tag.name}
+        </span>
+        <span className="text-[11px] text-white/25 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100">
+          Click to edit
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onDeleteClick()
+        }}
+        className={`group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent transition-all duration-150 ease-out active:scale-90 ${
+          isPendingDelete
+            ? 'bg-red-500/20 opacity-100 hover:bg-red-500/30'
+            : 'opacity-0 hover:bg-red-500/15 group-hover:opacity-100'
+        }`}
+        aria-label={isPendingDelete ? 'Confirm delete' : 'Delete tag'}
+      >
+        {isPendingDelete ? (
+          <Check className="h-3.5 w-3.5 text-red-500" />
+        ) : (
+          <X className="h-3.5 w-3.5 text-white/40 transition-colors duration-150 ease-out group-hover/delete:text-red-500" />
+        )}
+      </button>
+    </div>
   )
 }
 

@@ -117,6 +117,7 @@
       "title": "Excluir tag",
       "description": "Como usuário, quero excluir uma tag que não preciso mais.",
       "shouldCommit": true,
+      "passes": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
         "Botão de excluir (X) visível em cada tag na lista",

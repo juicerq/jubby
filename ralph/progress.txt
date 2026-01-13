@@ -315,3 +315,20 @@ No explicit migration code needed - the default merge behavior handles it.
   - Keyboard shortcuts (Enter to save, Escape to cancel) improve UX for inline edit forms
   - Tag item changed from `<div>` to `<button>` for better accessibility and click handling
 ---
+
+## 2026-01-13 - US-006 (Tag System)
+- What was implemented: Two-click delete functionality for tags in tag management view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `handleDeleteTag` handler that removes tag from `tags` array AND removes tagId from all todos
+    - Updated `TodoPluginTagManager` props and component to include `onDeleteTag`
+    - Updated `TodoPluginTagManagerList` with `pendingDeleteId` state and auto-reset timeout (1500ms)
+    - Updated `TodoPluginTagManagerItem` to include delete button with two-click confirmation
+    - Delete button shows X icon by default, changes to Check icon in pending state
+    - Refactored tag item from single button to div container with edit button + delete button
+- **Learnings for future iterations:**
+  - Same two-click pattern from todo deletion: `pendingDeleteId` state + `useEffect` with 1500ms timeout
+  - When splitting a clickable element into multiple buttons, wrap in a container div with hover styles, not on individual buttons
+  - Delete handler must be atomic: update both `tags` and `todos` in single `setData` call to prevent orphaned references
+  - `e.stopPropagation()` on delete button click prevents triggering parent's edit action
+---
