@@ -13,10 +13,27 @@
   ],
   "userStories": [
     {
+      "id": "US-000",
+      "title": "Design de arquitetura do sistema de tags",
+      "description": "Como desenvolvedor, preciso documentar as decisões de arquitetura antes de implementar para garantir consistência e evitar retrabalho.",
+      "shouldCommit": false,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Decisões documentadas no progress.txt seção 'Architecture Decisions - Tags'",
+        "Definir estrutura de tipos (Tag, TodoStorage atualizado, Todo atualizado)",
+        "Definir estratégia de navegação interna (estado view: 'list' | 'tags')",
+        "Definir hierarquia de componentes (quais mini-components criar)",
+        "Definir fluxo de dados (onde fica estado, como propagar mudanças)",
+        "Definir estratégia de migração de dados existentes",
+        "Documentar edge cases: tag deletada com tarefas associadas, limite de 3 tags, nomes duplicados"
+      ]
+    },
+    {
       "id": "US-001",
       "title": "Modelo de dados para tags",
       "description": "Como desenvolvedor, preciso de uma estrutura de dados para armazenar tags e suas associações com tarefas.",
       "shouldCommit": true,
+      "passes": true,
       "acceptanceCriteria": [
         "Interface Tag criada com campos: id (string), name (string), color (string hex)",
         "TodoStorage atualizado com array tags: Tag[]",
@@ -29,6 +46,7 @@
       "title": "Botão de acesso ao gerenciador de tags",
       "description": "Como usuário, quero um botão para acessar a tela de gerenciamento de tags.",
       "shouldCommit": true,
+      "passes": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
         "Ícone/botão de tags visível na área do plugin Todo",

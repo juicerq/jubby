@@ -1,3 +1,127 @@
+## Architecture Decisions - Tags
+
+### Type Structures
+
+```typescript
+// src/plugins/todo/types.ts
+
+export interface Tag {
+  id: string          // crypto.randomUUID()
+  name: string        // Max length: 20 chars (reasonable for UI)
+  color: string       // Hex color from predefined palette
+}
+
+export interface Todo {
+  id: string
+  text: string
+  completed: boolean
+  createdAt: number
+  tagIds?: string[]   // Optional, max 3 elements. Optional for backward compat.
+}
+
+export interface TodoStorage {
+  todos: Todo[]
+  tags: Tag[]         // New field, defaults to [] for migration
+}
+```
+
+### Navigation Strategy
+
+Use a local `view` state in TodoPlugin to switch between views:
+
+```typescript
+type TodoView = 'list' | 'tags'
+const [view, setView] = useState<TodoView>('list')
+```
+
+- No URL routing needed (plugin is self-contained in popover)
+- Simple state toggle: 'list' (default) ↔ 'tags'
+- Back button in tag view calls `setView('list')`
+- Tag button in list view calls `setView('tags')`
+
+### Component Hierarchy
+
+```
+TodoPlugin.tsx (main component)
+├── TodoPluginInput         # Existing - will add tag selection UI
+├── TodoPluginEmptyState    # Existing - unchanged
+├── TodoPluginList          # Existing - unchanged
+├── TodoPluginItem          # Existing - will add tag badges display
+├── TodoPluginTagButton     # NEW - button to access tag management (uses lucide Tag icon)
+├── TodoPluginTagBadge      # NEW - reusable tag badge (color + name)
+├── TodoPluginTagSelector   # NEW - inline tag chips for selecting tags
+└── TodoPluginTagManager    # NEW - full view for tag CRUD
+    ├── TodoPluginTagManagerHeader  # Back button + title
+    ├── TodoPluginTagManagerInput   # Create new tag (name + color picker)
+    ├── TodoPluginTagManagerList    # List of existing tags
+    └── TodoPluginTagManagerItem    # Single tag with edit/delete
+```
+
+All components stay in TodoPlugin.tsx as mini-components (following existing pattern).
+
+### Data Flow
+
+1. **State ownership:** TodoPlugin owns all state via `usePluginStorage<TodoStorage>`
+2. **Tag CRUD operations:** Functions in TodoPlugin, passed to children as props
+   - `handleCreateTag(name: string, color: string)`
+   - `handleEditTag(id: string, updates: Partial<Tag>)`
+   - `handleDeleteTag(id: string)` - also removes tagId from all todos
+3. **Todo-Tag association:**
+   - `handleToggleTagOnTodo(todoId: string, tagId: string)` - add/remove tag
+   - Validation: max 3 tags per todo, enforced in handler
+4. **Props flow down, callbacks bubble up** (standard React pattern)
+
+### Migration Strategy
+
+The `usePluginStorage` hook handles migration transparently:
+
+```typescript
+const defaultStorage: TodoStorage = {
+  todos: [],
+  tags: []  // NEW: empty array default
+}
+
+const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
+```
+
+- Old data format: `{ todos: [...] }` (no `tags` field)
+- On first load: hook merges with default, adding `tags: []`
+- On first save: full structure is persisted
+- Old todos without `tagIds` work fine (field is optional)
+
+No explicit migration code needed - the default merge behavior handles it.
+
+### Edge Cases
+
+1. **Tag deleted with tasks associated:**
+   - `handleDeleteTag` iterates all todos and filters out the deleted tagId
+   - Atomic operation: tag removed AND todos updated in single `setData` call
+
+2. **Limit of 3 tags per task:**
+   - `handleToggleTagOnTodo` checks `todo.tagIds.length < 3` before adding
+   - UI disables unselected tags when limit reached (visual feedback)
+   - Error ignored silently (no toast/alert needed - UI prevents it)
+
+3. **Duplicate tag names (case insensitive):**
+   - Validation in `handleCreateTag` and `handleEditTag`
+   - Check: `tags.some(t => t.name.toLowerCase() === newName.toLowerCase() && t.id !== editingId)`
+   - Prevent save if duplicate detected
+   - UI shows inline error message
+
+4. **Empty tag name:**
+   - Validation: `name.trim().length === 0` prevents creation
+   - Submit button disabled while name empty
+
+5. **Tag color default:**
+   - First color in palette (#ef4444 red) is pre-selected
+   - User can change before creating
+
+6. **Orphaned tagIds (tag deleted but todo still references):**
+   - Already handled by atomic delete (see #1)
+   - Defensive: TagBadge component filters out non-existent tags when rendering
+
+---
+
 ## Codebase Patterns
 - Plugin structure: `index.tsx` (manifest only) + `PluginName.tsx` (component) + `types.ts`
 - Mini-components named as `ParentComponent` + `Part` (e.g., `TodoPluginInput`, `TodoPluginList`)
@@ -86,4 +210,64 @@
   - This is a standard pattern in Tailwind projects - browser scrollbar styling must remain in CSS
   - When something cannot be converted to Tailwind, document it clearly with a comment referencing the decision
   - Exceptions to "Tailwind for everything" rule: CSS variables for shadcn/ui, webkit scrollbar styling
+---
+
+## 2026-01-13 - US-008
+- What was implemented: Migrated all Todo plugin CSS classes to Tailwind inline classes
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`: Replaced all `.todo-*` CSS classes with Tailwind inline classes
+  - `src/index.css`: Removed ~250 lines of Todo plugin CSS
+- **Learnings for future iterations:**
+  - Tailwind 4's built-in `animate-spin` utility works for loading spinners - no custom keyframes needed
+  - Use named groups (`group/delete`) for nested hover state targeting (e.g., `group-hover/delete:text-red-500`)
+  - Complex conditional classes with multiple states can use template literals with ternary expressions
+  - Sibling selectors like `input:focus + span` can be replicated with `[input:focus+&]:opacity-100` arbitrary variant
+  - For `line-through` with custom color, use `decoration-white/25` for text-decoration-color
+---
+
+## 2026-01-13 - US-009
+- What was implemented: Final cleanup of index.css, removed unused CSS
+- Files changed:
+  - `src/index.css`: Removed unused `.transition-smooth` utility class (7 lines)
+- **Learnings for future iterations:**
+  - Use `grep` to verify if a CSS class is actually used before removing
+  - Final CSS structure: Tailwind imports → @theme (shadcn) → :root/:dark CSS vars → @layer base → scrollbar exception
+  - All project-specific styling now lives inline in components using Tailwind classes
+---
+
+## 2026-01-13 - US-000 (Tag System PRD)
+- What was implemented: Documented architecture decisions for tag system feature
+- Files changed:
+  - `ralph/progress.txt`: Added "Architecture Decisions - Tags" section with complete design documentation
+  - `ralph/prd.json`: Marked US-000 as passes: true
+- **Learnings for future iterations:**
+  - Architecture documentation BEFORE implementation helps clarify edge cases upfront
+  - The `usePluginStorage` default merge behavior makes migrations trivial - just add new fields with defaults
+  - Mini-component pattern works well for complex views - keep all related components in one file
+  - View state for plugin-internal navigation uses simple `useState<'list' | 'tags'>('list')`
+---
+
+## 2026-01-13 - US-001 (Tag System)
+- What was implemented: Data model for tags system
+- Files changed:
+  - `src/plugins/todo/types.ts`: Added Tag interface, updated Todo with optional tagIds, updated TodoStorage with tags array
+  - `src/plugins/todo/TodoPlugin.tsx`: Updated defaultStorage to include tags: []
+- **Learnings for future iterations:**
+  - When adding new fields to storage interfaces, always update the defaultStorage constant in the component
+  - Optional fields with `?` (like `tagIds?: string[]`) ensure backward compatibility with existing data
+---
+
+## 2026-01-13 - US-002 (Tag System)
+- What was implemented: Tag button for accessing tag management view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `TodoView` type (`'list' | 'tags'`) and `view` state
+    - Renamed `TodoPluginInput` to `TodoPluginInputArea` with added `onTagsClick` prop
+    - Added `TodoPluginTagButton` mini-component (uses lucide `Tag` icon)
+    - Added `TodoPluginTagManager` placeholder with header and empty state
+    - Added `TodoPluginTagManagerHeader` with back button
+- **Learnings for future iterations:**
+  - Button styling follows same pattern as input: `h-10 w-10 rounded-[10px] bg-white/4` with hover states
+  - Use `group` class on button for icon color transitions on hover
+  - Placeholder views should follow same empty state pattern as main list (icon + text)
 ---

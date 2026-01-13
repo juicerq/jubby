@@ -1,7 +1,9 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { Check, X } from 'lucide-react'
+import { Check, X, Tag } from 'lucide-react'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
 import type { Todo, TodoStorage } from './types'
+
+type TodoView = 'list' | 'tags'
 
 const defaultStorage: TodoStorage = { todos: [], tags: [] }
 
@@ -9,6 +11,7 @@ function TodoPlugin() {
   const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [view, setView] = useState<TodoView>('list')
 
   useEffect(() => {
     if (pendingDeleteId === null) return
@@ -71,12 +74,21 @@ function TodoPlugin() {
 
   const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
 
+  if (view === 'tags') {
+    return (
+      <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
+        <TodoPluginTagManager onBack={() => setView('list')} />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col gap-3 overflow-hidden p-4" onClick={handleCancelDelete}>
-      <TodoPluginInput
+      <TodoPluginInputArea
         value={newTodoText}
         onChange={setNewTodoText}
         onKeyDown={handleKeyDown}
+        onTagsClick={() => setView('tags')}
       />
       {sortedTodos.length === 0 ? (
         <TodoPluginEmptyState />
@@ -94,26 +106,79 @@ function TodoPlugin() {
 
 // Mini-componentes
 
-interface TodoPluginInputProps {
+interface TodoPluginInputAreaProps {
   value: string
   onChange: (value: string) => void
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  onTagsClick: () => void
 }
 
-function TodoPluginInput({ value, onChange, onKeyDown }: TodoPluginInputProps) {
+function TodoPluginInputArea({ value, onChange, onKeyDown, onTagsClick }: TodoPluginInputAreaProps) {
   return (
-    <div className="relative shrink-0">
-      <input
-        type="text"
-        placeholder="What needs to be done?"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        onClick={(e) => e.stopPropagation()}
-        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-        autoComplete="off"
-      />
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-[180ms] ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
+    <div className="flex shrink-0 gap-2">
+      <div className="relative flex-1">
+        <input
+          type="text"
+          placeholder="What needs to be done?"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onClick={(e) => e.stopPropagation()}
+          className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          autoComplete="off"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-[180ms] ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
+      </div>
+      <TodoPluginTagButton onClick={onTagsClick} />
+    </div>
+  )
+}
+
+function TodoPluginTagButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-[180ms] ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96]"
+      aria-label="Manage tags"
+      title="Manage tags"
+    >
+      <Tag className="h-4 w-4 text-white/40 transition-colors duration-[180ms] ease-out group-hover:text-white/70" />
+    </button>
+  )
+}
+
+interface TodoPluginTagManagerProps {
+  onBack: () => void
+}
+
+function TodoPluginTagManager({ onBack }: TodoPluginTagManagerProps) {
+  return (
+    <div className="flex h-full flex-col">
+      <TodoPluginTagManagerHeader onBack={onBack} />
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-white/35">
+        <Tag className="h-7 w-7 opacity-60" />
+        <p className="text-[13px] font-normal tracking-[-0.01em]">Tag management coming soon</p>
+      </div>
+    </div>
+  )
+}
+
+function TodoPluginTagManagerHeader({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="mb-3 flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-none bg-white/4 transition-all duration-150 ease-out hover:bg-white/8 active:scale-[0.92]"
+        aria-label="Back to tasks"
+      >
+        <X className="h-4 w-4 text-white/50" />
+      </button>
+      <span className="text-[13px] font-medium tracking-[-0.01em] text-white/80">Manage Tags</span>
     </div>
   )
 }
