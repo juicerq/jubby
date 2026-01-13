@@ -1,7 +1,18 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag } from 'lucide-react'
+import { Check, X, Tag, Plus } from 'lucide-react'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
-import type { Todo, TodoStorage } from './types'
+import type { Tag as TagType, Todo, TodoStorage } from './types'
+
+const TAG_COLORS = [
+  { name: 'red', hex: '#ef4444' },
+  { name: 'orange', hex: '#f97316' },
+  { name: 'yellow', hex: '#eab308' },
+  { name: 'green', hex: '#22c55e' },
+  { name: 'blue', hex: '#3b82f6' },
+  { name: 'purple', hex: '#8b5cf6' },
+  { name: 'pink', hex: '#ec4899' },
+  { name: 'gray', hex: '#6b7280' },
+] as const
 
 type TodoView = 'list' | 'tags'
 
@@ -74,10 +85,35 @@ function TodoPlugin() {
 
   const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
 
+  const handleCreateTag = (name: string, color: string) => {
+    const trimmedName = name.trim()
+    if (!trimmedName) return false
+
+    const isDuplicate = data.tags.some(
+      (t) => t.name.toLowerCase() === trimmedName.toLowerCase()
+    )
+    if (isDuplicate) return false
+
+    const newTag: TagType = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      color,
+    }
+    setData((prev) => ({
+      ...prev,
+      tags: [...prev.tags, newTag],
+    }))
+    return true
+  }
+
   if (view === 'tags') {
     return (
       <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
-        <TodoPluginTagManager onBack={() => setView('list')} />
+        <TodoPluginTagManager
+          tags={data.tags}
+          onBack={() => setView('list')}
+          onCreateTag={handleCreateTag}
+        />
       </div>
     )
   }
@@ -152,17 +188,145 @@ function TodoPluginTagButton({ onClick }: { onClick: () => void }) {
 }
 
 interface TodoPluginTagManagerProps {
+  tags: TagType[]
   onBack: () => void
+  onCreateTag: (name: string, color: string) => boolean
 }
 
-function TodoPluginTagManager({ onBack }: TodoPluginTagManagerProps) {
+function TodoPluginTagManager({ tags, onBack, onCreateTag }: TodoPluginTagManagerProps) {
+  const [newTagName, setNewTagName] = useState('')
+  const [selectedColor, setSelectedColor] = useState<string>(TAG_COLORS[0].hex)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = () => {
+    if (!newTagName.trim()) {
+      setError('Name cannot be empty')
+      return
+    }
+
+    const success = onCreateTag(newTagName, selectedColor)
+    if (success) {
+      setNewTagName('')
+      setSelectedColor(TAG_COLORS[0].hex)
+      setError(null)
+    } else {
+      setError('Tag name already exists')
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSubmit()
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <TodoPluginTagManagerHeader onBack={onBack} />
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-white/35">
-        <Tag className="h-7 w-7 opacity-60" />
-        <p className="text-[13px] font-normal tracking-[-0.01em]">Tag management coming soon</p>
+
+      {/* Create tag input */}
+      <div className="mb-4 shrink-0">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="New tag name..."
+              value={newTagName}
+              onChange={(e) => {
+                setNewTagName(e.target.value)
+                setError(null)
+              }}
+              onKeyDown={handleKeyDown}
+              maxLength={20}
+              className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+              autoComplete="off"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!newTagName.trim()}
+            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-[180ms] ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-white/4 disabled:active:scale-100"
+            aria-label="Create tag"
+          >
+            <Plus className="h-4 w-4 text-white/50" />
+          </button>
+        </div>
+
+        {/* Color selector */}
+        <div className="mt-3 flex items-center gap-1.5">
+          {TAG_COLORS.map((color) => (
+            <button
+              key={color.name}
+              type="button"
+              onClick={() => setSelectedColor(color.hex)}
+              className={`h-6 w-6 cursor-pointer rounded-full transition-all duration-150 ease-out hover:scale-110 active:scale-95 ${
+                selectedColor === color.hex
+                  ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-[#0a0a0a]'
+                  : ''
+              }`}
+              style={{ backgroundColor: color.hex }}
+              aria-label={`Select ${color.name} color`}
+            />
+          ))}
+        </div>
+
+        {/* Error message */}
+        {error && (
+          <p className="mt-2 text-[11px] tracking-[-0.01em] text-red-400">{error}</p>
+        )}
       </div>
+
+      {/* Tag list or empty state */}
+      {tags.length === 0 ? (
+        <TodoPluginTagManagerEmptyState />
+      ) : (
+        <TodoPluginTagManagerList tags={tags} />
+      )}
+    </div>
+  )
+}
+
+function TodoPluginTagManagerEmptyState() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 text-white/35">
+      <Tag className="h-7 w-7 opacity-60" />
+      <p className="text-[13px] font-normal tracking-[-0.01em]">No tags yet</p>
+      <p className="text-[11px] font-normal tracking-[-0.01em] opacity-70">Create your first tag above</p>
+    </div>
+  )
+}
+
+interface TodoPluginTagManagerListProps {
+  tags: TagType[]
+}
+
+function TodoPluginTagManagerList({ tags }: TodoPluginTagManagerListProps) {
+  return (
+    <div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
+      {tags.map((tag) => (
+        <TodoPluginTagManagerItem key={tag.id} tag={tag} />
+      ))}
+    </div>
+  )
+}
+
+interface TodoPluginTagManagerItemProps {
+  tag: TagType
+}
+
+function TodoPluginTagManagerItem({ tag }: TodoPluginTagManagerItemProps) {
+  return (
+    <div className="group flex items-center gap-3 rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4">
+      <span
+        className="inline-flex h-6 shrink-0 items-center rounded px-2 text-[12px] font-medium tracking-[-0.01em]"
+        style={{
+          backgroundColor: `${tag.color}20`,
+          color: tag.color,
+        }}
+      >
+        {tag.name}
+      </span>
     </div>
   )
 }
