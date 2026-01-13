@@ -163,6 +163,7 @@ function TodoPlugin() {
       ) : (
         <TodoPluginList
           todos={sortedTodos}
+          tags={data.tags}
           onToggle={handleToggle}
           onDeleteClick={handleDeleteClick}
           pendingDeleteId={pendingDeleteId}
@@ -555,18 +556,20 @@ function TodoPluginEmptyState() {
 
 interface TodoPluginListProps {
   todos: Todo[]
+  tags: TagType[]
   onToggle: (id: string) => void
   onDeleteClick: (id: string) => void
   pendingDeleteId: string | null
 }
 
-function TodoPluginList({ todos, onToggle, onDeleteClick, pendingDeleteId }: TodoPluginListProps) {
+function TodoPluginList({ todos, tags, onToggle, onDeleteClick, pendingDeleteId }: TodoPluginListProps) {
   return (
     <div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
       {todos.map((todo) => (
         <TodoPluginItem
           key={todo.id}
           todo={todo}
+          tags={tags}
           onToggle={onToggle}
           onDeleteClick={onDeleteClick}
           isPendingDelete={pendingDeleteId === todo.id}
@@ -578,20 +581,27 @@ function TodoPluginList({ todos, onToggle, onDeleteClick, pendingDeleteId }: Tod
 
 interface TodoPluginItemProps {
   todo: Todo
+  tags: TagType[]
   onToggle: (id: string) => void
   onDeleteClick: (id: string) => void
   isPendingDelete: boolean
 }
 
-function TodoPluginItem({ todo, onToggle, onDeleteClick, isPendingDelete }: TodoPluginItemProps) {
+function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete }: TodoPluginItemProps) {
+  // Get tags for this todo, filtering out any orphaned IDs
+  const todoTags = (todo.tagIds ?? [])
+    .map((tagId) => tags.find((t) => t.id === tagId))
+    .filter((t): t is TagType => t !== undefined)
+    .slice(0, 3) // Ensure max 3 tags
+
   return (
     <div
-      className="group flex items-center gap-3 rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4"
+      className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4"
       onClick={(e) => e.stopPropagation()}
     >
       <button
         type="button"
-        className={`flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92] ${
+        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92] ${
           todo.completed
             ? 'border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75'
             : 'border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4'
@@ -602,13 +612,27 @@ function TodoPluginItem({ todo, onToggle, onDeleteClick, isPendingDelete }: Todo
         <Check className={`h-3 w-3 transition-all duration-150 ease-out ${todo.completed ? 'text-[#0a0a0a]' : 'text-transparent'}`} />
       </button>
 
-      <span className={`flex-1 text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out ${
-        todo.completed ? 'text-white/35 line-through decoration-white/25' : 'text-white/90'
-      }`}>{todo.text}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className={`text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out ${
+          todo.completed ? 'text-white/35 line-through decoration-white/25' : 'text-white/90'
+        }`}>{todo.text}</span>
+
+        {todoTags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {todoTags.map((tag) => (
+              <TodoPluginTagBadge
+                key={tag.id}
+                tag={tag}
+                isCompleted={todo.completed}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <button
         type="button"
-        className={`group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent transition-all duration-150 ease-out active:scale-90 ${
+        className={`mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent transition-all duration-150 ease-out active:scale-90 ${
           isPendingDelete
             ? 'bg-red-500/20 opacity-100 hover:bg-red-500/30'
             : 'opacity-0 hover:bg-red-500/15 group-hover:opacity-100'
@@ -623,6 +647,28 @@ function TodoPluginItem({ todo, onToggle, onDeleteClick, isPendingDelete }: Todo
         )}
       </button>
     </div>
+  )
+}
+
+interface TodoPluginTagBadgeProps {
+  tag: TagType
+  isCompleted?: boolean
+}
+
+function TodoPluginTagBadge({ tag, isCompleted = false }: TodoPluginTagBadgeProps) {
+  return (
+    <span
+      className={`inline-flex max-w-[80px] items-center truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-tight tracking-[-0.01em] transition-opacity duration-150 ease-out ${
+        isCompleted ? 'opacity-40' : 'opacity-100'
+      }`}
+      style={{
+        backgroundColor: `${tag.color}20`,
+        color: tag.color,
+      }}
+      title={tag.name}
+    >
+      {tag.name}
+    </span>
   )
 }
 
