@@ -62,6 +62,7 @@
       "title": "View de gerenciamento de tags",
       "description": "Como usuário, quero uma tela dedicada para ver e gerenciar minhas tags.",
       "shouldCommit": true,
+      "passes": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
         "View separada mostrando lista de todas as tags",
@@ -78,6 +79,7 @@
       "title": "Criar nova tag",
       "description": "Como usuário, quero criar uma nova tag definindo nome e cor.",
       "shouldCommit": true,
+      "passes": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
         "Input de texto para nome da tag",
@@ -97,6 +99,7 @@
       "title": "Editar tag existente",
       "description": "Como usuário, quero editar o nome ou cor de uma tag existente.",
       "shouldCommit": true,
+      "passes": true,
       "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
       "acceptanceCriteria": [
         "Clique na tag ou botão de edição abre modo de edição inline",

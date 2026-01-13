@@ -271,3 +271,47 @@ No explicit migration code needed - the default merge behavior handles it.
   - Use `group` class on button for icon color transitions on hover
   - Placeholder views should follow same empty state pattern as main list (icon + text)
 ---
+
+## 2026-01-13 - US-003 (Tag System)
+- What was implemented: Full tag management view with list and create functionality
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `TAG_COLORS` constant with predefined 8-color palette
+    - Added `handleCreateTag` handler with validation (non-empty, unique name case-insensitive)
+    - Replaced `TodoPluginTagManager` placeholder with full implementation
+    - Added `TodoPluginTagManagerEmptyState` mini-component
+    - Added `TodoPluginTagManagerList` mini-component for tag list
+    - Added `TodoPluginTagManagerItem` mini-component with colored badge
+    - Color selector with 8 color dots, ring highlight for selection
+- **Learnings for future iterations:**
+  - When using `useState` with `as const` array values, explicitly type the state as `string` to avoid narrow type inference
+  - Badge background uses hex color with `20` opacity suffix (e.g., `${tag.color}20`) for subtle tint
+  - Ring offset needs explicit background color: `ring-offset-[#0a0a0a]` to match app background
+  - Validation returns boolean from handler so component can show appropriate error message
+---
+
+## 2026-01-13 - US-004 (Tag System)
+- What was implemented: Verified that US-003 already implemented all US-004 requirements
+- Files changed: None - functionality already complete from US-003
+- **Learnings for future iterations:**
+  - Review existing implementation before starting work - features may have been implemented ahead of schedule
+  - US-003 (tag management view) inherently includes US-004 (create tag) functionality
+  - When PRD stories have overlapping scope, earlier stories may satisfy later acceptance criteria
+---
+
+## 2026-01-13 - US-005 (Tag System)
+- What was implemented: Inline editing for existing tags in tag management view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `handleEditTag` handler with validation (unique name case-insensitive, non-empty)
+    - Updated `TodoPluginTagManager` props to include `onEditTag`
+    - Updated `TodoPluginTagManagerList` with `editingId` state to track which tag is being edited
+    - Rewrote `TodoPluginTagManagerItem` to support inline edit mode with name input and color selector
+    - Edit mode UI: input field + save (check) + cancel (X) buttons + 8-color palette
+    - Non-editing state shows "Click to edit" hint on hover
+- **Learnings for future iterations:**
+  - Handler returning `boolean | string` pattern works well for validation - returns `true` on success or error message string on failure
+  - `useEffect` to reset edit state when `isEditing` changes ensures clean state when switching between tags
+  - Keyboard shortcuts (Enter to save, Escape to cancel) improve UX for inline edit forms
+  - Tag item changed from `<div>` to `<button>` for better accessibility and click handling
+---
