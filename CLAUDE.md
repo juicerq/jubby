@@ -46,6 +46,17 @@ src-tauri/src/
 
 ## Sistema de Plugins
 
+### Estrutura de plugin
+
+```
+plugins/nome/
+├── index.tsx      # Apenas export do manifest
+├── NomePlugin.tsx # Componente principal
+├── hooks.ts       # Hooks do plugin (se houver)
+├── types.ts       # Tipos do plugin (se houver)
+└── components/    # Subcomponentes (se houver)
+```
+
 ### Criar novo plugin
 
 1. Criar pasta `src/plugins/[nome]/`
@@ -64,7 +75,8 @@ export const MeuPluginManifest: PluginManifest = {
 }
 ```
 
-3. Registrar em `src/plugins/registry.ts`
+3. Criar `MeuPlugin.tsx` com o componente principal
+4. Registrar em `src/plugins/registry.ts`
 
 ### Persistência no plugin
 
@@ -86,6 +98,46 @@ Dados salvos automaticamente em `~/.local/share/jubby/meu-plugin.json`.
 - Hooks customizados em `core/hooks/` ou dentro do plugin
 - Props tipadas inline ou em arquivo `types.ts` do plugin
 
+#### Padrão de mini-componentes
+
+Componentes complexos podem ser divididos em mini-componentes **no mesmo arquivo** (guiado por Single Responsibility, não por contagem de linhas):
+
+```tsx
+// Componente principal primeiro - retorna composição
+function MyComponent() {
+  const [state, setState] = useState()
+
+  return (
+    <div>
+      <MyComponentHeader />
+      <MyComponentContent state={state} />
+      <MyComponentFooter />
+    </div>
+  )
+}
+
+// Mini-componentes definidos DEPOIS do principal
+function MyComponentHeader() {
+  return <header>...</header>
+}
+
+function MyComponentContent({ state }: { state: State }) {
+  return <main>...</main>
+}
+
+function MyComponentFooter() {
+  return <footer>...</footer>
+}
+
+// Export no final
+export { MyComponent }
+```
+
+**Regras:**
+- Nome do mini-componente = `NomeDoComponentePrincipal` + `Parte` (ex: `PluginGridSearch`)
+- Props tipadas inline ou com interface local
+- Lógica/estado fica no componente principal, mini-componentes são apresentacionais
+
 ### Estilização
 - Tailwind para utilitários
 - shadcn/ui como base de componentes
@@ -97,6 +149,48 @@ Dados salvos automaticamente em `~/.local/share/jubby/meu-plugin.json`.
 - Comandos IPC em `commands.rs`
 - Storage em `storage.rs`
 - Erros tratados e retornados como Result
+
+## Filosofia de Código
+
+### Princípios Core
+
+**DRY (Don't Repeat Yourself)**
+- Extrair abstração quando um padrão aparece 2+ vezes
+- Não antecipar duplicação que ainda não existe
+
+**YAGNI (You Aren't Gonna Need It)**
+- Implementar apenas o necessário para o requisito atual
+- Não adicionar features "para o futuro"
+
+### Princípio Secundário
+
+**Single Responsibility**
+- Componente faz uma coisa bem feita
+- Dividir quando responsabilidades se misturam, não por contagem de linhas
+
+### Regras Concretas
+
+**Ícones**
+- Sempre usar `lucide-react`
+- SVGs customizados apenas quando explicitamente pedido pelo usuário
+
+**Estilização**
+- Tailwind para tudo
+- CSS variables apenas para compatibilidade com shadcn/ui
+- Usar `cn()` de `lib/utils` para classes condicionais
+- **Exceção:** `::-webkit-scrollbar` fica em CSS (pseudo-elementos não suportados por Tailwind)
+
+**Hooks**
+- Extrair para hook reutilizável quando pattern aparece 2+ vezes
+
+**Imports (direção única)**
+```
+shared/     ← base, sem dependências internas
+core/       ← pode usar shared/
+plugins/    ← pode usar core/ e shared/
+```
+- Nunca `core/` importa de `plugins/`
+- Nunca `shared/` importa de `core/`
 
 ## UX
 

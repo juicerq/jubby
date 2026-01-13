@@ -1,0 +1,89 @@
+## Codebase Patterns
+- Plugin structure: `index.tsx` (manifest only) + `PluginName.tsx` (component) + `types.ts`
+- Mini-components named as `ParentComponent` + `Part` (e.g., `TodoPluginInput`, `TodoPluginList`)
+- Use `usePluginStorage<T>('plugin-id', defaultValue)` for plugin persistence
+
+---
+
+## 2026-01-13 - US-001
+- What was implemented: Restructured Todo plugin to follow standard plugin structure
+- Files changed:
+  - Created `src/plugins/todo/TodoPlugin.tsx` with TodoPlugin component and mini-components
+  - Simplified `src/plugins/todo/index.tsx` to only export TodoManifest
+  - `types.ts` kept unchanged as required
+- **Learnings for future iterations:**
+  - Renamed `TodoApp` to `TodoPlugin` and all mini-components from `TodoApp*` to `TodoPlugin*` to follow naming convention
+  - Main component should be named after the plugin file (e.g., `TodoPlugin` in `TodoPlugin.tsx`)
+  - Export statement at bottom of component file: `export { TodoPlugin }`
+---
+
+## 2026-01-13 - US-002
+- What was implemented: Fixed import direction so core/ doesn't import from plugins/
+- Files changed:
+  - `src/core/components/PluginGrid.tsx`: Removed `import { plugins } from '@/plugins/registry'`, added `plugins: PluginManifest[]` prop
+  - `src/App.tsx`: Added `import { plugins } from '@/plugins/registry'`, passed plugins prop to PluginGrid
+- **Learnings for future iterations:**
+  - Import direction rule: `shared/` ← `core/` ← `plugins/` (unidirectional)
+  - App.tsx sits at the root level and can import from anywhere (it orchestrates core + plugins)
+  - When core/ needs data from plugins/, pass it as a prop from the parent component
+---
+
+## 2026-01-13 - US-003
+- What was implemented: Replaced inline SVGs with lucide-react icons
+- Files changed:
+  - `src/core/components/PluginHeader.tsx`: SVG back arrow → `<ChevronLeft />`
+  - `src/core/components/PluginGrid.tsx`: SVG search icon → `<Search />`
+  - `src/plugins/todo/TodoPlugin.tsx`: SVG check → `<Check />`, SVG X → `<X />`
+- **Learnings for future iterations:**
+  - lucide-react icons accept `size` prop for width/height or `className` for Tailwind sizing
+  - Use `className` for positioning and color (e.g., `className="w-3.5 h-3.5 text-white/35"`)
+  - Icons inherit `currentColor` by default, just like SVGs with `stroke="currentColor"`
+---
+
+## 2026-01-13 - US-004
+- What was implemented: Migrated LauncherShell CSS from index.css to Tailwind classes
+- Files changed:
+  - `src/core/components/LauncherShell.tsx`: Replaced `.launcher-shell` CSS class with Tailwind classes and inline style for gradient
+  - `src/index.css`: Removed `.launcher-shell` CSS block (lines 131-144)
+- **Learnings for future iterations:**
+  - Complex radial gradients cannot be expressed in Tailwind directly - use inline `style` prop
+  - Tailwind arbitrary values for shadow: `shadow-[0_0_0_1px_rgba(0,0,0,0.8),...]`
+  - Border opacity uses Tailwind syntax: `border-white/8` (8% opacity)
+  - `rounded-xl` equals `border-radius: 12px` in Tailwind
+---
+
+## 2026-01-13 - US-005
+- What was implemented: Migrated PluginHeader CSS from index.css to Tailwind classes
+- Files changed:
+  - `src/core/components/PluginHeader.tsx`: Replaced all `.plugin-header*` CSS classes with Tailwind inline classes
+  - `src/index.css`: Removed `.plugin-header*` CSS block (~53 lines)
+- **Learnings for future iterations:**
+  - Tailwind `tracking-tight` is equivalent to `letter-spacing: -0.05em`, but `tracking-[-0.01em]` can be used for precise control (original CSS used `-0.01em`)
+  - For button hover/active states, chain modifiers: `hover:bg-white/6 hover:text-white/90 active:scale-[0.92]`
+  - `shrink-0` is Tailwind equivalent of `flex-shrink: 0`
+  - Height 48px = `h-12` in Tailwind (12 * 4 = 48)
+---
+
+## 2026-01-13 - US-006
+- What was implemented: Migrated ViewTransition CSS from index.css to Tailwind classes
+- Files changed:
+  - `src/core/components/ViewTransition.tsx`: Replaced `.view-transition` CSS class and `data-visible` attribute with inline Tailwind classes using conditional `isVisible` state
+  - `src/index.css`: Removed `.view-transition*` CSS block (~17 lines)
+- **Learnings for future iterations:**
+  - Data attribute pattern (`data-visible="true"`) can be replaced with conditional className using state directly
+  - `transition-[opacity,transform]` allows specifying multiple transition properties in Tailwind
+  - `translate-y-1.5` = 6px (1.5 * 4 = 6), `scale-[0.98]` for arbitrary scale values
+  - Duration can be arbitrary: `duration-[180ms]`
+---
+
+## 2026-01-13 - US-007
+- What was implemented: Evaluated scrollbar CSS and documented as intentional exception
+- Files changed:
+  - `src/index.css`: Added comment documenting scrollbar CSS as exception
+  - `CLAUDE.md`: Added `::-webkit-scrollbar` exception to Estilização rules
+- **Learnings for future iterations:**
+  - `::-webkit-scrollbar` pseudo-elements cannot be styled with Tailwind utilities
+  - This is a standard pattern in Tailwind projects - browser scrollbar styling must remain in CSS
+  - When something cannot be converted to Tailwind, document it clearly with a comment referencing the decision
+  - Exceptions to "Tailwind for everything" rule: CSS variables for shadcn/ui, webkit scrollbar styling
+---

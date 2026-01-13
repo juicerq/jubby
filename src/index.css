@@ -127,14 +127,19 @@
   }
 }
 
-/* Global smooth transitions and scrollbar styling */
+/* Global smooth transitions */
 @layer utilities {
   .transition-smooth {
     @apply transition-all duration-150 ease-out;
   }
 }
 
-/* Custom scrollbar for dark theme */
+/*
+ * Custom scrollbar styling
+ * EXCEPTION: Kept as CSS because ::-webkit-scrollbar pseudo-elements
+ * cannot be styled via Tailwind utilities. This is a standard pattern.
+ * See: US-007 decision in progress.txt
+ */
 ::-webkit-scrollbar {
   width: 6px;
 }
