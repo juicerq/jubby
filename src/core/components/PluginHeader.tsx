@@ -1,3 +1,5 @@
+import { ChevronLeft } from 'lucide-react'
+
 interface PluginHeaderProps {
   pluginName: string
   pluginIcon?: string
@@ -13,21 +15,7 @@ export function PluginHeader({ pluginName, pluginIcon, onBack }: PluginHeaderPro
         aria-label="Voltar para o grid"
         className="plugin-header__back"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M10 12L6 8L10 4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <ChevronLeft size={16} aria-hidden="true" />
       </button>
 
       <div className="plugin-header__title">

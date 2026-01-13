@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo, type RefObject } from 'react'
+import { Search } from 'lucide-react'
 import type { PluginManifest } from '@/core/types'
 
 interface PluginGridProps {
@@ -125,15 +126,7 @@ function PluginGridSearch({ searchQuery, setSearchQuery, searchInputRef }: Plugi
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
       />
-      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10ZM14 14l-3.5-3.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" />
       <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium tracking-wide text-white/25 bg-white/[0.06] px-1.5 py-0.5 rounded pointer-events-none opacity-70">⌘K</span>
     </div>
   )

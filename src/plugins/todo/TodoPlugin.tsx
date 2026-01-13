@@ -1,4 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { Check, X } from 'lucide-react'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
 import type { Todo, TodoStorage } from './types'
 
@@ -168,9 +169,7 @@ function TodoPluginItem({ todo, onToggle, onDeleteClick, isPendingDelete }: Todo
         onClick={() => onToggle(todo.id)}
         aria-label={todo.completed ? 'Mark as incomplete' : 'Mark as complete'}
       >
-        <svg viewBox="0 0 16 16" className="todo-checkbox-icon">
-          <path d="M4 8.5L6.5 11L12 5" />
-        </svg>
+        <Check className="todo-checkbox-icon" />
       </button>
 
       <span className="todo-text">{todo.text}</span>
@@ -182,13 +181,9 @@ function TodoPluginItem({ todo, onToggle, onDeleteClick, isPendingDelete }: Todo
         aria-label={isPendingDelete ? 'Confirm delete' : 'Delete task'}
       >
         {isPendingDelete ? (
-          <svg viewBox="0 0 16 16" className="todo-delete-icon">
-            <path d="M3 8.5L6.5 11L13 4" />
-          </svg>
+          <Check className="todo-delete-icon" />
         ) : (
-          <svg viewBox="0 0 16 16" className="todo-delete-icon">
-            <path d="M4 4L12 12M12 4L4 12" />
-          </svg>
+          <X className="todo-delete-icon" />
         )}
       </button>
     </div>
