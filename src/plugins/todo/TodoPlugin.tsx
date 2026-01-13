@@ -3,7 +3,7 @@ import { Check, X } from 'lucide-react'
 import { usePluginStorage } from '@/core/hooks/usePluginStorage'
 import type { Todo, TodoStorage } from './types'
 
-const defaultStorage: TodoStorage = { todos: [] }
+const defaultStorage: TodoStorage = { todos: [], tags: [] }
 
 function TodoPlugin() {
   const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
