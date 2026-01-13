@@ -127,13 +127,6 @@
   }
 }
 
-/* Global smooth transitions */
-@layer utilities {
-  .transition-smooth {
-    @apply transition-all duration-150 ease-out;
-  }
-}
-
 /*
  * Custom scrollbar styling
  * EXCEPTION: Kept as CSS because ::-webkit-scrollbar pseudo-elements
@@ -156,4 +149,3 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0 0 / 50%);
 }
-
