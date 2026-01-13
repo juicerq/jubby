@@ -6,6 +6,7 @@ import { PluginGrid } from '@/core/components/PluginGrid'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import { ViewTransition } from '@/core/components/ViewTransition'
 import type { PluginManifest } from '@/core/types'
+import { plugins } from '@/plugins/registry'
 
 function App() {
   const [activePlugin, setActivePlugin] = useState<PluginManifest | null>(null)
@@ -41,7 +42,7 @@ function App() {
             </div>
           </>
         ) : (
-          <PluginGrid onPluginClick={setActivePlugin} />
+          <PluginGrid plugins={plugins} onPluginClick={setActivePlugin} />
         )}
       </ViewTransition>
     </LauncherShell>
