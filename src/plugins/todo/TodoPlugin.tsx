@@ -23,6 +23,7 @@ function TodoPlugin() {
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [view, setView] = useState<TodoView>('list')
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
 
   useEffect(() => {
     if (pendingDeleteId === null) return
@@ -41,13 +42,28 @@ function TodoPlugin() {
         text: newTodoText.trim(),
         completed: false,
         createdAt: Date.now(),
+        ...(selectedTagIds.length > 0 ? { tagIds: selectedTagIds } : {}),
       }
       setData((prev) => ({
         ...prev,
         todos: [...prev.todos, newTodo],
       }))
       setNewTodoText('')
+      setSelectedTagIds([])
     }
+  }
+
+  const handleToggleTagSelection = (tagId: string) => {
+    setSelectedTagIds((prev) => {
+      if (prev.includes(tagId)) {
+        return prev.filter((id) => id !== tagId)
+      }
+      // Limit to 3 tags
+      if (prev.length >= 3) {
+        return prev
+      }
+      return [...prev, tagId]
+    })
   }
 
   const handleToggle = (id: string) => {
@@ -157,6 +173,9 @@ function TodoPlugin() {
         onChange={setNewTodoText}
         onKeyDown={handleKeyDown}
         onTagsClick={() => setView('tags')}
+        tags={data.tags}
+        selectedTagIds={selectedTagIds}
+        onToggleTag={handleToggleTagSelection}
       />
       {sortedTodos.length === 0 ? (
         <TodoPluginEmptyState />
@@ -180,25 +199,40 @@ interface TodoPluginInputAreaProps {
   onChange: (value: string) => void
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
   onTagsClick: () => void
+  tags: TagType[]
+  selectedTagIds: string[]
+  onToggleTag: (tagId: string) => void
 }
 
-function TodoPluginInputArea({ value, onChange, onKeyDown, onTagsClick }: TodoPluginInputAreaProps) {
+function TodoPluginInputArea({ value, onChange, onKeyDown, onTagsClick, tags, selectedTagIds, onToggleTag }: TodoPluginInputAreaProps) {
+  const isAtLimit = selectedTagIds.length >= 3
+
   return (
-    <div className="flex shrink-0 gap-2">
-      <div className="relative flex-1">
-        <input
-          type="text"
-          placeholder="What needs to be done?"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          onClick={(e) => e.stopPropagation()}
-          className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-          autoComplete="off"
-        />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-[180ms] ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
+    <div className="flex shrink-0 flex-col gap-2">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            placeholder="What needs to be done?"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            autoComplete="off"
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-[180ms] ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
+        </div>
+        <TodoPluginTagButton onClick={onTagsClick} />
       </div>
-      <TodoPluginTagButton onClick={onTagsClick} />
+      {tags.length > 0 && (
+        <TodoPluginTagSelector
+          tags={tags}
+          selectedTagIds={selectedTagIds}
+          onToggleTag={onToggleTag}
+          isAtLimit={isAtLimit}
+        />
+      )}
     </div>
   )
 }
@@ -217,6 +251,57 @@ function TodoPluginTagButton({ onClick }: { onClick: () => void }) {
     >
       <Tag className="h-4 w-4 text-white/40 transition-colors duration-[180ms] ease-out group-hover:text-white/70" />
     </button>
+  )
+}
+
+interface TodoPluginTagSelectorProps {
+  tags: TagType[]
+  selectedTagIds: string[]
+  onToggleTag: (tagId: string) => void
+  isAtLimit: boolean
+}
+
+function TodoPluginTagSelector({ tags, selectedTagIds, onToggleTag, isAtLimit }: TodoPluginTagSelectorProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => {
+        const isSelected = selectedTagIds.includes(tag.id)
+        const isDisabled = isAtLimit && !isSelected
+
+        return (
+          <button
+            key={tag.id}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!isDisabled) {
+                onToggleTag(tag.id)
+              }
+            }}
+            disabled={isDisabled}
+            className={`inline-flex cursor-pointer items-center rounded px-2 py-1 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out active:scale-[0.96] ${
+              isSelected
+                ? 'ring-1 ring-white/30'
+                : ''
+            } ${
+              isDisabled
+                ? 'cursor-not-allowed opacity-30'
+                : 'hover:opacity-80'
+            }`}
+            style={{
+              backgroundColor: `${tag.color}${isSelected ? '40' : '20'}`,
+              color: tag.color,
+            }}
+            title={isDisabled ? 'Maximum 3 tags allowed' : (isSelected ? `Remove ${tag.name}` : `Add ${tag.name}`)}
+          >
+            {tag.name}
+          </button>
+        )
+      })}
+      {isAtLimit && (
+        <span className="text-[10px] text-white/30">max 3</span>
+      )}
+    </div>
   )
 }
 
