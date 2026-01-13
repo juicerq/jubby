@@ -332,3 +332,80 @@ No explicit migration code needed - the default merge behavior handles it.
   - Delete handler must be atomic: update both `tags` and `todos` in single `setData` call to prevent orphaned references
   - `e.stopPropagation()` on delete button click prevents triggering parent's edit action
 ---
+
+## 2026-01-13 - US-007 (Tag System)
+- What was implemented: Display tag badges on todo items in the task list
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `tags` prop to `TodoPluginList` and `TodoPluginItem` components
+    - Updated `TodoPluginItem` to show tags below the task text
+    - Changed item layout from `items-center` to `items-start` for multi-line content
+    - Added `mt-0.5` to checkbox and delete button for vertical alignment with first line of text
+    - Created `TodoPluginTagBadge` mini-component for individual tag display
+    - Tags filter out orphaned IDs defensively, limit to max 3
+    - Completed tasks show tags with reduced opacity (40%)
+    - Tag badges truncate long names with max-width and show full name on hover via title attribute
+- **Learnings for future iterations:**
+  - When todo item has multi-line content (text + tags), use `items-start` instead of `items-center` for proper alignment
+  - Use `mt-0.5` on side elements (checkbox, delete) to align with first line of text in multi-line layout
+  - Defensive filtering `filter((t): t is TagType => t !== undefined)` with TypeScript type guard handles orphaned tag IDs
+  - For small badges, use `px-1.5 py-0.5 text-[11px]` sizing (smaller than tag manager badges which use `px-2 h-6 text-[12px]`)
+  - Title attribute on truncated text provides accessible full content on hover
+---
+
+## 2026-01-13 - US-008 (Tag System)
+- What was implemented: Tag selection UI for assigning tags when creating new tasks
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `selectedTagIds` state to track tag selection during task creation
+    - Added `handleToggleTagSelection` handler to toggle tag selection with 3-tag limit
+    - Updated `handleKeyDown` to include selected tags when creating todo and clear selection after
+    - Extended `TodoPluginInputAreaProps` with `tags`, `selectedTagIds`, and `onToggleTag` props
+    - Updated `TodoPluginInputArea` to render `TodoPluginTagSelector` when tags exist
+    - Created `TodoPluginTagSelector` mini-component for clickable tag chips
+    - Selected tags have ring highlight and darker background
+    - Disabled (limit reached) tags show 30% opacity with tooltip explaining limit
+    - "max 3" indicator appears when limit is reached
+- **Learnings for future iterations:**
+  - Conditional object spread `...(condition ? { field: value } : {})` keeps optional fields clean
+  - For tag selection UI, use `ring-1 ring-white/30` to indicate selected state
+  - Background opacity suffix in hex (`${color}40` for 25% or `${color}20` for 12.5%) works for dynamic colors
+  - Disable unselected buttons when at limit using computed `isDisabled = isAtLimit && !isSelected`
+---
+
+## 2026-01-13 - US-009 (Tag System)
+- What was implemented: Edit tags on existing tasks via inline popover selector
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`:
+    - Added `editingTagsTodoId` state to track which todo is being edited for tags
+    - Added `handleToggleTagOnTodo` handler to add/remove tags from existing todos
+    - Extended `TodoPluginListProps` with `editingTagsTodoId`, `onEditTags`, `onToggleTagOnTodo`
+    - Extended `TodoPluginItemProps` with `isEditingTags`, `onEditTags`, `onToggleTag`
+    - Updated `TodoPluginItem` to show clickable tags area with "+ Add tags" placeholder when no tags
+    - Created `TodoPluginTagEditorPopover` mini-component for inline tag selection
+    - Popover shows all available tags with checkmarks on selected ones
+    - Clicking outside (on parent container) closes the popover
+- **Learnings for future iterations:**
+  - For inline editing popover, use `absolute left-0 top-full z-10 mt-1` to position below trigger
+  - Show "+ Add tags" placeholder when todo has no tags but tags exist in the system
+  - Parent container onClick should clear editing state (`setEditingTagsTodoId(null)`) to implement click-outside-to-close
+  - Reuse same visual patterns from `TodoPluginTagSelector` for consistency (ring highlight, opacity states)
+---
+
+## 2026-01-13 - US-010 (Tag System)
+- What was implemented: Verified that persistence and migration requirements are already satisfied
+- Files reviewed:
+  - `src/plugins/todo/types.ts`: TodoStorage has `{ todos: Todo[], tags: Tag[] }` structure
+  - `src/plugins/todo/TodoPlugin.tsx`: Uses `usePluginStorage<TodoStorage>('todo', defaultStorage)` with `defaultStorage = { todos: [], tags: [] }`
+- Acceptance criteria verification:
+  - ✅ Data saved to `~/.local/share/jubby/todo.json` via usePluginStorage hook
+  - ✅ Structure `{ todos: Todo[], tags: Tag[] }` defined in TodoStorage interface
+  - ✅ Old data loads correctly due to defaultStorage merge behavior
+  - ✅ `tagIds?: string[]` is optional for backward compatibility
+  - ✅ TypeScript typecheck passes
+  - ✅ Cargo check passes
+- **Learnings for future iterations:**
+  - The `usePluginStorage` hook's default merge behavior handles migration transparently
+  - Optional fields (`tagIds?:`) ensure backward compatibility without explicit migration code
+  - US-010 was already satisfied by earlier implementation work in US-001 (data model)
+---
