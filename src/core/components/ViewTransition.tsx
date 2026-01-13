@@ -48,8 +48,11 @@ export function ViewTransition({ children, viewKey }: ViewTransitionProps) {
 
   return (
     <div
-      className="view-transition flex-1 flex flex-col overflow-hidden"
-      data-visible={isVisible}
+      className={`flex-1 flex flex-col overflow-hidden transition-[opacity,transform] duration-[180ms] ease-out ${
+        isVisible
+          ? 'opacity-100 translate-y-0 scale-100'
+          : 'opacity-0 translate-y-1.5 scale-[0.98]'
+      }`}
     >
       {currentContent}
     </div>
