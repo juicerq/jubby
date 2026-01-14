@@ -1,295 +1,72 @@
 {
-  "title": "Todo Plugin - Sistema de Tags",
-  "version": "1.0.0",
-  "created": "2026-01-12",
-  "introduction": "Adicionar sistema de tags ao plugin Todo para permitir categorização e organização das tarefas. Usuários podem criar tags personalizadas com cores customizáveis e atribuir até 3 tags por tarefa. O gerenciamento de tags (criar, editar, excluir) é feito através de uma tela dedicada.",
-  "goals": [
-    "Permitir criar tags com nome e cor customizável",
-    "Associar até 3 tags por tarefa para categorização",
-    "Fornecer interface para gerenciar tags (CRUD completo)",
-    "Exibir tags visualmente nas tarefas com cores distintas",
-    "Manter consistência visual com o tema escuro existente",
-    "Persistir tags e associações em ~/.local/share/jubby/todo.json"
-  ],
-  "userStories": [
-    {
-      "id": "US-000",
-      "title": "Design de arquitetura do sistema de tags",
-      "description": "Como desenvolvedor, preciso documentar as decisões de arquitetura antes de implementar para garantir consistência e evitar retrabalho.",
-      "shouldCommit": false,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Decisões documentadas no progress.txt seção 'Architecture Decisions - Tags'",
-        "Definir estrutura de tipos (Tag, TodoStorage atualizado, Todo atualizado)",
-        "Definir estratégia de navegação interna (estado view: 'list' | 'tags')",
-        "Definir hierarquia de componentes (quais mini-components criar)",
-        "Definir fluxo de dados (onde fica estado, como propagar mudanças)",
-        "Definir estratégia de migração de dados existentes",
-        "Documentar edge cases: tag deletada com tarefas associadas, limite de 3 tags, nomes duplicados"
-      ]
-    },
-    {
-      "id": "US-001",
-      "title": "Modelo de dados para tags",
-      "description": "Como desenvolvedor, preciso de uma estrutura de dados para armazenar tags e suas associações com tarefas.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Interface Tag criada com campos: id (string), name (string), color (string hex)",
-        "TodoStorage atualizado com array tags: Tag[]",
-        "Interface Todo atualizada com campo opcional tagIds: string[] (máximo 3)",
-        "Typecheck passa (bun tsc --noEmit)"
-      ]
-    },
-    {
-      "id": "US-002",
-      "title": "Botão de acesso ao gerenciador de tags",
-      "description": "Como usuário, quero um botão para acessar a tela de gerenciamento de tags.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Ícone/botão de tags visível na área do plugin Todo",
-        "Botão usa ícone de tag (pode ser emoji ou SVG)",
-        "Hover state consistente com tema escuro",
-        "Clique abre a view de gerenciamento de tags",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-003",
-      "title": "View de gerenciamento de tags",
-      "description": "Como usuário, quero uma tela dedicada para ver e gerenciar minhas tags.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "View separada mostrando lista de todas as tags",
-        "Cada tag exibe: badge colorido + nome",
-        "Input para criar nova tag no topo",
-        "Botão de voltar para retornar à lista de tarefas",
-        "Estado vazio amigável quando não há tags",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-004",
-      "title": "Criar nova tag",
-      "description": "Como usuário, quero criar uma nova tag definindo nome e cor.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Input de texto para nome da tag",
-        "Seletor de cor com palette predefinida (6-8 cores)",
-        "Cores sugeridas: vermelho, laranja, amarelo, verde, azul, roxo, rosa, cinza",
-        "Validação: nome não pode ser vazio",
-        "Validação: nome deve ser único (case insensitive)",
-        "Tag criada ao pressionar Enter ou clicar em botão de confirmação",
-        "Tag aparece imediatamente na lista",
-        "Dados persistem em ~/.local/share/jubby/todo.json",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-005",
-      "title": "Editar tag existente",
-      "description": "Como usuário, quero editar o nome ou cor de uma tag existente.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Clique na tag ou botão de edição abre modo de edição inline",
-        "Pode alterar nome da tag",
-        "Pode alterar cor da tag via seletor",
-        "Validação mantida (nome único, não vazio)",
-        "Alterações refletem imediatamente em todas as tarefas que usam a tag",
-        "Dados persistem automaticamente",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-006",
-      "title": "Excluir tag",
-      "description": "Como usuário, quero excluir uma tag que não preciso mais.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Botão de excluir (X) visível em cada tag na lista",
-        "Confirmação com dois cliques (igual deleção de tarefa)",
-        "Primeiro clique mostra estado de confirmação",
-        "Segundo clique confirma exclusão",
-        "Tag removida de todas as tarefas que a utilizavam",
-        "Tag some da lista imediatamente",
-        "Dados persistem automaticamente",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-007",
-      "title": "Exibir tags nos itens de tarefa",
-      "description": "Como usuário, quero ver as tags associadas a cada tarefa na lista.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Cada tarefa exibe seus badges de tags",
-        "Badges são pequenos, coloridos com a cor da tag",
-        "Badges mostram nome da tag truncado se necessário",
-        "Posição: abaixo do texto da tarefa ou à direita",
-        "Máximo de 3 tags exibidas por tarefa",
-        "Tags de tarefas completadas têm opacidade reduzida",
-        "Visual consistente com tema escuro",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-008",
-      "title": "Atribuir tags ao criar tarefa",
-      "description": "Como usuário, quero poder selecionar tags ao criar uma nova tarefa.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Área de seleção de tags visível próximo ao input de nova tarefa",
-        "Tags disponíveis mostradas como chips/badges clicáveis",
-        "Clique na tag seleciona/deseleciona",
-        "Limite de 3 tags selecionadas",
-        "Feedback visual quando limite atingido",
-        "Tags selecionadas são associadas à tarefa ao pressionar Enter",
-        "Seleção limpa após criar tarefa",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-009",
-      "title": "Editar tags de tarefa existente",
-      "description": "Como usuário, quero poder adicionar ou remover tags de uma tarefa existente.",
-      "shouldCommit": true,
-      "passes": true,
-      "implementationNote": "USAR SKILL frontend-design PARA IMPLEMENTAÇÃO",
-      "acceptanceCriteria": [
-        "Clique nas tags da tarefa ou botão de editar tags abre seletor",
-        "Seletor mostra todas as tags disponíveis",
-        "Tags já associadas aparecem marcadas",
-        "Pode marcar/desmarcar tags (respeitando limite de 3)",
-        "Alterações salvam automaticamente",
-        "Seletor fecha ao clicar fora",
-        "Typecheck passa",
-        "Verificar no browser usando dev-browser skill"
-      ]
-    },
-    {
-      "id": "US-010",
-      "title": "Persistência e migração de dados",
-      "description": "Como usuário, quero que minhas tags e associações sejam salvas e que dados antigos continuem funcionando.",
-      "shouldCommit": true,
-      "passes": true,
-      "acceptanceCriteria": [
-        "Dados salvos em ~/.local/share/jubby/todo.json",
-        "Estrutura atualizada: { todos: Todo[], tags: Tag[] }",
-        "Dados antigos (sem tags) carregam corretamente",
-        "Tarefas antigas funcionam sem tagIds",
-        "Typecheck passa",
-        "Cargo check passa"
-      ]
-    }
-  ],
-  "functionalRequirements": [
-    "FR-1: Sistema deve suportar criação de tags com nome e cor customizável",
-    "FR-2: Cada tag deve ter ID único gerado automaticamente (UUID)",
-    "FR-3: Nome de tag deve ser único (validação case insensitive)",
-    "FR-4: Cores disponíveis: vermelho (#ef4444), laranja (#f97316), amarelo (#eab308), verde (#22c55e), azul (#3b82f6), roxo (#8b5cf6), rosa (#ec4899), cinza (#6b7280)",
-    "FR-5: Cada tarefa pode ter no máximo 3 tags associadas",
-    "FR-6: Tags são associadas a tarefas via array de IDs (tagIds)",
-    "FR-7: Ao excluir tag, remover referência de todas as tarefas",
-    "FR-8: Ao editar tag, mudanças refletem em todas as tarefas",
-    "FR-9: View de gerenciamento acessível via botão no plugin Todo",
-    "FR-10: Navegação: Lista de tarefas <-> Gerenciamento de tags",
-    "FR-11: Dados persistem automaticamente após cada alteração",
-    "FR-12: Compatibilidade com dados existentes (migração transparente)"
-  ],
-  "nonGoals": [
-    "Não implementar filtro de tarefas por tags",
-    "Não implementar ordenação de tarefas por tags",
-    "Não implementar tags hierárquicas ou aninhadas",
-    "Não implementar cores customizadas além da palette predefinida",
-    "Não implementar ícones nas tags",
-    "Não implementar atalhos de teclado para tags",
-    "Não implementar drag and drop para reordenar tags",
-    "Não implementar importação/exportação de tags"
-  ],
-  "designConsiderations": {
-    "tagBadge": {
-      "height": "20-24px",
-      "padding": "4px 8px",
-      "borderRadius": "4px",
-      "fontSize": "11-12px",
-      "fontWeight": "500"
-    },
-    "colorPalette": [
-      { "name": "red", "hex": "#ef4444" },
-      { "name": "orange", "hex": "#f97316" },
-      { "name": "yellow", "hex": "#eab308" },
-      { "name": "green", "hex": "#22c55e" },
-      { "name": "blue", "hex": "#3b82f6" },
-      { "name": "purple", "hex": "#8b5cf6" },
-      { "name": "pink", "hex": "#ec4899" },
-      { "name": "gray", "hex": "#6b7280" }
-    ],
-    "tagManagementView": {
-      "layout": "Lista vertical de tags",
-      "itemHeight": "40-48px",
-      "createInputPosition": "Topo da view"
-    },
-    "tagSelectorInTask": {
-      "position": "Abaixo do input de nova tarefa ou popover",
-      "style": "Chips horizontais clicáveis"
-    }
-  },
-  "technicalConsiderations": [
-    "Reutilizar hook usePluginStorage para persistência",
-    "Adicionar tipos Tag e atualizar Todo em types.ts",
-    "Criar componentes: TagBadge, TagSelector, TagManager",
-    "Manter estado de view (lista/gerenciamento) no componente principal",
-    "Usar crypto.randomUUID() para IDs de tags",
-    "Validação de limite de tags no frontend antes de salvar"
-  ],
-  "successMetrics": [
-    "Criar tag em menos de 3 cliques",
-    "Atribuir tag a tarefa em menos de 2 cliques",
-    "Tags carregam instantaneamente com os dados",
-    "Nenhuma regressão na funcionalidade existente do Todo"
-  ],
-  "openQuestions": [],
-  "resolvedQuestions": [
-    {
-      "question": "Qual o objetivo das tags?",
-      "answer": "Categorização + organização visual (sem filtro por enquanto)"
-    },
-    {
-      "question": "Como criar tags?",
-      "answer": "Pré-definidas pelo usuário em tela de gerenciamento"
-    },
-    {
-      "question": "Quantas tags por tarefa?",
-      "answer": "Até 3 tags por tarefa"
-    },
-    {
-      "question": "Tags têm cores?",
-      "answer": "Sim, cores customizáveis via palette predefinida de 8 cores"
-    },
-    {
-      "question": "Escopo do CRUD de tags?",
-      "answer": "Criar, atribuir, editar, excluir (sem filtro por tags)"
-    }
-  ]
+	"project": "Jubby",
+	"description": "Plugin Owns Header - Redesign tag management UI to eliminate duplicate headers",
+	"userStories": [
+		{
+			"id": "US-001",
+			"title": "Extend PluginHeader props",
+			"description": "As a developer, I need PluginHeader to accept generic props so plugins can customize it.",
+			"acceptanceCriteria": [
+				"Rename 'pluginName' prop to 'title'",
+				"Rename 'pluginIcon' prop to 'icon' (optional)",
+				"Add 'right' prop (ReactNode) for custom right-side content",
+				"When 'right' is provided, render it instead of empty spacer div",
+				"Typecheck passes"
+			],
+			"priority": 1,
+			"passes": true,
+			"notes": "",
+			"shouldCommit": true
+		},
+		{
+			"id": "US-002",
+			"title": "Add PluginProps type",
+			"description": "As a developer, I need a typed interface for props passed to plugin components.",
+			"acceptanceCriteria": [
+				"Add PluginProps interface to src/core/types.ts",
+				"Interface includes onExitPlugin: () => void",
+				"Export the interface",
+				"Typecheck passes"
+			],
+			"priority": 2,
+			"passes": true,
+			"notes": "",
+			"shouldCommit": true
+		},
+		{
+			"id": "US-003",
+			"title": "Move header rendering to plugins",
+			"description": "As a developer, I want plugins to control their own header so they have full flexibility.",
+			"acceptanceCriteria": [
+				"Remove PluginHeader from App.tsx",
+				"Pass onExitPlugin callback to plugin component",
+				"Plugin component receives PluginProps",
+				"Typecheck passes"
+			],
+			"priority": 3,
+			"passes": false,
+			"notes": "",
+			"shouldCommit": true
+		},
+		{
+			"id": "US-004",
+			"title": "TodoPlugin controls its header",
+			"description": "As a user, I want a single header that changes contextually when managing tags.",
+			"acceptanceCriteria": [
+				"TodoPlugin renders PluginHeader internally",
+				"In list view: title='Todo', icon='✓', back goes to grid",
+				"In tags view: title='Manage Tags', no icon, back goes to list, shows tag count badge on right",
+				"Delete TodoPluginTagManagerHeader component",
+				"Remove header rendering from TodoPluginTagManager",
+				"Only ONE header visible at all times",
+				"Typecheck passes",
+				"Verify in browser: list view shows correct header",
+				"Verify in browser: tags view shows correct header with count badge"
+			],
+			"priority": 4,
+			"passes": false,
+			"notes": "",
+			"shouldCommit": true
+		}
+	]
 }

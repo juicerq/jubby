@@ -27,7 +27,7 @@ function App() {
               onBack={() => setActivePlugin(null)}
             />
             <div className="flex-1 overflow-y-auto">
-              <activePlugin.component />
+              <activePlugin.component onExitPlugin={() => setActivePlugin(null)} />
             </div>
           </>
         ) : (

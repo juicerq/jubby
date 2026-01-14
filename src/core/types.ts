@@ -12,7 +12,11 @@ export interface PluginManifest {
   id: string
   name: string
   icon: string
-  component: ComponentType
+  component: ComponentType<PluginProps>
   version: string
   capabilities?: PluginCapabilities
+}
+
+export interface PluginProps {
+  onExitPlugin: () => void
 }

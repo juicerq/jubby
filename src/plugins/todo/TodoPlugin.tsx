@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, ChevronLeft, Pencil } from 'lucide-react'
-import { usePluginStorage } from '@/core/hooks/usePluginStorage'
+import { Check, X, Tag, Plus, ChevronLeft, Pencil, Minus } from 'lucide-react'
+import { useTodoStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
-import type { Tag as TagType, Todo, TodoStorage } from './types'
+import type { PluginProps } from '@/core/types'
+import type { Tag as TagType, Todo, TodoStatus } from './types'
 
 const TAG_COLORS = [
   { name: 'Red', hex: '#ef4444', contrastText: 'white' },
@@ -17,10 +18,20 @@ const TAG_COLORS = [
 
 type TodoView = 'list' | 'tags'
 
-const defaultStorage: TodoStorage = { todos: [], tags: [] }
+function TodoPlugin(_props: PluginProps) {
+  const {
+    todos,
+    tags,
+    isLoading,
+    createTodo,
+    updateTodoStatus,
+    deleteTodo,
+    setTodoTags,
+    createTag,
+    updateTag,
+    deleteTag,
+  } = useTodoStorage()
 
-function TodoPlugin() {
-  const { data, setData, isLoading } = usePluginStorage<TodoStorage>('todo', defaultStorage)
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [view, setView] = useState<TodoView>('list')
@@ -39,17 +50,7 @@ function TodoPlugin() {
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTodoText.trim()) {
-      const newTodo: Todo = {
-        id: crypto.randomUUID(),
-        text: newTodoText.trim(),
-        completed: false,
-        createdAt: Date.now(),
-        ...(selectedTagIds.length > 0 ? { tagIds: selectedTagIds } : {}),
-      }
-      setData((prev) => ({
-        ...prev,
-        todos: [...prev.todos, newTodo],
-      }))
+      createTodo(newTodoText.trim(), selectedTagIds.length > 0 ? selectedTagIds : undefined)
       setNewTodoText('')
     }
   }
@@ -62,21 +63,27 @@ function TodoPlugin() {
     )
   }
 
+  const getNextStatus = (current: TodoStatus): TodoStatus => {
+    switch (current) {
+      case 'pending':
+        return 'in_progress'
+      case 'in_progress':
+        return 'completed'
+      case 'completed':
+        return 'pending'
+    }
+  }
+
   const handleToggle = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      todos: prev.todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      ),
-    }))
+    const todo = todos.find((t) => t.id === id)
+    if (todo) {
+      updateTodoStatus(id, getNextStatus(todo.status))
+    }
   }
 
   const handleDeleteClick = (id: string) => {
     if (pendingDeleteId === id) {
-      setData((prev) => ({
-        ...prev,
-        todos: prev.todos.filter((todo) => todo.id !== id),
-      }))
+      deleteTodo(id)
       setPendingDeleteId(null)
     } else {
       setPendingDeleteId(id)
@@ -95,7 +102,7 @@ function TodoPlugin() {
     )
   }
 
-  const sortedTodos = [...data.todos].sort((a, b) => b.createdAt - a.createdAt)
+  const sortedTodos = [...todos].sort((a, b) => b.createdAt - a.createdAt)
 
   const filteredTodos = selectedTagIds.length === 0
     ? sortedTodos
@@ -103,89 +110,47 @@ function TodoPlugin() {
         selectedTagIds.every((tagId) => todo.tagIds?.includes(tagId))
       )
 
-  const handleCreateTag = (name: string, color: string) => {
+  const handleCreateTag = async (name: string, color: string) => {
     const trimmedName = name.trim()
     if (!trimmedName) return false
-
-    const tags = data.tags ?? []
-    const isDuplicate = tags.some(
-      (t) => t.name.toLowerCase() === trimmedName.toLowerCase()
-    )
-    if (isDuplicate) return false
-
-    const newTag: TagType = {
-      id: crypto.randomUUID(),
-      name: trimmedName,
-      color,
-    }
-    setData((prev) => ({
-      ...prev,
-      tags: [...(prev.tags ?? []), newTag],
-    }))
-    return true
+    return await createTag(trimmedName, color)
   }
 
-  const handleEditTag = (id: string, name: string, color: string): boolean | string => {
+  const handleEditTag = async (id: string, name: string, color: string): Promise<boolean | string> => {
     const trimmedName = name.trim()
     if (!trimmedName) return 'Name cannot be empty'
 
-    const tags = data.tags ?? []
     const isDuplicate = tags.some(
       (t) => t.name.toLowerCase() === trimmedName.toLowerCase() && t.id !== id
     )
     if (isDuplicate) return 'Tag name already exists'
 
-    setData((prev) => ({
-      ...prev,
-      tags: (prev.tags ?? []).map((tag) =>
-        tag.id === id ? { ...tag, name: trimmedName, color } : tag
-      ),
-    }))
-    return true
+    const success = await updateTag(id, trimmedName, color)
+    return success ? true : 'Failed to update tag'
   }
 
   const handleDeleteTag = (id: string) => {
     setSelectedTagIds((prev) => prev.filter((tagId) => tagId !== id))
-    setData((prev) => ({
-      ...prev,
-      tags: (prev.tags ?? []).filter((tag) => tag.id !== id),
-      todos: (prev.todos ?? []).map((todo) =>
-        todo.tagIds
-          ? { ...todo, tagIds: todo.tagIds.filter((tagId) => tagId !== id) }
-          : todo
-      ),
-    }))
+    deleteTag(id)
   }
 
   const handleToggleTagOnTodo = (todoId: string, tagId: string) => {
-    setData((prev) => ({
-      ...prev,
-      todos: (prev.todos ?? []).map((todo) => {
-        if (todo.id !== todoId) return todo
+    const todo = todos.find((t) => t.id === todoId)
+    if (!todo) return
 
-        const currentTagIds = todo.tagIds ?? []
-        if (currentTagIds.includes(tagId)) {
-          // Remove tag
-          return {
-            ...todo,
-            tagIds: currentTagIds.filter((id) => id !== tagId),
-          }
-        } else {
-          // Add tag
-          return {
-            ...todo,
-            tagIds: [...currentTagIds, tagId],
-          }
-        }
-      }),
-    }))
+    const currentTagIds = todo.tagIds ?? []
+    const newTagIds = currentTagIds.includes(tagId)
+      ? currentTagIds.filter((id) => id !== tagId)
+      : [...currentTagIds, tagId]
+
+    setTodoTags(todoId, newTagIds)
   }
 
   if (view === 'tags') {
     return (
       <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
         <TodoPluginTagManager
-          tags={data.tags ?? []}
+          tags={tags}
           onBack={() => setView('list')}
           onCreateTag={handleCreateTag}
           onEditTag={handleEditTag}
@@ -205,7 +170,7 @@ function TodoPlugin() {
         onChange={setNewTodoText}
         onKeyDown={handleKeyDown}
         onTagsClick={() => setView('tags')}
-        tags={data.tags ?? []}
+        tags={tags}
         selectedTagIds={selectedTagIds}
         onToggleTag={handleToggleTagSelection}
       />
@@ -214,7 +179,7 @@ function TodoPlugin() {
       ) : (
         <TodoPluginList
           todos={filteredTodos}
-          tags={data.tags ?? []}
+          tags={tags}
           onToggle={handleToggle}
           onDeleteClick={handleDeleteClick}
           pendingDeleteId={pendingDeleteId}
@@ -226,8 +191,6 @@ function TodoPlugin() {
     </div>
   )
 }
-
-// Mini-componentes
 
 interface TodoPluginInputAreaProps {
   value: string
@@ -323,7 +286,6 @@ function TodoPluginTagSelector({ tags, selectedTagIds, onToggleTag }: TodoPlugin
   )
 }
 
-// Inline color picker - dot que expande para mini-picker horizontal
 function TodoPluginInlineColorPicker({
   selectedColor,
   onSelect,
@@ -339,7 +301,6 @@ function TodoPluginInlineColorPicker({
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
-      {/* Main color dot */}
       <button
         type="button"
         className={cn(
@@ -352,7 +313,6 @@ function TodoPluginInlineColorPicker({
         aria-expanded={isExpanded}
       />
 
-      {/* Expanded horizontal picker */}
       <div
         className={cn(
           'absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-1',
@@ -394,20 +354,19 @@ function TodoPluginInlineColorPicker({
   )
 }
 
-// Create tag row - integrado como primeiro item da lista
 function TodoPluginCreateTagRow({
   onCreateTag,
 }: {
-  onCreateTag: (name: string, color: string) => boolean
+  onCreateTag: (name: string, color: string) => Promise<boolean>
 }) {
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(TAG_COLORS[0].hex)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) return
 
-    const success = onCreateTag(name.trim(), color)
+    const success = await onCreateTag(name.trim(), color)
     if (success) {
       setName('')
       setColor(TAG_COLORS[0].hex)
@@ -470,7 +429,6 @@ function TodoPluginCreateTagRow({
   )
 }
 
-// Color picker para modal de edição (versão compacta horizontal)
 function TodoPluginColorPicker({
   selectedColor,
   onSelect,
@@ -515,8 +473,8 @@ function TodoPluginColorPicker({
 interface TodoPluginTagManagerProps {
   tags: TagType[]
   onBack: () => void
-  onCreateTag: (name: string, color: string) => boolean
-  onEditTag: (id: string, name: string, color: string) => boolean | string
+  onCreateTag: (name: string, color: string) => Promise<boolean>
+  onEditTag: (id: string, name: string, color: string) => Promise<boolean | string>
   onDeleteTag: (id: string) => void
 }
 
@@ -527,17 +485,13 @@ function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag, onDeleteTa
     <div className="flex h-full flex-col">
       <TodoPluginTagManagerHeader onBack={onBack} tagCount={tags.length} />
 
-      {/* Unified list: create row + existing tags */}
-      <div className="-mx-2 flex flex-1 flex-col gap-2 overflow-y-auto px-2">
-        {/* Create row - always first */}
+      <div className="-mx-2 flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2">
         <TodoPluginCreateTagRow onCreateTag={onCreateTag} />
 
-        {/* Separator when there are tags */}
         {tags.length > 0 && (
           <div className="my-1 border-t border-white/[0.06]" />
         )}
 
-        {/* Tag cards or empty hint */}
         {tags.length === 0 ? (
           <TodoPluginTagManagerEmptyHint />
         ) : (
@@ -549,14 +503,13 @@ function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag, onDeleteTa
         )}
       </div>
 
-      {/* Edit modal */}
       <TodoPluginTagEditModal
         tag={editingTag}
         isOpen={editingTag !== null}
         onClose={() => setEditingTag(null)}
-        onSave={(name, color) => {
+        onSave={async (name, color) => {
           if (!editingTag) return false
-          return onEditTag(editingTag.id, name, color)
+          return await onEditTag(editingTag.id, name, color)
         }}
       />
     </div>
@@ -582,7 +535,6 @@ interface TodoPluginTagManagerListProps {
 function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTagManagerListProps) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
-  // Reset pending delete after timeout
   useEffect(() => {
     if (pendingDeleteId === null) return
 
@@ -603,7 +555,7 @@ function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTa
   }
 
   return (
-    <div className="-mx-2 flex flex-1 flex-col gap-1 overflow-y-auto px-2">
+    <div className="flex flex-col gap-1">
       {tags.map((tag) => (
         <TodoPluginTagCard
           key={tag.id}
@@ -617,7 +569,6 @@ function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTa
   )
 }
 
-// Tag card com barra de cor à esquerda e ações no hover
 interface TodoPluginTagCardProps {
   tag: TagType
   isPendingDelete: boolean
@@ -629,22 +580,20 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-3 rounded-lg',
+        'group relative flex shrink-0 items-center gap-3 rounded-lg overflow-x-hidden',
         'border border-white/[0.04] bg-white/[0.02]',
         'px-3 py-2.5 transition-all duration-150 ease-out',
         'hover:border-white/[0.08] hover:bg-white/[0.04]',
         'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
       )}
     >
-      {/* Color accent bar */}
       <span
         className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full"
         style={{ backgroundColor: tag.color }}
       />
 
-      {/* Tag badge */}
       <span
-        className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-semibold tracking-[-0.01em]"
+        className="inline-flex min-w-0 max-w-[180px] items-center truncate rounded-md px-2.5 py-1 text-[12px] font-semibold tracking-[-0.01em]"
         style={{
           backgroundColor: `${tag.color}20`,
           color: tag.color,
@@ -653,9 +602,7 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
         {tag.name}
       </span>
 
-      {/* Action buttons */}
       <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100">
-        {/* Edit button */}
         <button
           type="button"
           onClick={onEdit}
@@ -665,7 +612,6 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
           <Pencil className="h-3.5 w-3.5" />
         </button>
 
-        {/* Delete button */}
         <button
           type="button"
           onClick={(e) => {
@@ -687,12 +633,11 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
   )
 }
 
-// Modal de edição de tag
 interface TodoPluginTagEditModalProps {
   tag: TagType | null
   isOpen: boolean
   onClose: () => void
-  onSave: (name: string, color: string) => boolean | string
+  onSave: (name: string, color: string) => Promise<boolean | string>
 }
 
 function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagEditModalProps) {
@@ -708,8 +653,8 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
     }
   }, [tag, isOpen])
 
-  const handleSave = () => {
-    const result = onSave(editName, editColor)
+  const handleSave = async () => {
+    const result = await onSave(editName, editColor)
     if (result === true) {
       onClose()
     } else {
@@ -737,7 +682,6 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
         aria-modal="true"
         aria-labelledby="edit-tag-title"
       >
-        {/* Header */}
         <div className="mb-3 flex items-center justify-between">
           <h2 id="edit-tag-title" className="text-[14px] font-medium text-white/90">
             Edit Tag
@@ -752,7 +696,6 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
           </button>
         </div>
 
-        {/* Input */}
         <input
           type="text"
           value={editName}
@@ -762,16 +705,23 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
           }}
           maxLength={20}
           autoFocus
-          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
+          className={cn(
+            'h-10 w-full rounded-[10px] px-3.5 text-[13px] tracking-[-0.01em] outline-none transition-all duration-[180ms] ease-out',
+            editName.trim()
+              ? 'font-semibold'
+              : 'border border-white/10 bg-white/6 font-normal text-white/95 placeholder:text-white/35 focus:border-white/20 focus:bg-white/8'
+          )}
+          style={editName.trim() ? {
+            backgroundColor: `${editColor}20`,
+            color: editColor,
+            boxShadow: `0 0 0 1px ${editColor}30`,
+          } : undefined}
         />
 
-        {/* Color picker */}
         <TodoPluginColorPicker selectedColor={editColor} onSelect={setEditColor} />
 
-        {/* Error */}
         {error && <p className="mt-3 text-[11px] tracking-[-0.01em] text-red-400">{error}</p>}
 
-        {/* Actions */}
         <div className="mt-4 flex gap-2">
           <button
             type="button"
@@ -873,7 +823,6 @@ interface TodoPluginItemProps {
 }
 
 function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, isEditingTags, onEditTags, onCloseTagEditor, onToggleTag }: TodoPluginItemProps) {
-  // Get tags for this todo, filtering out any orphaned IDs
   const todoTags = (todo.tagIds ?? [])
     .map((tagId) => tags.find((t) => t.id === tagId))
     .filter((t): t is TagType => t !== undefined)
@@ -887,23 +836,31 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
     >
       <button
         type="button"
-        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92] ${
-          todo.completed
-            ? 'border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75'
-            : 'border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4'
-        }`}
+        className={cn(
+          'mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]',
+          todo.status === 'completed' && 'border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75',
+          todo.status === 'in_progress' && 'border-amber-500 bg-amber-500/20 hover:border-amber-400 hover:bg-amber-500/30',
+          todo.status === 'pending' && 'border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4'
+        )}
         onClick={() => onToggle(todo.id)}
-        aria-label={todo.completed ? 'Mark as incomplete' : 'Mark as complete'}
+        aria-label={
+          todo.status === 'pending' ? 'Mark as in progress' :
+          todo.status === 'in_progress' ? 'Mark as complete' :
+          'Mark as pending'
+        }
       >
-        <Check className={`h-3 w-3 transition-all duration-150 ease-out ${todo.completed ? 'text-[#0a0a0a]' : 'text-transparent'}`} />
+        {todo.status === 'completed' && <Check className="h-3 w-3 text-[#0a0a0a]" />}
+        {todo.status === 'in_progress' && <Minus className="h-3 w-3 text-amber-500" />}
       </button>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className={`text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out ${
-          todo.completed ? 'text-white/35 line-through decoration-white/25' : 'text-white/90'
-        }`}>{todo.text}</span>
+        <span className={cn(
+          'text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out',
+          todo.status === 'completed' && 'text-white/35 line-through decoration-white/25',
+          todo.status === 'in_progress' && 'text-amber-200/90',
+          todo.status === 'pending' && 'text-white/90'
+        )}>{todo.text}</span>
 
-        {/* Tags area - clickable to edit */}
         {hasTags && (
           <div className="relative">
             <button
@@ -928,7 +885,7 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
                   <TodoPluginTagBadge
                     key={tag.id}
                     tag={tag}
-                    isCompleted={todo.completed}
+                    isCompleted={todo.status === 'completed'}
                   />
                 ))
               ) : (
@@ -936,7 +893,6 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
               )}
             </button>
 
-            {/* Tag editor popover */}
             {isEditingTags && (
               <TodoPluginTagEditorPopover
                 tags={tags}
@@ -996,7 +952,6 @@ function TodoPluginTagEditorPopover({ tags, selectedTagIds, onToggleTag, onClose
       className="absolute left-0 top-full z-10 mt-1 flex w-[280px] flex-col rounded-lg border border-white/10 bg-[#0a0a0a] shadow-lg"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-white/10 px-2.5 py-1.5">
         <span className="text-[11px] font-medium text-white/50">Tags</span>
         <button
@@ -1012,7 +967,6 @@ function TodoPluginTagEditorPopover({ tags, selectedTagIds, onToggleTag, onClose
         </button>
       </div>
 
-      {/* Tags */}
       <div className="grid grid-cols-3 gap-1.5 p-2">
         {tags.map((tag) => {
           const isSelected = selectedTagIds.includes(tag.id)
