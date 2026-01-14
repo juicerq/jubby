@@ -2,11 +2,17 @@ mod storage;
 mod tray;
 mod window;
 
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Backquote);
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
+
+    let shortcut = Shortcut::new(None, Code::F12);
+    eprintln!("[JUBBY] Registrando atalho: F12");
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -15,7 +21,7 @@ pub fn run() {
                 .with_shortcut(shortcut)
                 .expect("failed to register Alt+` shortcut")
                 .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
+                    if event.state == ShortcutState::Released {
                         window::toggle(app);
                     }
                 })
@@ -27,6 +33,7 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::setup_tray(app)?;
+            eprintln!("[JUBBY] Setup completo. F12 deve funcionar agora.");
             Ok(())
         })
         .build(tauri::generate_context!())
