@@ -14,37 +14,48 @@ interface ViewTransitionProps {
  */
 export function ViewTransition({ children, viewKey }: ViewTransitionProps) {
   const [isVisible, setIsVisible] = useState(true)
-  const [currentContent, setCurrentContent] = useState<ReactNode>(children)
-  const [currentKey, setCurrentKey] = useState(viewKey)
-  const isFirstRender = useRef(true)
+  const [displayedChildren, setDisplayedChildren] = useState<ReactNode>(children)
+  const [displayedKey, setDisplayedKey] = useState(viewKey)
+  const isTransitioning = useRef(false)
 
   useEffect(() => {
-    // Skip animation on first render
-    if (isFirstRender.current) {
-      isFirstRender.current = false
+    // Se a key não mudou, apenas atualizar children sem animação
+    if (viewKey === displayedKey) {
+      setDisplayedChildren(children)
       return
     }
 
-    if (viewKey !== currentKey) {
-      // Start exit animation
-      setIsVisible(false)
+    // Evitar transições sobrepostas
+    if (isTransitioning.current) return
+    isTransitioning.current = true
 
-      // After exit animation completes, swap content and enter
-      const exitTimer = setTimeout(() => {
-        setCurrentContent(children)
-        setCurrentKey(viewKey)
-        // Small delay to ensure DOM update before enter animation
-        requestAnimationFrame(() => {
-          setIsVisible(true)
-        })
-      }, 100) // Exit duration (shorter for snappy feel)
+    // Iniciar exit animation
+    setIsVisible(false)
 
-      return () => clearTimeout(exitTimer)
-    } else {
-      // Same view, just update content
-      setCurrentContent(children)
+    const timer = setTimeout(() => {
+      // Trocar conteúdo
+      setDisplayedChildren(children)
+      setDisplayedKey(viewKey)
+
+      // Iniciar enter animation
+      requestAnimationFrame(() => {
+        setIsVisible(true)
+        isTransitioning.current = false
+      })
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      isTransitioning.current = false
     }
-  }, [viewKey, children, currentKey])
+  }, [viewKey]) // APENAS viewKey como dependência
+
+  // Atualizar children quando não está em transição e key é a mesma
+  useEffect(() => {
+    if (!isTransitioning.current && viewKey === displayedKey) {
+      setDisplayedChildren(children)
+    }
+  }, [children, viewKey, displayedKey])
 
   return (
     <div
@@ -54,7 +65,7 @@ export function ViewTransition({ children, viewKey }: ViewTransitionProps) {
           : 'opacity-0 translate-y-1.5 scale-[0.98]'
       }`}
     >
-      {currentContent}
+      {displayedChildren}
     </div>
   )
 }

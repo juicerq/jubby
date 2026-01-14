@@ -14,12 +14,13 @@
       {
         "title": "Jubby",
         "label": "main",
-        "width": 600,
-        "height": 400,
+        "width": 720,
+        "height": 480,
+        "x": 100,
+        "y": 100,
         "decorations": false,
         "resizable": false,
         "visible": false,
-        "skipTaskbar": true,
         "alwaysOnTop": true,
         "transparent": true
       }

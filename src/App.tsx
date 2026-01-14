@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useState } from 'react'
 import { LauncherShell } from '@/core/components/LauncherShell'
 import { useDragWindow } from '@/core/hooks/useDragWindow'
 import { PluginGrid } from '@/core/components/PluginGrid'
@@ -12,17 +11,6 @@ function App() {
   const [activePlugin, setActivePlugin] = useState<PluginManifest | null>(null)
 
   useDragWindow()
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        getCurrentWindow().hide()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
 
   // View key changes when switching between grid and plugin views
   const viewKey = activePlugin ? `plugin:${activePlugin.id}` : 'grid'
