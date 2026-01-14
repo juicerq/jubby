@@ -121,6 +121,7 @@
   html,
   body {
     background: transparent;
+    @apply overflow-x-hidden;
   }
   body {
     @apply text-foreground;

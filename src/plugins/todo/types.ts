@@ -4,15 +4,12 @@ export interface Tag {
   color: string
 }
 
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
 export interface Todo {
   id: string
   text: string
-  completed: boolean
+  status: TodoStatus
   createdAt: number
   tagIds?: string[]
-}
-
-export interface TodoStorage {
-  todos: Todo[]
-  tags: Tag[]
 }

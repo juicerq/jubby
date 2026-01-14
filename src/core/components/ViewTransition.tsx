@@ -7,10 +7,10 @@ interface ViewTransitionProps {
 }
 
 /**
- * ViewTransition wraps content and applies smooth fade + translateY
- * animations when the viewKey changes.
+ * ViewTransition wraps content and applies smooth opacity fade
+ * when the viewKey changes.
  *
- * Animation: 180ms fade-in with subtle upward movement
+ * Animation: 150ms fade transition
  */
 export function ViewTransition({ children, viewKey }: ViewTransitionProps) {
   const [isVisible, setIsVisible] = useState(true)
@@ -59,10 +59,8 @@ export function ViewTransition({ children, viewKey }: ViewTransitionProps) {
 
   return (
     <div
-      className={`flex-1 flex flex-col overflow-hidden transition-[opacity,transform] duration-[180ms] ease-out ${
-        isVisible
-          ? 'opacity-100 translate-y-0 scale-100'
-          : 'opacity-0 translate-y-1.5 scale-[0.98]'
+      className={`flex-1 flex flex-col overflow-hidden transition-opacity duration-150 ease-out ${
+        isVisible ? 'opacity-100' : 'opacity-0'
       }`}
     >
       {displayedChildren}
