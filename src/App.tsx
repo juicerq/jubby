@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { LauncherShell } from '@/core/components/LauncherShell'
 import { useDragWindow } from '@/core/hooks/useDragWindow'
 import { PluginGrid } from '@/core/components/PluginGrid'
-import { PluginHeader } from '@/core/components/PluginHeader'
 import { ViewTransition } from '@/core/components/ViewTransition'
 import { Toaster } from '@/components/ui/sonner'
 import type { PluginManifest } from '@/core/types'
@@ -20,16 +19,7 @@ function App() {
     <LauncherShell>
       <ViewTransition viewKey={viewKey}>
         {activePlugin ? (
-          <>
-            <PluginHeader
-              title={activePlugin.name}
-              icon={activePlugin.icon}
-              onBack={() => setActivePlugin(null)}
-            />
-            <div className="flex-1 overflow-y-auto">
-              <activePlugin.component onExitPlugin={() => setActivePlugin(null)} />
-            </div>
-          </>
+          <activePlugin.component onExitPlugin={() => setActivePlugin(null)} />
         ) : (
           <PluginGrid plugins={plugins} onPluginClick={setActivePlugin} />
         )}
