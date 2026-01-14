@@ -2,7 +2,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{TrayIcon, TrayIconBuilder},
-    App,
+    App, RunEvent, WindowEvent,
 };
 
 use crate::window;
@@ -38,4 +38,23 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
         .build(app)?;
 
     Ok(tray)
+}
+
+pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
+    if let RunEvent::WindowEvent { label, event, .. } = event {
+        if label == "main" {
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    window::hide(app_handle);
+                }
+                WindowEvent::Focused(focused) => {
+                    if !focused {
+                        window::hide_on_blur(app_handle);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
