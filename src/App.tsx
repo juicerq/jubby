@@ -4,6 +4,7 @@ import { useDragWindow } from '@/core/hooks/useDragWindow'
 import { PluginGrid } from '@/core/components/PluginGrid'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import { ViewTransition } from '@/core/components/ViewTransition'
+import { Toaster } from '@/components/ui/sonner'
 import type { PluginManifest } from '@/core/types'
 import { plugins } from '@/plugins/registry'
 
@@ -21,11 +22,11 @@ function App() {
         {activePlugin ? (
           <>
             <PluginHeader
-              pluginName={activePlugin.name}
-              pluginIcon={activePlugin.icon}
+              title={activePlugin.name}
+              icon={activePlugin.icon}
               onBack={() => setActivePlugin(null)}
             />
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-y-auto">
               <activePlugin.component />
             </div>
           </>
@@ -33,6 +34,7 @@ function App() {
           <PluginGrid plugins={plugins} onPluginClick={setActivePlugin} />
         )}
       </ViewTransition>
+      <Toaster />
     </LauncherShell>
   )
 }
