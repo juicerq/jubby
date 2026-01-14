@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, ChevronLeft, Pencil, Minus } from 'lucide-react'
+import { Check, X, Tag, Plus, Pencil, Minus } from 'lucide-react'
 import { useTodoStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
+import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
 import type { Tag as TagType, Todo, TodoStatus } from './types'
 
@@ -18,7 +19,7 @@ const TAG_COLORS = [
 
 type TodoView = 'list' | 'tags'
 
-function TodoPlugin(_props: PluginProps) {
+function TodoPlugin({ onExitPlugin }: PluginProps) {
   const {
     todos,
     tags,
@@ -146,48 +147,65 @@ function TodoPlugin(_props: PluginProps) {
     setTodoTags(todoId, newTagIds)
   }
 
+  // Build the header right content for tags view (tag count badge)
+  const tagCountBadge = view === 'tags' && tags.length > 0 ? (
+    <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
+      {tags.length}
+    </span>
+  ) : undefined
+
+  // Determine header props based on current view
+  const headerProps = view === 'tags'
+    ? { title: 'Manage Tags', onBack: () => setView('list'), right: tagCountBadge }
+    : { title: 'Todo', icon: '✓', onBack: onExitPlugin }
+
   if (view === 'tags') {
     return (
-      <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
-        <TodoPluginTagManager
-          tags={tags}
-          onBack={() => setView('list')}
-          onCreateTag={handleCreateTag}
-          onEditTag={handleEditTag}
-          onDeleteTag={handleDeleteTag}
-        />
+      <div className="flex h-full flex-col overflow-hidden">
+        <PluginHeader {...headerProps} />
+        <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
+          <TodoPluginTagManager
+            tags={tags}
+            onCreateTag={handleCreateTag}
+            onEditTag={handleEditTag}
+            onDeleteTag={handleDeleteTag}
+          />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-hidden p-4" onClick={() => {
-      handleCancelDelete()
-      setEditingTagsTodoId(null)
-    }}>
-      <TodoPluginInputArea
-        value={newTodoText}
-        onChange={setNewTodoText}
-        onKeyDown={handleKeyDown}
-        onTagsClick={() => setView('tags')}
-        tags={tags}
-        selectedTagIds={selectedTagIds}
-        onToggleTag={handleToggleTagSelection}
-      />
-      {filteredTodos.length === 0 ? (
-        <TodoPluginEmptyState hasFilter={selectedTagIds.length > 0} />
-      ) : (
-        <TodoPluginList
-          todos={filteredTodos}
+    <div className="flex h-full flex-col overflow-hidden">
+      <PluginHeader {...headerProps} />
+      <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4" onClick={() => {
+        handleCancelDelete()
+        setEditingTagsTodoId(null)
+      }}>
+        <TodoPluginInputArea
+          value={newTodoText}
+          onChange={setNewTodoText}
+          onKeyDown={handleKeyDown}
+          onTagsClick={() => setView('tags')}
           tags={tags}
-          onToggle={handleToggle}
-          onDeleteClick={handleDeleteClick}
-          pendingDeleteId={pendingDeleteId}
-          editingTagsTodoId={editingTagsTodoId}
-          onEditTags={setEditingTagsTodoId}
-          onToggleTagOnTodo={handleToggleTagOnTodo}
+          selectedTagIds={selectedTagIds}
+          onToggleTag={handleToggleTagSelection}
         />
-      )}
+        {filteredTodos.length === 0 ? (
+          <TodoPluginEmptyState hasFilter={selectedTagIds.length > 0} />
+        ) : (
+          <TodoPluginList
+            todos={filteredTodos}
+            tags={tags}
+            onToggle={handleToggle}
+            onDeleteClick={handleDeleteClick}
+            pendingDeleteId={pendingDeleteId}
+            editingTagsTodoId={editingTagsTodoId}
+            onEditTags={setEditingTagsTodoId}
+            onToggleTagOnTodo={handleToggleTagOnTodo}
+          />
+        )}
+      </div>
     </div>
   )
 }
@@ -472,19 +490,16 @@ function TodoPluginColorPicker({
 
 interface TodoPluginTagManagerProps {
   tags: TagType[]
-  onBack: () => void
   onCreateTag: (name: string, color: string) => Promise<boolean>
   onEditTag: (id: string, name: string, color: string) => Promise<boolean | string>
   onDeleteTag: (id: string) => void
 }
 
-function TodoPluginTagManager({ tags, onBack, onCreateTag, onEditTag, onDeleteTag }: TodoPluginTagManagerProps) {
+function TodoPluginTagManager({ tags, onCreateTag, onEditTag, onDeleteTag }: TodoPluginTagManagerProps) {
   const [editingTag, setEditingTag] = useState<TagType | null>(null)
 
   return (
     <div className="flex h-full flex-col">
-      <TodoPluginTagManagerHeader onBack={onBack} tagCount={tags.length} />
-
       <div className="-mx-2 flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2">
         <TodoPluginCreateTagRow onCreateTag={onCreateTag} />
 
@@ -739,29 +754,6 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
             Save
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function TodoPluginTagManagerHeader({ onBack, tagCount }: { onBack: () => void; tagCount: number }) {
-  return (
-    <div className="mb-4 flex items-center gap-3 border-b border-white/[0.06] pb-3">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92]"
-        aria-label="Back to tasks"
-      >
-        <ChevronLeft className="h-5 w-5" />
-      </button>
-      <div className="flex items-center gap-2">
-        <h2 className="text-[14px] font-medium tracking-[-0.01em] text-white/90">Manage Tags</h2>
-        {tagCount > 0 && (
-          <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
-            {tagCount}
-          </span>
-        )}
       </div>
     </div>
   )

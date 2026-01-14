@@ -4,6 +4,7 @@
 - Core components are in `src/core/components/`
 - PluginProps interface contains `onExitPlugin: () => void` callback for plugins to navigate back to grid
 - PluginManifest.component is typed as `ComponentType<PluginProps>` - all plugins must accept PluginProps
+- **Plugins render their own headers** - App.tsx does not render PluginHeader; each plugin is responsible for rendering PluginHeader internally
 
 ---
 
@@ -37,5 +38,37 @@
   - All plugin components must now accept `PluginProps` as their props type
   - The `onExitPlugin` callback is passed by App.tsx and can be used by plugins to navigate back to the grid
   - This prepares the codebase for US-003 where plugins will render their own headers
+
+---
+
+## 2026-01-14 - US-003
+- What was implemented: Moved header rendering responsibility to plugins
+  - Removed PluginHeader import and rendering from App.tsx
+  - Plugin component now renders directly without wrapping div
+  - Plugins now have full control over their header and container layout
+- Files changed:
+  - `src/App.tsx`
+- **Learnings for future iterations:**
+  - App.tsx no longer renders PluginHeader - each plugin is responsible for its own header
+  - Plugins receive full container control and must handle their own layout including headers
+  - The `onExitPlugin` callback should be passed to PluginHeader's `onBack` prop
+
+---
+
+## 2026-01-14 - US-004
+- What was implemented: TodoPlugin now controls its own header with contextual behavior
+  - TodoPlugin renders PluginHeader at the top level
+  - List view: title='Todo', icon='✓', back button exits to grid
+  - Tags view: title='Manage Tags', no icon, back button returns to list, shows tag count badge on right
+  - Deleted `TodoPluginTagManagerHeader` component (duplicate header)
+  - Removed `onBack` prop from `TodoPluginTagManager` (no longer needed)
+  - Only ONE header visible at all times regardless of view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - Contextual headers can be implemented by computing header props based on view state
+  - Use `PluginHeader`'s `right` prop for view-specific badges/actions
+  - Keep header rendering at the top level of the plugin component for consistency
+  - Wrap content in a flex column container with `overflow-hidden` when using PluginHeader
 
 ---

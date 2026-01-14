@@ -44,7 +44,7 @@
 				"Typecheck passes"
 			],
 			"priority": 3,
-			"passes": false,
+			"passes": true,
 			"notes": "",
 			"shouldCommit": true
 		},
@@ -64,7 +64,7 @@
 				"Verify in browser: tags view shows correct header with count badge"
 			],
 			"priority": 4,
-			"passes": false,
+			"passes": true,
 			"notes": "",
 			"shouldCommit": true
 		}
