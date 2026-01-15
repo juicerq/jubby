@@ -29,7 +29,7 @@ export function useEnhancer(): UseEnhancerReturn {
         await navigator.clipboard.writeText(enhanced)
         toast.success('Copiado!')
       } catch {
-        toast.success('Prompt melhorado!')
+        // Silently fail if clipboard is unavailable
       }
     } catch (err) {
       const errorMessage = String(err)

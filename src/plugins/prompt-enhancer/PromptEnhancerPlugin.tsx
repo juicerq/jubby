@@ -1,21 +1,22 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import { useRef, useEffect, type KeyboardEvent } from 'react'
 import { Sparkles } from 'lucide-react'
 import { useEnhancer } from './useEnhancer'
+import { useTextHistory } from './useTextHistory'
 import { WaveAnimation } from './WaveAnimation'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
 
 function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
-  const [text, setText] = useState('')
+  const { text, setText, handleKeyDown: historyKeyDown, pushState } = useTextHistory('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { enhance, result, isLoading, reset } = useEnhancer()
 
   useEffect(() => {
     if (result) {
-      setText(result)
-      reset() // Clear result after consumption to prevent staleness
+      pushState(result) // Push com history para permitir undo
+      reset()
     }
-  }, [result, reset])
+  }, [result, reset, pushState])
 
   useEffect(() => {
     if (!isLoading && textareaRef.current) {
@@ -30,14 +31,17 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+Z / Ctrl+Y handled by history hook
+    if (historyKeyDown(e)) return
+
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault()
       handleEnhance()
     }
 
-    if (e.ctrlKey && e.key === 'Backspace') {
+    if (e.ctrlKey && e.key === 'c' && text.trim()) {
       e.preventDefault()
-      setText('')
+      pushState('')
       reset()
     }
   }
@@ -131,7 +135,7 @@ function PromptEnhancerHints() {
       <span>
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">Ctrl</kbd>
         {' + '}
-        <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">⌫</kbd>
+        <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">C</kbd>
         {' clear'}
       </span>
     </div>
