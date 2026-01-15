@@ -13,7 +13,7 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
 
   useEffect(() => {
     if (result) {
-      pushState(result) // Push com history para permitir undo
+      pushState(result)
       reset()
     }
   }, [result, reset, pushState])
@@ -31,7 +31,6 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Ctrl+Z / Ctrl+Y handled by history hook
     if (historyKeyDown(e)) return
 
     if (e.ctrlKey && e.key === 'Enter') {
@@ -39,7 +38,7 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
       handleEnhance()
     }
 
-    if (e.ctrlKey && e.key === 'c' && text.trim()) {
+    if (e.ctrlKey && e.key === 'Backspace' && text.trim()) {
       e.preventDefault()
       pushState('')
       reset()
@@ -135,7 +134,7 @@ function PromptEnhancerHints() {
       <span>
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">Ctrl</kbd>
         {' + '}
-        <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">C</kbd>
+        <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">⌫</kbd>
         {' clear'}
       </span>
     </div>

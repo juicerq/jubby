@@ -6,8 +6,8 @@ const DEBOUNCE_MS = 300
 interface UseTextHistoryReturn {
   text: string
   setText: (value: string) => void
-  handleKeyDown: (e: React.KeyboardEvent) => boolean // returns true if handled
-  pushState: (value: string) => void // força push imediato (ex: após enhance)
+  handleKeyDown: (e: React.KeyboardEvent) => boolean
+  pushState: (value: string) => void
 }
 
 export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
@@ -20,14 +20,11 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
     const history = historyRef.current
     const currentIndex = indexRef.current
 
-    // Se valor igual ao atual, ignora
     if (history[currentIndex] === value) return
 
-    // Remove estados "redo" se usuário digitou algo novo
     const newHistory = history.slice(0, currentIndex + 1)
     newHistory.push(value)
 
-    // Limita tamanho
     if (newHistory.length > MAX_HISTORY) {
       newHistory.shift()
     } else {
@@ -40,7 +37,6 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
   const setText = useCallback((value: string) => {
     setTextInternal(value)
 
-    // Debounce para não salvar cada keystroke
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
     }
@@ -50,7 +46,6 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
   }, [pushToHistory])
 
   const pushState = useCallback((value: string) => {
-    // Push imediato, sem debounce (para após enhance)
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
       debounceRef.current = null
@@ -60,7 +55,6 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
   }, [pushToHistory])
 
   const undo = useCallback(() => {
-    // Salva estado atual antes de undo se houver debounce pendente
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
       debounceRef.current = null
@@ -69,27 +63,24 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
 
     if (indexRef.current > 0) {
       indexRef.current--
-      const previousValue = historyRef.current[indexRef.current]
-      setTextInternal(previousValue)
+      setTextInternal(historyRef.current[indexRef.current])
     }
   }, [text, pushToHistory])
 
   const redo = useCallback(() => {
-    const history = historyRef.current
-    if (indexRef.current < history.length - 1) {
+    if (indexRef.current < historyRef.current.length - 1) {
       indexRef.current++
-      const nextValue = history[indexRef.current]
-      setTextInternal(nextValue)
+      setTextInternal(historyRef.current[indexRef.current])
     }
   }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent): boolean => {
-    if (e.ctrlKey && e.key === 'z') {
+    if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
       e.preventDefault()
       undo()
       return true
     }
-    if (e.ctrlKey && e.key === 'y') {
+    if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
       e.preventDefault()
       redo()
       return true
@@ -97,7 +88,6 @@ export function useTextHistory(initialValue = ''): UseTextHistoryReturn {
     return false
   }, [undo, redo])
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) {

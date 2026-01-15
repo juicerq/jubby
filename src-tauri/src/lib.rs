@@ -10,7 +10,13 @@ use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
-        std::env::set_var("GDK_BACKEND", "x11");
+        // Só força X11 se XWayland estiver disponível
+        // Em sistemas Wayland puro sem XWayland, usa o backend padrão
+        if std::path::Path::new("/usr/bin/Xwayland").exists()
+            || std::env::var("DISPLAY").is_ok()
+        {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
     }
 
     let shortcut = Shortcut::new(None, Code::F9);

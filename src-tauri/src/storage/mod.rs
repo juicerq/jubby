@@ -9,9 +9,15 @@ use tauri::App;
 /// Database wrapper with thread-safe connection
 pub struct Database(pub Mutex<Connection>);
 
-/// Get the storage directory path (~/.local/share/jubby/)
+/// Get the storage directory path following XDG Base Directory Specification
 fn get_storage_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    // Prioridade: XDG_DATA_HOME > ~/.local/share (fallback padrão XDG)
+    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        return PathBuf::from(xdg_data).join("jubby");
+    }
+
+    // Fallback: ~/.local/share/jubby (padrão XDG quando XDG_DATA_HOME não está definido)
+    let home = std::env::var("HOME").expect("HOME environment variable must be set");
     PathBuf::from(home)
         .join(".local")
         .join("share")
