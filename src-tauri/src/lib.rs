@@ -10,6 +10,11 @@ use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
+        // Workaround para erro "Failed to create GBM buffer" em NVIDIA + Wayland
+        // Força path de renderização compatível no WebKitGTK
+        // https://github.com/tauri-apps/tauri/issues/13493
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+
         // Só força X11 se XWayland estiver disponível
         // Em sistemas Wayland puro sem XWayland, usa o backend padrão
         if std::path::Path::new("/usr/bin/Xwayland").exists()
