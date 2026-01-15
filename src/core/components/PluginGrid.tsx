@@ -21,7 +21,7 @@ export function PluginGrid({ plugins, onPluginClick }: PluginGridProps) {
       plugin.name.toLowerCase().includes(query) ||
       plugin.id.toLowerCase().includes(query)
     )
-  }, [searchQuery])
+  }, [plugins, searchQuery])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -176,6 +176,7 @@ interface PluginGridCardProps {
 }
 
 function PluginGridCard({ plugin, isSelected, onClick }: PluginGridCardProps) {
+  const Icon = plugin.icon
   return (
     <button
       type="button"
@@ -192,13 +193,11 @@ function PluginGridCard({ plugin, isSelected, onClick }: PluginGridCardProps) {
         active:scale-95
         focus:outline-none
         before:content-[''] before:absolute before:inset-0 before:rounded-lg before:bg-transparent before:transition-all before:duration-150
-        hover:before:bg-white/[0.06]
-        ${isSelected ? 'before:bg-white/[0.08] before:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] hover:before:bg-white/10' : ''}
+        hover:before:bg-white/8
+        ${isSelected ? 'before:bg-white/8 before:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] hover:before:bg-white/10' : ''}
       `}
     >
-      <span className="relative z-10 text-[32px] leading-none mb-1.5">
-        {plugin.icon}
-      </span>
+      <Icon className="relative z-10 w-8 h-8 text-white/80 mb-1.5" />
       <span className="relative z-10 text-[10px] font-medium text-white/60 truncate max-w-[72px] text-center leading-tight transition-colors duration-150 group-hover:text-white/80">
         {plugin.name}
       </span>

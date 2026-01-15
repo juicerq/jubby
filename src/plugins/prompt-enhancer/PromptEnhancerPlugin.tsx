@@ -45,7 +45,7 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <PluginHeader title="Prompt Enhancer" icon="✨" onBack={onExitPlugin} />
+      <PluginHeader title="Prompt Enhancer" icon={Sparkles} onBack={onExitPlugin} />
 
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
         {isLoading ? (

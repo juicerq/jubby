@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 export type WindowType = 'popover' | 'overlay' | 'window'
 
@@ -11,7 +12,7 @@ export interface PluginCapabilities {
 export interface PluginManifest {
   id: string
   name: string
-  icon: string
+  icon: LucideIcon
   component: ComponentType<PluginProps>
   version: string
   capabilities?: PluginCapabilities

@@ -156,8 +156,8 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
   // Determine header props based on current view
   const headerProps = view === 'tags'
-    ? { title: 'Manage Tags', onBack: () => setView('list'), right: tagCountBadge }
-    : { title: 'Todo', icon: '✓', onBack: onExitPlugin }
+    ? { title: 'Manage Tags', icon: Tag, onBack: () => setView('list'), right: tagCountBadge }
+    : { title: 'Todo', icon: Check, onBack: onExitPlugin }
 
   if (view === 'tags') {
     return (

@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 interface PluginHeaderProps {
   title: string
-  icon?: string
+  icon: LucideIcon
   right?: ReactNode
   onBack: () => void
 }
 
-export function PluginHeader({ title, icon, right, onBack }: PluginHeaderProps) {
+export function PluginHeader({ title, icon: Icon, right, onBack }: PluginHeaderProps) {
   return (
     <header className="flex items-center justify-between h-12 px-3 border-b border-white/8 shrink-0">
       <button
@@ -21,9 +22,7 @@ export function PluginHeader({ title, icon, right, onBack }: PluginHeaderProps) 
       </button>
 
       <div className="flex items-center gap-2">
-        {icon && (
-          <span className="text-lg leading-none">{icon}</span>
-        )}
+        <Icon className="w-[18px] h-[18px] text-white/80" />
         <h1 className="text-[13px] font-medium text-white/90 tracking-tight">{title}</h1>
       </div>
 
