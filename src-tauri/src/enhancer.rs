@@ -1,61 +1,67 @@
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
-const ENHANCE_INSTRUCTION: &str = r#"You are a prompt enhancement assistant. Your task is to take messy, poorly structured prompts and transform them into clear, well-organized prompts that will get better results from AI assistants.
+const ENHANCE_INSTRUCTION: &str = r##"Transform the user's messy prompt into a clear, well-structured prompt.
 
 Rules:
-1. Preserve the original intent and all important details
-2. Add clear structure with sections if needed
-3. Clarify ambiguous requirements
-4. Remove redundancy
-5. Use professional, clear language
-6. Output ONLY the improved prompt, no explanations
+- Preserve original intent and details
+- Add structure with sections if needed
+- Clarify ambiguous requirements
+- Remove redundancy
+- Use clear, professional language
 
-Transform the following prompt:"#;
+NEVER ASK QUESTIONS. NEVER request clarification. NEVER ask for more information.
+If the prompt is ambiguous, make reasonable assumptions and proceed.
+Your job is to IMPROVE the prompt, not interrogate the user.
+
+CRITICAL: Output ONLY the improved prompt text. No introductions, no explanations, no "Here is...", no commentary, no headers, no "Key improvements" section, no questions, no bullet points asking for clarification. Just the raw improved prompt and nothing else."##;
 
 /// Execute Claude CLI to enhance a prompt
 #[tauri::command]
-pub fn enhance_prompt(text: String) -> Result<String, String> {
+pub async fn enhance_prompt(text: String) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("Text cannot be empty".to_string());
     }
 
-    // Use shell-words to properly escape the text for shell
-    let escaped_text = shell_escape(&text);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut child = Command::new("claude")
+            .args(["--model", "haiku", "-p", ENHANCE_INSTRUCTION])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to execute Claude CLI: {}", e))?;
 
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "echo {} | claude -p '{}'",
-            escaped_text, ENHANCE_INSTRUCTION
-        ))
-        .output()
-        .map_err(|e| format!("Failed to execute Claude CLI: {}", e))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| format!("Failed to write to Claude CLI stdin: {}", e))?;
+        }
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "Claude CLI failed: {}",
-            if stderr.is_empty() {
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to execute Claude CLI: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let err_msg = if stderr.is_empty() {
                 "Unknown error"
             } else {
                 stderr.trim()
-            }
-        ));
-    }
+            };
+            return Err(format!("Claude CLI failed: {}", err_msg));
+        }
 
-    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    if result.is_empty() {
-        return Err("Claude CLI returned empty response".to_string());
-    }
+        if result.is_empty() {
+            return Err("Claude CLI returned empty response".to_string());
+        }
 
-    Ok(result)
-}
+        Ok(result)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?;
 
-/// Escape a string for safe use in shell commands
-fn shell_escape(s: &str) -> String {
-    // Use single quotes and escape any single quotes within
-    // Single quotes prevent all shell interpretation except for single quotes themselves
-    let escaped = s.replace('\'', "'\\''");
-    format!("'{}'", escaped)
+    result
 }

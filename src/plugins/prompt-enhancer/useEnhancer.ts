@@ -24,8 +24,13 @@ export function useEnhancer(): UseEnhancerReturn {
       const enhanced = await invoke<string>('enhance_prompt', { text })
       setResult(enhanced)
 
-      await navigator.clipboard.writeText(enhanced)
-      toast.success('Copiado!')
+      // Clipboard is best-effort, don't fail enhancement
+      try {
+        await navigator.clipboard.writeText(enhanced)
+        toast.success('Copiado!')
+      } catch {
+        toast.success('Prompt melhorado!')
+      }
     } catch (err) {
       const errorMessage = String(err)
       setError(errorMessage)

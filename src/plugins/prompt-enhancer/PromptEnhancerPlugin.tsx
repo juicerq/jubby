@@ -13,8 +13,9 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
   useEffect(() => {
     if (result) {
       setText(result)
+      reset() // Clear result after consumption to prevent staleness
     }
-  }, [result])
+  }, [result, reset])
 
   useEffect(() => {
     if (!isLoading && textareaRef.current) {
@@ -67,9 +68,8 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
 
 function PromptEnhancerLoading() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4">
-      <WaveAnimation />
-      <p className="text-[12px] text-white/40">Melhorando seu prompt...</p>
+    <div className="relative flex-1 overflow-hidden">
+      <WaveAnimation className="absolute inset-0" />
     </div>
   )
 }
@@ -97,7 +97,7 @@ const PromptEnhancerInput = ({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Cole ou escreva seu prompt bagunçado aqui..."
+        placeholder="Paste or write your messy prompt here..."
         autoFocus
         className="flex-1 resize-none rounded-[10px] border border-transparent bg-white/4 px-3.5 py-3 text-[13px] font-normal leading-relaxed tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       />
@@ -126,13 +126,13 @@ function PromptEnhancerHints() {
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">Ctrl</kbd>
         {' + '}
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>
-        {' enviar'}
+        {' send'}
       </span>
       <span>
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">Ctrl</kbd>
         {' + '}
         <kbd className="rounded bg-white/8 px-1.5 py-0.5 font-mono text-[10px]">⌫</kbd>
-        {' limpar'}
+        {' clear'}
       </span>
     </div>
   )
