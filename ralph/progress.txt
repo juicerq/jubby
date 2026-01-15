@@ -21,3 +21,18 @@
   - Shell escaping with single quotes is safer than double quotes (no variable expansion)
   - The `ENHANCE_INSTRUCTION` constant contains the system prompt for the CLI
 ---
+
+## 2026-01-14 - US-002
+- What was implemented:
+  - Created `src/plugins/prompt-enhancer/useEnhancer.ts` hook
+  - Hook exposes: enhance(text), result, isLoading, error, reset()
+  - Calls invoke('enhance_prompt', { text }) from Tauri
+  - Automatically copies result to clipboard via navigator.clipboard.writeText()
+  - Shows toast notification "Copiado!" on success, "Falha ao melhorar prompt" on error
+- Files changed:
+  - `src/plugins/prompt-enhancer/useEnhancer.ts` (new)
+- **Learnings for future iterations:**
+  - Plugin hooks follow same pattern as useTodoStorage - useState + useCallback
+  - toast from 'sonner' is available for user feedback
+  - invoke from '@tauri-apps/api/core' is the standard way to call Tauri commands
+---
