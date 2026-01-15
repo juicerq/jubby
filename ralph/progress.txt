@@ -36,3 +36,38 @@
   - toast from 'sonner' is available for user feedback
   - invoke from '@tauri-apps/api/core' is the standard way to call Tauri commands
 ---
+
+## 2026-01-14 - US-003
+- What was implemented:
+  - Created `src/plugins/prompt-enhancer/WaveAnimation.tsx` component
+  - Multiple overlapping SVG wave paths with different frequencies and amplitudes
+  - CSS @keyframes animations: wave-flow (horizontal movement), wave-pulse (opacity breathing), gradient-shift (subtle color changes)
+  - Ethereal aesthetic with white/blue gradient and gaussian blur filter
+  - Centered in container, works with dark theme
+- Files changed:
+  - `src/plugins/prompt-enhancer/WaveAnimation.tsx` (new)
+- **Learnings for future iterations:**
+  - SVG animations can use inline `<style>` tags within the component for self-contained animations
+  - CSS custom properties (--wave-opacity) can be set inline and used in keyframes
+  - useMemo for static wave configuration prevents re-renders
+  - WavePath is a mini-component following the codebase pattern (defined after main component)
+---
+
+## 2026-01-14 - US-004
+- What was implemented:
+  - Created `src/plugins/prompt-enhancer/PromptEnhancerPlugin.tsx` main component
+  - Textarea for writing/pasting messy prompts
+  - Enhance button with Sparkles icon from lucide-react
+  - Ctrl+Enter shortcut to trigger enhancement
+  - Ctrl+Backspace shortcut to clear all text
+  - During processing: textarea hides, WaveAnimation shows centered with "Melhorando seu prompt..." text
+  - On completion: textarea returns with the enhanced result
+  - Toast "Copiado!" handled by useEnhancer hook
+  - Mini-components: PromptEnhancerLoading, PromptEnhancerInput, PromptEnhancerHints
+- Files changed:
+  - `src/plugins/prompt-enhancer/PromptEnhancerPlugin.tsx` (new)
+- **Learnings for future iterations:**
+  - Use PluginHeader component with title, icon, and onBack prop
+  - Keyboard hint display with <kbd> tags styled with Tailwind
+  - forwardRef pattern not needed - can pass ref directly via props with RefObject type
+---

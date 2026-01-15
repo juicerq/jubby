@@ -47,7 +47,7 @@
 				"bun tsc --noEmit passa sem erros"
 			],
 			"priority": 3,
-			"passes": false,
+			"passes": true,
 			"notes": "Invocar skill frontend-design para design criativo da animação",
 			"shouldCommit": true
 		},
@@ -66,7 +66,7 @@
 				"bun tsc --noEmit passa sem erros"
 			],
 			"priority": 4,
-			"passes": false,
+			"passes": true,
 			"notes": "",
 			"shouldCommit": true
 		},
