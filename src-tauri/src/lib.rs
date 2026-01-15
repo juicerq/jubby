@@ -1,3 +1,4 @@
+mod enhancer;
 mod storage;
 mod tray;
 mod window;
@@ -37,6 +38,7 @@ pub fn run() {
             storage::todo::tag_create,
             storage::todo::tag_update,
             storage::todo::tag_delete,
+            enhancer::enhance_prompt,
         ])
         .setup(|app| {
             // Initialize database

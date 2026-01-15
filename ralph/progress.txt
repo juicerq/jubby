@@ -1,74 +1,23 @@
 ## Codebase Patterns
-- PluginHeader accepts `title`, `icon` (optional), `right` (ReactNode), and `onBack` props
-- Plugin components are defined in `src/plugins/[name]/[Name]Plugin.tsx`
-- Core components are in `src/core/components/`
-- PluginProps interface contains `onExitPlugin: () => void` callback for plugins to navigate back to grid
-- PluginManifest.component is typed as `ComponentType<PluginProps>` - all plugins must accept PluginProps
-- **Plugins render their own headers** - App.tsx does not render PluginHeader; each plugin is responsible for rendering PluginHeader internally
+- Tauri commands are organized in separate modules (e.g., `storage/todo.rs`, `enhancer.rs`)
+- Commands return `Result<T, String>` for error handling
+- Module must be declared in `lib.rs` and command added to `invoke_handler`
+- Use `shell_escape` pattern (single quotes with escaped inner quotes) for shell command arguments
 
 ---
 
 ## 2026-01-14 - US-001
-- What was implemented: Extended PluginHeader props to be more generic
-  - Renamed `pluginName` to `title`
-  - Renamed `pluginIcon` to `icon` (optional)
-  - Added `right` prop (ReactNode) for custom right-side content
-  - Updated App.tsx to use new prop names
+- What was implemented:
+  - Created `src-tauri/src/enhancer.rs` with `enhance_prompt` Tauri command
+  - Command executes Claude CLI via `echo 'text' | claude -p 'instruction'`
+  - Proper shell escaping using single-quote wrapping with escaped inner quotes
+  - Error handling for empty input, CLI execution failures, and empty responses
+  - Registered module and command in `lib.rs`
 - Files changed:
-  - `src/core/components/PluginHeader.tsx`
-  - `src/App.tsx`
+  - `src-tauri/src/enhancer.rs` (new)
+  - `src-tauri/src/lib.rs` (modified - added module and command)
 - **Learnings for future iterations:**
-  - PluginHeader now supports custom right-side content via `right` prop
-  - When `right` is provided, it replaces the empty spacer div that balances the back button
-  - This enables plugins to add contextual UI like badges or action buttons to the header
-
----
-
-## 2026-01-14 - US-002
-- What was implemented: Added PluginProps interface for typed plugin component props
-  - Created `PluginProps` interface with `onExitPlugin: () => void` callback
-  - Updated `PluginManifest.component` type to `ComponentType<PluginProps>`
-  - Updated `App.tsx` to pass `onExitPlugin` callback to plugin components
-  - Updated `TodoPlugin` to accept `PluginProps` (using underscore prefix for unused param for now)
-- Files changed:
-  - `src/core/types.ts`
-  - `src/App.tsx`
-  - `src/plugins/todo/TodoPlugin.tsx`
-- **Learnings for future iterations:**
-  - All plugin components must now accept `PluginProps` as their props type
-  - The `onExitPlugin` callback is passed by App.tsx and can be used by plugins to navigate back to the grid
-  - This prepares the codebase for US-003 where plugins will render their own headers
-
----
-
-## 2026-01-14 - US-003
-- What was implemented: Moved header rendering responsibility to plugins
-  - Removed PluginHeader import and rendering from App.tsx
-  - Plugin component now renders directly without wrapping div
-  - Plugins now have full control over their header and container layout
-- Files changed:
-  - `src/App.tsx`
-- **Learnings for future iterations:**
-  - App.tsx no longer renders PluginHeader - each plugin is responsible for its own header
-  - Plugins receive full container control and must handle their own layout including headers
-  - The `onExitPlugin` callback should be passed to PluginHeader's `onBack` prop
-
----
-
-## 2026-01-14 - US-004
-- What was implemented: TodoPlugin now controls its own header with contextual behavior
-  - TodoPlugin renders PluginHeader at the top level
-  - List view: title='Todo', icon='✓', back button exits to grid
-  - Tags view: title='Manage Tags', no icon, back button returns to list, shows tag count badge on right
-  - Deleted `TodoPluginTagManagerHeader` component (duplicate header)
-  - Removed `onBack` prop from `TodoPluginTagManager` (no longer needed)
-  - Only ONE header visible at all times regardless of view
-- Files changed:
-  - `src/plugins/todo/TodoPlugin.tsx`
-- **Learnings for future iterations:**
-  - Contextual headers can be implemented by computing header props based on view state
-  - Use `PluginHeader`'s `right` prop for view-specific badges/actions
-  - Keep header rendering at the top level of the plugin component for consistency
-  - Wrap content in a flex column container with `overflow-hidden` when using PluginHeader
-
+  - Commands don't need State if they don't access database
+  - Shell escaping with single quotes is safer than double quotes (no variable expansion)
+  - The `ENHANCE_INSTRUCTION` constant contains the system prompt for the CLI
 ---
