@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "jubby"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "rusqlite",
  "serde",
@@ -1867,6 +1867,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
+ "tokio",
  "uuid",
 ]
 

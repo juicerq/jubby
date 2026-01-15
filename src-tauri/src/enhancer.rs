@@ -1,5 +1,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::time::Duration;
+use tokio::time::timeout;
 
 const ENHANCE_INSTRUCTION: &str = r##"Transform the user's messy prompt into a clear, well-structured prompt.
 
@@ -23,7 +25,9 @@ pub async fn enhance_prompt(text: String) -> Result<String, String> {
         return Err("Text cannot be empty".to_string());
     }
 
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    const TIMEOUT_SECS: u64 = 120; // 2 minutes
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
         let mut child = Command::new("claude")
             .args(["--model", "haiku", "-p", ENHANCE_INSTRUCTION])
             .stdin(Stdio::piped())
@@ -59,9 +63,12 @@ pub async fn enhance_prompt(text: String) -> Result<String, String> {
         }
 
         Ok(result)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?;
+    });
+
+    let result = timeout(Duration::from_secs(TIMEOUT_SECS), task)
+        .await
+        .map_err(|_| format!("Claude CLI timeout after {} seconds", TIMEOUT_SECS))?
+        .map_err(|e| format!("Task failed: {}", e))?;
 
     result
 }

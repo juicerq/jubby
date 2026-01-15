@@ -8,15 +8,12 @@ use tauri::{
 use crate::window;
 
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
-    // Use the default window icon from tauri.conf.json bundle
+    // Use the default window icon from tauri.conf.json bundle, fallback to embedded
     let icon = app
         .default_window_icon()
         .cloned()
-        .unwrap_or_else(|| {
-            // Fallback: load embedded PNG icon
-            Image::from_bytes(include_bytes!("../icons/32x32.png"))
-                .expect("Failed to load embedded icon")
-        });
+        .or_else(|| Image::from_bytes(include_bytes!("../icons/32x32.png")).ok())
+        .ok_or("Failed to load tray icon: no default icon and embedded icon failed")?;
 
     // Create context menu (required for icon to appear on Linux/KDE)
     let show_item = MenuItem::with_id(app, "show", "Focar Jubby", true, None::<&str>)?;

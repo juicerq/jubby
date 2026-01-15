@@ -145,9 +145,40 @@ export { MyComponent }
 - **NUNCA usar CSS puro - sempre preferir Tailwind**
 
 ### Rust
-- Código mínimo - apenas o necessário para Tauri
+
+**Tratamento de Erros**
+- NUNCA usar `panic!` ou `unwrap()` em código de produção
+- Usar `thiserror` para tipos de erro customizados
+- Propagar erros com `?` e contexto adequado
+- `expect()` apenas em invariantes impossíveis (documentar o porquê)
+
+**Tipos**
+- Preferir enums a strings para estados (status, labels)
+- Usar newtypes para IDs: `struct TodoId(String)`
+- Validar dados na fronteira (deserialização)
+
+**Database**
+- Sempre usar transações para operações múltiplas
+- Evitar N+1 queries - usar JOINs
+- Queries parametrizadas (nunca concatenar strings)
+
+**Logging**
+- Usar `tracing` crate (não `eprintln!`)
+- Níveis: error/warn/info/debug/trace
+- Incluir contexto estruturado
+
+**Async**
+- Timeout em operações externas (2min default para CLI, 30s para APIs)
+- Não bloquear runtime sem `spawn_blocking`
+
+**Naming**
+- Constants para strings hardcoded
+- snake_case para funções/variáveis
+- PascalCase para tipos/traits
+
+**Organização**
 - Comandos IPC em `commands.rs`
-- Storage em `storage.rs`
+- Storage em `storage/`
 - Erros tratados e retornados como Result
 
 ## Filosofia de Código

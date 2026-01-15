@@ -27,7 +27,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut(shortcut)
-                .expect("failed to register Alt+` shortcut")
+                .expect("failed to register shortcut")
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Released {
                         window::toggle(app);
@@ -56,8 +56,20 @@ pub fn run() {
             eprintln!("[JUBBY] Setup completo. F9 deve funcionar agora.");
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!());
+
+    let app = match app {
+        Ok(app) => app,
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("already registered") {
+                eprintln!("[JUBBY] Jubby já está em execução. Encerrando...");
+                std::process::exit(0);
+            }
+            eprintln!("[JUBBY] Erro ao iniciar: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     app.run(tray::handle_run_event);
 }
