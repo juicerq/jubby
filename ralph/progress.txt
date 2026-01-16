@@ -1,154 +1,264 @@
-## 2026-01-16 - Task 1: Architecture - Criar modelo de dados AppSettings
-- What was implemented:
-  - Added `AppSettings` interface to `src/core/types.ts`
-  - Added `DEFAULT_SETTINGS` constant with `globalShortcut: 'F9'`
-  - Created `src-tauri/src/settings.rs` with `AppSettings` struct and `Default` trait
-  - Registered settings module in `lib.rs`
-- Files changed:
-  - `src/core/types.ts` - Added AppSettings interface and DEFAULT_SETTINGS
-  - `src-tauri/src/settings.rs` - New file with Rust AppSettings struct
-  - `src-tauri/src/lib.rs` - Added settings module declaration
-- **Learnings for future iterations:**
-  - The codebase uses `camelCase` for JSON serialization in Rust (via serde rename_all)
-  - Storage uses SQLite via rusqlite, not JSON files as originally documented
-  - The storage module has a `get_storage_dir()` function that can be reused for settings
+# Todo Folders System - Progress Log
 
-## 2026-01-16 - Task 2: Backend - Implementar persistência de settings no Rust
-- What was implemented:
-  - Added `SettingsError` enum using thiserror for proper error handling
-  - Implemented `load_settings()` that reads from `~/.local/share/jubby/settings.json`
-  - Implemented `save_settings()` that writes to the same file with pretty JSON
-  - Uses `AppSettings::default()` (F9) as fallback if file doesn't exist or is corrupted
-  - Added XDG Base Directory Specification support via `get_storage_dir()` helper
-- Files changed:
-  - `src-tauri/src/settings.rs` - Added load/save functions and error types
-- **Learnings for future iterations:**
-  - Settings use JSON file storage (separate from SQLite database used for app data)
-  - `thiserror` crate is already available in Cargo.toml for custom errors
-  - Functions are currently unused (will be connected in Task 3/4 for shortcut registration)
-  - The `load_settings()` function intentionally returns default values on any error to ensure app always starts
+## Feature Overview
+Implement a folder system for the Todo plugin. The main screen shows a list of folders with previews of the last 2 todos. Clicking a folder navigates to the existing todo/tags view, now scoped to that folder.
 
-## 2026-01-16 - Task 3: Backend - Implementar registro dinâmico de shortcut global
-- What was implemented:
-  - Added `parse_shortcut()` function that converts strings like "Ctrl+Shift+J" or "F9" to `Shortcut` using the `global_hotkey` crate's parser
-  - Added `CurrentShortcut` state struct to track the currently registered shortcut string
-  - Created `register_toggle_shortcut()` helper that registers a shortcut with the window toggle handler
-  - Implemented `update_shortcut()` function that: unregisters current shortcut, parses and registers new one, updates state, and saves to settings
-  - Added `get_settings` Tauri command that returns current `AppSettings`
-  - Added `update_global_shortcut` Tauri command that updates the shortcut at runtime
-  - Registered both commands in `lib.rs` invoke_handler
-  - Added `CurrentShortcut` state management in setup
-- Files changed:
-  - `src-tauri/src/settings.rs` - Added parse_shortcut, CurrentShortcut, register_toggle_shortcut, update_shortcut, and Tauri commands
-  - `src-tauri/src/lib.rs` - Added command registration and CurrentShortcut state
-  - `src-tauri/Cargo.toml` - Added `global-hotkey = "0.7"` dependency for HotKeyParseError type
-- **Learnings for future iterations:**
-  - `tauri_plugin_global_shortcut` uses `global_hotkey::hotkey::HotKeyParseError` for parse errors
-  - The `Shortcut` type implements `FromStr` trait, so `shortcut_str.parse()` works directly
-  - `GlobalShortcutExt` trait provides `global_shortcut()` method on `AppHandle`
-  - `on_shortcut()` registers a shortcut with a handler, `unregister()` removes it
-  - Avoid generic `<R: Runtime>` when interfacing with non-generic code like `window::toggle`
-  - `ShortcutState` already exists in the plugin, so named our state `CurrentShortcut` to avoid collision
+## Design Decisions
+- Navigation: Back button in header (uses existing plugin header customization)
+- Tags: Isolated per folder (not global)
+- Folder creation: "+" button reveals inline input
+- Folder display: Vertical list with preview of 2 most recent todos
+- Folder management: Rename, delete, reorder (drag & drop)
+- Deletion: Confirmation modal with 5-second countdown on delete button
 
-## 2026-01-16 - Task 4: Backend - Modificar startup para carregar shortcut dinâmico
-- What was implemented:
-  - Modified `lib.rs` to load settings at startup using `load_settings()`
-  - Parse shortcut string from settings using `parse_shortcut()`
-  - Fallback to `Shortcut::new(None, Code::F9)` if parsing fails
-  - Initialize `CurrentShortcut` state with the actual loaded shortcut string
-  - Updated log messages to show the actual shortcut being registered
-  - Changed setup closure to `move` to take ownership of `shortcut_str`
-- Files changed:
-  - `src-tauri/src/lib.rs` - Load settings at startup, dynamic shortcut registration
-- **Learnings for future iterations:**
-  - Closures passed to `.setup()` require `move` keyword when capturing variables from outer scope
-  - The shortcut is registered before setup runs (in Builder chain), so settings must be loaded before Builder
-  - Removed hardcoded `Code::F9` in favor of dynamic value from settings
-  - App will always start even if settings are corrupted (uses F9 fallback)
+---
 
-## 2026-01-16 - Task 5: Frontend - Criar hook useSettings
+## 2026-01-16 - Task 1: Backend - Create folders table and migrate existing data
 - What was implemented:
-  - Created `src/core/hooks/useSettings.ts`
-  - Implemented settings loading via `invoke('get_settings')` in useEffect
-  - Implemented `updateShortcut()` function that calls `invoke('update_global_shortcut')`
-  - Returns `{ settings, isLoading, updateShortcut }` following the established pattern
-  - Uses optimistic updates with rollback on error
-  - Toast notifications for success and error states
+  - Created `folders` table with columns: id, name, position, created_at
+  - Added `folder_id` column to `todos` table with foreign key (ON DELETE CASCADE)
+  - Added `folder_id` column to `tags` table with foreign key (ON DELETE CASCADE)
+  - Changed tags uniqueness constraint from global to per-folder (UNIQUE(name, folder_id))
+  - Created `migrate_to_folders_schema()` function that:
+    - Creates a "Default" folder
+    - Migrates existing todos and tags to the default folder
+    - Uses table recreation pattern (SQLite doesn't support ADD COLUMN with FK easily)
+  - Updated `migrate_legacy_json()` to include folder_id when importing from JSON
 - Files changed:
-  - `src/core/hooks/useSettings.ts` - New file with useSettings hook
+  - `src-tauri/src/storage/migrations.rs`
 - **Learnings for future iterations:**
-  - Follow the pattern in `useTodoStorage.ts` for hook structure: useState, useEffect for loading, useCallback for actions
-  - Use optimistic updates: update local state first, then invoke backend, rollback on error
-  - Import `invoke` from `@tauri-apps/api/core` (not `@tauri-apps/api`)
-  - Toast is imported from `sonner` package
-  - The hook returns a boolean from `updateShortcut` to indicate success/failure to the caller
+  - SQLite doesn't support ALTER TABLE ADD COLUMN with foreign key constraints well - use table recreation pattern
+  - Check column existence with `conn.prepare("SELECT col FROM table LIMIT 1").is_ok()`
+  - Cargo workspace is in `src-tauri/`, not project root
+  - Migration runs on every startup - use `CREATE TABLE IF NOT EXISTS` for idempotency
+  - The `execute_batch` function doesn't support parameterized queries - use format! for dynamic values
 
-## 2026-01-16 - Task 6: Frontend - Criar componente ShortcutCapture
-- What was implemented:
-  - Created `src/core/components/Settings/ShortcutCapture.tsx`
-  - Implemented `isCapturing` state that enables keydown listener when active
-  - Built shortcut string from `event.ctrlKey`, `shiftKey`, `altKey`, `metaKey` + `event.code`
-  - Created `codeToKeyName()` helper to convert event.code to readable key names (e.g., KeyA → A, F9 → F9)
-  - Validates that shortcut has at least one non-modifier key (ignores modifier-only presses)
-  - Blocks invalid keys like Escape alone
-  - Calls `onChange` with captured shortcut and exits capture mode
-  - Window blur handler exits capture mode (user clicked away)
-- Files changed:
-  - `src/core/components/Settings/ShortcutCapture.tsx` - New file with ShortcutCapture component
-- **Learnings for future iterations:**
-  - Use `event.code` (not `event.key`) for consistency across keyboard layouts
-  - Modifier keys: ControlLeft/Right, ShiftLeft/Right, AltLeft/Right, MetaLeft/Right
-  - Use `{ capture: true }` (third arg `true`) on addEventListener to capture events before other handlers
-  - The component follows the pattern of other components: button-based with visual state for capturing mode
-  - Tauri global_shortcut uses "Ctrl", "Alt", "Shift", "Super" for modifiers (not "Control" or "Meta")
+---
 
-## 2026-01-16 - Task 7: Frontend - Criar view Settings
+## 2026-01-16 - Task 2: Backend - Implement folder CRUD commands
 - What was implemented:
-  - Created `src/core/components/Settings/Settings.tsx`
-  - Used `PluginHeader` with title "Configurações" and Settings icon from lucide
-  - Rendered "Atalho Global" section with `ShortcutCapture` component
-  - Used `useSettings` hook to load and update settings
-  - Implemented loading state with spinner (same pattern as TodoPlugin)
-  - Created `SettingsSection` mini-component for section headers
-  - Created `SettingsRow` mini-component for label/description + control layout
+  - Created `folder.rs` module with 5 Tauri commands:
+    - `folder_get_all`: Returns all folders with `todoCount` and `recentTodos` (last 2 todos preview)
+    - `folder_create`: Creates new folder with auto-incremented position, validates non-empty name
+    - `folder_rename`: Renames folder by ID, validates non-empty name
+    - `folder_delete`: Deletes folder (CASCADE handles todos/tags cleanup)
+    - `folder_reorder`: Accepts ordered list of folder IDs and updates positions
+  - Response types use `#[serde(rename_all = "camelCase")]` for frontend compatibility
+  - Registered module in `storage/mod.rs`
+  - Registered all 5 commands in `lib.rs` invoke_handler
 - Files changed:
-  - `src/core/components/Settings/Settings.tsx` - New file with Settings view
+  - `src-tauri/src/storage/folder.rs` (new file)
+  - `src-tauri/src/storage/mod.rs`
+  - `src-tauri/src/lib.rs`
 - **Learnings for future iterations:**
-  - Follow the existing plugin pattern: PluginHeader at top, content in flex column with padding
-  - Mini-components defined in same file per CLAUDE.md conventions
-  - Toast success is already handled by useSettings hook, no need to duplicate
-  - Settings component takes `onBack` prop (not `onExitPlugin` like plugins) since it's not a plugin
+  - Follow same patterns as `todo.rs`: State<Database>, map_err for errors, filter_map for queries
+  - Position field uses `COALESCE(MAX(position), -1) + 1` for next position calculation
+  - For N+1 queries (getting count/recent for each folder), consider JOIN optimization if performance becomes an issue
+  - Folder deletion relies on CASCADE - no need to manually delete todos/tags
 
-## 2026-01-16 - Task 8: Frontend - Adicionar ícone de settings no PluginGrid
-- What was implemented:
-  - Added `onSettingsClick` prop to `PluginGridProps` interface
-  - Passed `onSettingsClick` from `PluginGrid` to `PluginGridSearch` component
-  - Updated `PluginGridSearchProps` to include `onSettingsClick`
-  - Replaced single `⌘K` hint with flex container containing both hint and Settings button
-  - Added Settings icon import from lucide-react
-  - Styled Settings button with subtle hover state (consistent with input styling)
-  - Increased input right padding from `pr-10` to `pr-16` to accommodate both elements
-- Files changed:
-  - `src/core/components/PluginGrid.tsx` - Added onSettingsClick prop and Settings button
-- **Learnings for future iterations:**
-  - Keep the ⌘K hint visible alongside the settings button (as per PRD requirement)
-  - Use small icon size (w-3.5 h-3.5) to match existing Search icon
-  - Button hover state uses subtle opacity transition (text-white/30 → text-white/60)
-  - Wrapping hint and button in flex container allows consistent spacing with gap-1.5
+---
 
-## 2026-01-16 - Task 9: Frontend - Atualizar navegação em App.tsx
+## 2026-01-16 - Task 3: Backend - Update existing todo/tag commands to use folder_id
 - What was implemented:
-  - Created `View` discriminated union type with three variants: `{ type: 'grid' }`, `{ type: 'plugin', plugin: PluginManifest }`, `{ type: 'settings' }`
-  - Replaced `activePlugin` state with `view` state using the new `View` type
-  - Added navigation helper functions: `goToGrid()`, `goToPlugin()`, `goToSettings()`
-  - Updated `viewKey` computation to handle all three view types
-  - Conditionally render Grid, Plugin (with error boundary), or Settings based on `view.type`
-  - Connected `onSettingsClick` prop from PluginGrid to `goToSettings`
-  - Imported Settings component from `@/core/components/Settings/Settings`
+  - Replaced `todo_get_all` with `todo_get_by_folder(folder_id)`:
+    - Now filters todos and tags by the specified folder_id
+    - Queries use `WHERE folder_id = ?1` for both todos and tags
+  - Updated `todo_create` to receive `folder_id` parameter:
+    - Added `folder_id` as the first parameter (before text and tag_ids)
+    - INSERT now includes folder_id column
+  - Updated `tag_create` to receive `folder_id` parameter:
+    - Added `folder_id` as the first parameter (before name and color)
+    - INSERT now includes folder_id column
+  - Updated error messages to clarify per-folder scope:
+    - Both `tag_create` and `tag_update` now show "Tag name already exists in this folder"
+  - Updated command registration in `lib.rs` to use `todo_get_by_folder` instead of `todo_get_all`
 - Files changed:
-  - `src/App.tsx` - Complete navigation refactor with View type and Settings integration
+  - `src-tauri/src/storage/todo.rs`
+  - `src-tauri/src/lib.rs`
 - **Learnings for future iterations:**
-  - Discriminated unions (`type View = { type: 'grid' } | ...`) provide exhaustive type checking in conditionals
-  - Helper functions (`goToGrid`, `goToPlugin`, `goToSettings`) make callbacks cleaner and more readable
-  - Keep `viewKey` derivation simple with ternary chains for small union types
-  - The Settings view is not a plugin (no `onExitPlugin`), so it uses `onBack` prop instead
+  - Tag uniqueness is enforced by DB constraint `UNIQUE(name, folder_id)` - no additional code needed
+  - When renaming commands, update both the function and the invoke_handler registration
+  - The `tag_update` function doesn't need folder_id since it updates by tag ID (folder_id is immutable after creation)
+
+---
+
+## 2026-01-16 - Task 4: Frontend - Add Folder type and update useTodoStorage hook
+- What was implemented:
+  - Added `Folder` and `RecentTodo` interfaces to `types.ts`:
+    - `RecentTodo`: id, text, status (matches backend `RecentTodo` struct)
+    - `Folder`: id, name, position, createdAt, todoCount, recentTodos
+  - Updated `useTodoStorage` hook to require `folderId` parameter:
+    - Changed `todo_get_all` call to `todo_get_by_folder(folderId)`
+    - Updated `createTodo` to pass `folderId` to backend
+    - Updated `createTag` to pass `folderId` to backend
+    - Added `folderId` to the dependencies array for relevant callbacks
+  - Created new `useFolderStorage` hook with folder operations:
+    - `loadFolders`: Fetches all folders from backend
+    - `createFolder`: Creates folder with optimistic update (temp ID pattern)
+    - `renameFolder`: Renames folder with rollback on error
+    - `deleteFolder`: Deletes folder with rollback on error
+    - `reorderFolders`: Reorders folders based on ID array with rollback
+  - Updated `TodoPlugin` to use the folder system:
+    - Uses `useFolderStorage` to get folders
+    - Uses first folder's ID as `currentFolderId` for `useTodoStorage`
+    - Combines loading states from both hooks
+- Files changed:
+  - `src/plugins/todo/types.ts`
+  - `src/plugins/todo/useTodoStorage.ts`
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - Follow the existing optimistic update patterns: temp ID for creates, previous state capture for updates/deletes
+  - When a hook requires a parameter, dependent components need to provide it - may require temporary scaffolding
+  - The `folders[0]?.id ?? ''` pattern is a temporary solution until proper folder navigation is implemented in Task 5/6
+  - Backend response types with `#[serde(rename_all = "camelCase")]` map directly to frontend interfaces
+
+---
+
+## 2026-01-16 - Task 5: Frontend - Implement folder list view (main screen)
+- What was implemented:
+  - Refactored `TodoPlugin` to have three views: `folders`, `list`, `tags`
+  - Added `currentFolderId` state (null when on folder list, folder ID when inside a folder)
+  - Folder list view is now the main entry point (instead of going directly to todos)
+  - Created `TodoPluginFolderList` component showing all folders sorted by position
+  - Created `TodoPluginFolderCard` component displaying:
+    - Folder name with 14px font weight medium
+    - Todo count badge (rounded pill on the right)
+    - Preview of last 2 todos with status indicators (colored dots)
+  - Created `TodoPluginFolderPreview` component:
+    - Shows "(empty)" in italic when no todos
+    - Shows truncated todo text with status-appropriate styling
+    - Pending/in-progress todos show as white/50, completed as white/30 with line-through
+  - Created `TodoPluginFolderInput` component for inline folder creation:
+    - Auto-focuses on mount
+    - Enter to submit, Escape to cancel
+    - Blur closes if empty
+  - Created `TodoPluginFoldersEmptyState` for when no folders exist
+  - Added '+' button in header (right side) that reveals inline input
+  - Navigation: Clicking folder sets `currentFolderId` and switches to `list` view
+  - Back navigation from folder view refreshes folder list data
+  - Imported `FolderOpen` icon from lucide-react for the folders view header
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The `PluginHeader` component accepts a `right` prop for custom content in the header
+  - Follow the existing pattern of mini-components defined after the main component
+  - Use `useRef` + `useEffect` to auto-focus inputs on mount
+  - The `cn()` utility handles conditional class composition well
+  - Empty state components with action buttons provide better UX than just text
+
+---
+
+## 2026-01-16 - Task 6: Frontend - Implement folder content view with navigation
+- What was implemented:
+  - Added settings icon (gear) in header when inside a folder:
+    - Uses `Settings` icon from lucide-react
+    - Clicking opens a dropdown menu with Rename/Delete options
+    - Shows folder stats (task count, tag count) at the bottom
+  - Created `TodoPluginFolderSettingsMenu` component:
+    - Dropdown menu positioned below the settings button
+    - Rename option with pencil icon
+    - Delete option in red with X icon
+    - Info footer showing "X tasks, Y tags"
+    - Closes when clicking outside (useEffect with mousedown listener)
+  - Created `TodoPluginRenameFolderModal` component:
+    - Modal overlay with backdrop blur
+    - Pre-filled input with current folder name
+    - Auto-focuses and selects text on open
+    - Enter to save, Escape to cancel
+    - Cancel and Save buttons
+  - Added "Tasks" section title above the todo list:
+    - Styled as uppercase 12px text with reduced opacity
+    - Provides visual separation between tag filter and todo list
+  - Added state management for folder operations:
+    - `isSettingsMenuOpen`: Controls visibility of settings dropdown
+    - `isRenamingFolder`: Controls visibility of rename modal
+    - `renameFolderValue`: Stores the new folder name during editing
+  - Header props now conditionally include the settings button for list view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The `PluginHeader` component's `right` prop accepts any ReactNode, allowing complex UI elements
+  - Dropdown menus need `onClick={(e) => e.stopPropagation()}` to prevent closing when clicking inside
+  - Use `useRef` with mousedown event listener for click-outside detection
+  - When implementing modals, remember to auto-focus and select input content with `inputRef.current?.select()`
+  - Section titles (like "Tasks") help organize content without needing visual borders
+
+---
+
+## 2026-01-16 - Task 7: Frontend - Implement folder rename functionality
+- What was implemented:
+  - Verified that all rename functionality was already implemented in Task 6:
+    - `TodoPluginRenameFolderModal` component with modal overlay and backdrop blur
+    - Pre-filled input with current folder name that auto-focuses and selects text
+    - Enter to save, Escape to cancel keyboard shortcuts
+    - Cancel and Save buttons with Save disabled when input is empty
+  - Verified `renameFolder` in `useFolderStorage` hook:
+    - Optimistic update: folder name updates immediately in UI
+    - Rollback on error: reverts to previous state if backend fails
+    - Toast notification: `toast.error('Failed to rename folder')` on failure
+  - Validation: Non-empty name check in `handleRenameFolder` with `renameFolderValue.trim()`
+  - All requirements from PRD were already satisfied by Task 6 implementation
+- Files changed:
+  - `ralph/prd.json` (marked task as passes: true)
+  - No code changes required - implementation was already complete
+- **Learnings for future iterations:**
+  - When implementing a feature with settings menu + rename/delete options, the rename modal often gets implemented together with the settings menu
+  - Always verify existing implementation before adding new code - duplicate functionality may already exist
+  - The separation of concerns in PRD tasks doesn't always match implementation order; complex features often get partially implemented across multiple tasks
+  - Toast notifications via `sonner` are already integrated in `useTodoStorage.ts` - reuse existing patterns
+
+---
+
+## 2026-01-16 - Task 8: Frontend - Implement folder delete with countdown confirmation
+- What was implemented:
+  - Created `TodoPluginDeleteFolderModal` component with:
+    - Modal overlay with backdrop blur (consistent with rename modal)
+    - Message showing "Delete [folderName]? This will remove X tasks and Y tags."
+    - 5-second countdown timer using `setInterval`
+    - Delete button disabled during countdown, showing "Delete (5s)" → "Delete (4s)" → ... → "Delete"
+    - Button styling: red-500/40 when disabled, red-500 when enabled
+    - Cancel button to dismiss modal
+  - Added `isDeletingFolder` state to track modal visibility
+  - Renamed `handleDeleteFolder` to `handleStartDeleteFolder` (opens modal)
+  - Added `handleConfirmDeleteFolder` (executes actual deletion)
+  - Modal displays current folder's todoCount and tags.length for accurate counts
+  - On successful deletion, modal closes and navigates back to folder list
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The countdown pattern using `setInterval` with cleanup in `useEffect` is straightforward: decrement until 0, then stop
+  - For countdown-style buttons, track `countdown <= 0` as `isDeleteEnabled` for clean conditional rendering
+  - Destructive action modals should prevent accidental clicks - the 5s countdown gives users time to cancel
+  - Consistent modal styling (width, border-radius, padding, backdrop) across the app makes implementation faster
+
+---
+
+## 2026-01-16 - Task 9: Frontend - Implement drag and drop folder reordering
+- What was implemented:
+  - Added `GripVertical` drag handle icon from lucide-react to each folder card
+  - Added drag state management to `TodoPluginFolderList` component:
+    - `draggedId`: tracks which folder is being dragged
+    - `dragOverId`: tracks which folder is being hovered over
+    - `dropPosition`: tracks whether to drop 'above' or 'below' the target
+  - Implemented native HTML5 Drag and Drop API with event handlers:
+    - `handleDragStart`: sets dragged folder ID and dataTransfer
+    - `handleDragEnd`: clears all drag state
+    - `handleDragOver`: calculates drop position based on mouse Y relative to element midpoint
+    - `handleDragLeave`: clears drag over state
+    - `handleDrop`: reorders the folder array and calls `reorderFolders`
+  - Visual indicators for drop position:
+    - White horizontal line (h-0.5) appears above or below the target card
+    - Dragged card becomes semi-transparent (opacity-50) with slight scale reduction
+    - Drag handle shows cursor-grab/cursor-grabbing states
+  - Updated `TodoPluginFolderCard` to accept drag-related props and show visual feedback
+  - Passed `reorderFolders` from `useFolderStorage` hook to the folder list component
+  - Folder preview content now indented (pl-5) to align with drag handle
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - Native HTML5 Drag and Drop API is sufficient for simple list reordering without external dependencies
+  - Use `e.currentTarget.getBoundingClientRect()` and compare `e.clientY` to midpoint for above/below positioning
+  - Tailwind's `before:` and `after:` pseudo-element utilities work well for drop position indicators
+  - The reorder logic needs to account for whether the dragged item was above or below the target when calculating the insert index
+  - `draggable` attribute goes on the outer container, click handler goes on the inner button to keep them separate
+

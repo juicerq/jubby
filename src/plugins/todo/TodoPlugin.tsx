@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, Pencil, Minus } from 'lucide-react'
-import { useTodoStorage } from './useTodoStorage'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical } from 'lucide-react'
+import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
-import type { Tag as TagType, Todo, TodoStatus } from './types'
+import type { Tag as TagType, Todo, TodoStatus, Folder, RecentTodo } from './types'
 
 const TAG_COLORS = [
   { name: 'Red', hex: '#ef4444', contrastText: 'white' },
@@ -17,13 +18,34 @@ const TAG_COLORS = [
   { name: 'Gray', hex: '#6b7280', contrastText: 'white' },
 ] as const
 
-type TodoView = 'list' | 'tags'
+type TodoView = 'folders' | 'list' | 'tags'
 
 function TodoPlugin({ onExitPlugin }: PluginProps) {
+  // Folder management
+  const {
+    folders,
+    isLoading: foldersLoading,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    loadFolders,
+    reorderFolders,
+  } = useFolderStorage()
+
+  // Current folder state (null means we're on the folder list view)
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+  const [view, setView] = useState<TodoView>('folders')
+
+  // Get current folder details
+  const currentFolder = currentFolderId
+    ? folders.find((f) => f.id === currentFolderId) ?? null
+    : null
+
+  // Todo storage - only loads when we have a folder selected
   const {
     todos,
     tags,
-    isLoading,
+    isLoading: todosLoading,
     createTodo,
     updateTodoStatus,
     deleteTodo,
@@ -31,23 +53,89 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     createTag,
     updateTag,
     deleteTag,
-  } = useTodoStorage()
+  } = useTodoStorage(currentFolderId ?? '')
+
+  const isLoading = view === 'folders' ? foldersLoading : (foldersLoading || todosLoading)
 
   const [newTodoText, setNewTodoText] = useState('')
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-  const [view, setView] = useState<TodoView>('list')
+  const { pendingId: pendingDeleteId, handleDeleteClick, cancelDelete: handleCancelDelete } = usePendingDelete(deleteTodo)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [editingTagsTodoId, setEditingTagsTodoId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (pendingDeleteId === null) return
+  // Folder creation state
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
 
-    const timeout = setTimeout(() => {
-      setPendingDeleteId(null)
-    }, 1500)
+  // Folder settings menu state
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
+  const [isRenamingFolder, setIsRenamingFolder] = useState(false)
+  const [renameFolderValue, setRenameFolderValue] = useState('')
+  const [isDeletingFolder, setIsDeletingFolder] = useState(false)
 
-    return () => clearTimeout(timeout)
-  }, [pendingDeleteId])
+  // Navigation handlers
+  const handleNavigateToFolder = (folderId: string) => {
+    setCurrentFolderId(folderId)
+    setView('list')
+    setSelectedTagIds([]) // Reset tag filter when entering folder
+  }
+
+  const handleNavigateToFolders = () => {
+    setCurrentFolderId(null)
+    setView('folders')
+    loadFolders() // Refresh folder data when returning
+  }
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return
+    await createFolder(newFolderName.trim())
+    setNewFolderName('')
+    setIsCreatingFolder(false)
+  }
+
+  const handleFolderInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleCreateFolder()
+    } else if (e.key === 'Escape') {
+      setIsCreatingFolder(false)
+      setNewFolderName('')
+    }
+  }
+
+  const handleStartRenameFolder = () => {
+    setRenameFolderValue(currentFolder?.name ?? '')
+    setIsRenamingFolder(true)
+    setIsSettingsMenuOpen(false)
+  }
+
+  const handleRenameFolder = async () => {
+    if (!currentFolderId || !renameFolderValue.trim()) return
+    await renameFolder(currentFolderId, renameFolderValue.trim())
+    setIsRenamingFolder(false)
+    setRenameFolderValue('')
+  }
+
+  const handleRenameFolderKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleRenameFolder()
+    } else if (e.key === 'Escape') {
+      setIsRenamingFolder(false)
+      setRenameFolderValue('')
+    }
+  }
+
+  const handleStartDeleteFolder = () => {
+    setIsDeletingFolder(true)
+    setIsSettingsMenuOpen(false)
+  }
+
+  const handleConfirmDeleteFolder = async () => {
+    if (!currentFolderId) return
+    const success = await deleteFolder(currentFolderId)
+    if (success) {
+      setIsDeletingFolder(false)
+      handleNavigateToFolders()
+    }
+  }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTodoText.trim()) {
@@ -80,19 +168,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     if (todo) {
       updateTodoStatus(id, getNextStatus(todo.status))
     }
-  }
-
-  const handleDeleteClick = (id: string) => {
-    if (pendingDeleteId === id) {
-      deleteTodo(id)
-      setPendingDeleteId(null)
-    } else {
-      setPendingDeleteId(id)
-    }
-  }
-
-  const handleCancelDelete = () => {
-    setPendingDeleteId(null)
   }
 
   if (isLoading) {
@@ -154,10 +229,82 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     </span>
   ) : undefined
 
+  // Build the header right content for folders view (+ button)
+  const folderAddButton = view === 'folders' ? (
+    <button
+      type="button"
+      onClick={() => setIsCreatingFolder(true)}
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+      aria-label="Create folder"
+    >
+      <Plus size={16} />
+    </button>
+  ) : undefined
+
+  // Build the header right content for list view (settings button)
+  const folderSettingsButton = view === 'list' ? (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
+        className={cn(
+          'flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+          isSettingsMenuOpen && 'bg-white/6 text-white/90'
+        )}
+        aria-label="Folder settings"
+      >
+        <Settings size={16} />
+      </button>
+      {isSettingsMenuOpen && (
+        <TodoPluginFolderSettingsMenu
+          onRename={handleStartRenameFolder}
+          onDelete={handleStartDeleteFolder}
+          onClose={() => setIsSettingsMenuOpen(false)}
+          todoCount={currentFolder?.todoCount ?? 0}
+          tagCount={tags.length}
+        />
+      )}
+    </div>
+  ) : undefined
+
   // Determine header props based on current view
   const headerProps = view === 'tags'
     ? { title: 'Manage Tags', icon: Tag, onBack: () => setView('list'), right: tagCountBadge }
-    : { title: 'Todo', icon: Check, onBack: onExitPlugin }
+    : view === 'folders'
+    ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
+    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders, right: folderSettingsButton }
+
+  // Folders view
+  if (view === 'folders') {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <PluginHeader {...headerProps} />
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          {isCreatingFolder && (
+            <TodoPluginFolderInput
+              value={newFolderName}
+              onChange={setNewFolderName}
+              onKeyDown={handleFolderInputKeyDown}
+              onBlur={() => {
+                if (!newFolderName.trim()) {
+                  setIsCreatingFolder(false)
+                }
+              }}
+            />
+          )}
+          {folders.length === 0 && !isCreatingFolder ? (
+            <TodoPluginFoldersEmptyState onCreate={() => setIsCreatingFolder(true)} />
+          ) : (
+            <TodoPluginFolderList
+              folders={folders}
+              onFolderClick={handleNavigateToFolder}
+              onReorder={reorderFolders}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (view === 'tags') {
     return (
@@ -181,6 +328,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4" onClick={() => {
         handleCancelDelete()
         setEditingTagsTodoId(null)
+        setIsSettingsMenuOpen(false)
       }}>
         <TodoPluginInputArea
           value={newTodoText}
@@ -191,6 +339,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           selectedTagIds={selectedTagIds}
           onToggleTag={handleToggleTagSelection}
         />
+        <h2 className="text-[12px] font-medium text-white/40 uppercase tracking-wide">Tasks</h2>
         {filteredTodos.length === 0 ? (
           <TodoPluginEmptyState hasFilter={selectedTagIds.length > 0} />
         ) : (
@@ -206,6 +355,29 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           />
         )}
       </div>
+
+      {isRenamingFolder && (
+        <TodoPluginRenameFolderModal
+          value={renameFolderValue}
+          onChange={setRenameFolderValue}
+          onSubmit={handleRenameFolder}
+          onKeyDown={handleRenameFolderKeyDown}
+          onClose={() => {
+            setIsRenamingFolder(false)
+            setRenameFolderValue('')
+          }}
+        />
+      )}
+
+      {isDeletingFolder && currentFolder && (
+        <TodoPluginDeleteFolderModal
+          folderName={currentFolder.name}
+          todoCount={currentFolder.todoCount}
+          tagCount={tags.length}
+          onConfirm={handleConfirmDeleteFolder}
+          onClose={() => setIsDeletingFolder(false)}
+        />
+      )}
     </div>
   )
 }
@@ -549,26 +721,7 @@ interface TodoPluginTagManagerListProps {
 }
 
 function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTagManagerListProps) {
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (pendingDeleteId === null) return
-
-    const timeout = setTimeout(() => {
-      setPendingDeleteId(null)
-    }, 1500)
-
-    return () => clearTimeout(timeout)
-  }, [pendingDeleteId])
-
-  const handleDeleteClick = (id: string) => {
-    if (pendingDeleteId === id) {
-      onDeleteTag(id)
-      setPendingDeleteId(null)
-    } else {
-      setPendingDeleteId(id)
-    }
-  }
+  const { pendingId: pendingDeleteId, handleDeleteClick } = usePendingDelete(onDeleteTag)
 
   return (
     <div className="flex flex-col gap-1">
@@ -1012,6 +1165,688 @@ function TodoPluginTagBadge({ tag, isCompleted = false }: TodoPluginTagBadgeProp
     >
       {tag.name}
     </span>
+  )
+}
+
+// --- Folder Components ---
+
+interface TodoPluginFolderInputProps {
+  value: string
+  onChange: (value: string) => void
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  onBlur: () => void
+}
+
+function TodoPluginFolderInput({ value, onChange, onKeyDown, onBlur }: TodoPluginFolderInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  return (
+    <div className="mb-3">
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Folder name..."
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={onBlur}
+        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+        autoComplete="off"
+      />
+    </div>
+  )
+}
+
+function TodoPluginFoldersEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-white/35">
+      <FolderOpen className="h-10 w-10 opacity-40" />
+      <p className="text-[13px] font-normal tracking-[-0.01em]">
+        No folders yet
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="flex items-center gap-1.5 rounded-lg bg-white/8 px-3 py-1.5 text-[12px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/12 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Create folder
+      </button>
+    </div>
+  )
+}
+
+interface TodoPluginFolderListProps {
+  folders: Folder[]
+  onFolderClick: (folderId: string) => void
+  onReorder: (folderIds: string[]) => void
+}
+
+function TodoPluginFolderList({ folders, onFolderClick, onReorder }: TodoPluginFolderListProps) {
+  // Sort folders by position
+  const sortedFolders = [...folders].sort((a, b) => a.position - b.position)
+
+  // Drag state using mouse events (HTML5 drag API is broken in Tauri/WebKitGTK on Linux)
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null)
+  const [isActiveDrag, setIsActiveDrag] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+  const isDraggingRef = useRef(false)
+
+  // Get the dragged folder for ghost rendering
+  const draggedFolder = useMemo(() => {
+    if (!draggedId) return null
+    return sortedFolders.find((f) => f.id === draggedId) ?? null
+  }, [sortedFolders, draggedId])
+
+  // Calculate where the ghost should appear (index in the list)
+  // Returns -1 if ghost shouldn't be shown (e.g., when it would be adjacent to dragged card)
+  const ghostInsertIndex = useMemo(() => {
+    if (!isActiveDrag || !draggedId || !dragOverId || !dropPosition) return -1
+
+    const draggedIndex = sortedFolders.findIndex((f) => f.id === draggedId)
+    const targetIndex = sortedFolders.findIndex((f) => f.id === dragOverId)
+    if (draggedIndex === -1 || targetIndex === -1) return -1
+
+    const insertIndex = dropPosition === 'above' ? targetIndex : targetIndex + 1
+
+    // Don't show ghost if it would appear directly above or below the dragged card
+    // (insertIndex === draggedIndex means directly above, insertIndex === draggedIndex + 1 means directly below)
+    if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) {
+      return -1
+    }
+
+    return insertIndex
+  }, [sortedFolders, isActiveDrag, draggedId, dragOverId, dropPosition])
+
+  const handleMouseDown = (e: React.MouseEvent, folderId: string) => {
+    // Only start drag tracking on left click
+    if (e.button !== 0) return
+    dragStartPos.current = { x: e.clientX, y: e.clientY }
+    setDraggedId(folderId)
+  }
+
+  // Store original card positions when drag starts (for stable hit detection)
+  const originalPositions = useRef<Map<string, { top: number; bottom: number; midY: number }>>(new Map())
+  const lastDropTarget = useRef<{ id: string; position: 'above' | 'below' } | null>(null)
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!draggedId || !dragStartPos.current) return
+
+      // Require 5px movement to start actual drag (prevents accidental drags on click)
+      const dx = e.clientX - dragStartPos.current.x
+      const dy = e.clientY - dragStartPos.current.y
+      if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 5) return
+
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true
+        setIsActiveDrag(true)
+        document.body.classList.add('dragging-folder')
+
+        // Capture original positions of all cards at drag start
+        originalPositions.current.clear()
+        for (const [folderId, cardEl] of cardRefs.current.entries()) {
+          const rect = cardEl.getBoundingClientRect()
+          originalPositions.current.set(folderId, {
+            top: rect.top,
+            bottom: rect.bottom,
+            midY: rect.top + rect.height / 2,
+          })
+        }
+      }
+
+      let foundTarget = false
+      const cursorY = e.clientY
+
+      const sortedCards = Array.from(originalPositions.current.entries())
+        .filter(([id]) => id !== draggedId)
+        .sort((a, b) => a[1].top - b[1].top)
+
+      // Hysteresis prevents flickering when cursor is near zone boundaries
+      const hysteresis = lastDropTarget.current ? 8 : 0
+
+      for (let i = 0; i < sortedCards.length; i++) {
+        const [folderId, pos] = sortedCards[i]
+        const isCurrentTarget = lastDropTarget.current?.id === folderId
+
+        const prevCard = i > 0 ? sortedCards[i - 1][1] : null
+        const nextCard = i < sortedCards.length - 1 ? sortedCards[i + 1][1] : null
+
+        const aboveZoneTop = prevCard ? prevCard.midY : pos.top - 100
+        const aboveZoneBottom = pos.midY
+        const belowZoneTop = pos.midY
+        const belowZoneBottom = nextCard ? nextCard.midY : pos.bottom + 100
+
+        const aboveTopThreshold = isCurrentTarget && lastDropTarget.current?.position === 'above'
+          ? aboveZoneTop - hysteresis
+          : aboveZoneTop
+        const belowBottomThreshold = isCurrentTarget && lastDropTarget.current?.position === 'below'
+          ? belowZoneBottom + hysteresis
+          : belowZoneBottom
+
+        if (cursorY >= aboveTopThreshold && cursorY < aboveZoneBottom) {
+          if (dragOverId !== folderId || dropPosition !== 'above') {
+            setDragOverId(folderId)
+            setDropPosition('above')
+            lastDropTarget.current = { id: folderId, position: 'above' }
+          }
+          foundTarget = true
+          break
+        }
+
+        if (cursorY >= belowZoneTop && cursorY <= belowBottomThreshold) {
+          if (dragOverId !== folderId || dropPosition !== 'below') {
+            setDragOverId(folderId)
+            setDropPosition('below')
+            lastDropTarget.current = { id: folderId, position: 'below' }
+          }
+          foundTarget = true
+          break
+        }
+      }
+
+      if (!foundTarget) {
+        setDragOverId(null)
+        setDropPosition(null)
+        lastDropTarget.current = null
+      }
+    },
+    [draggedId, dragOverId, dropPosition]
+  )
+
+  const handleMouseUp = useCallback(() => {
+    if (draggedId && isDraggingRef.current && dragOverId && dropPosition) {
+      // Perform the reorder
+      const newOrder = [...sortedFolders]
+      const draggedIndex = newOrder.findIndex((f) => f.id === draggedId)
+      const targetIndex = newOrder.findIndex((f) => f.id === dragOverId)
+
+      if (draggedIndex !== -1 && targetIndex !== -1) {
+        const [draggedItem] = newOrder.splice(draggedIndex, 1)
+
+        let insertIndex = targetIndex
+        if (dropPosition === 'below') {
+          insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1
+        } else {
+          insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex
+        }
+
+        newOrder.splice(insertIndex, 0, draggedItem)
+        onReorder(newOrder.map((f) => f.id))
+      }
+    }
+
+    // Reset state
+    setDraggedId(null)
+    setDragOverId(null)
+    setDropPosition(null)
+    setIsActiveDrag(false)
+    dragStartPos.current = null
+    isDraggingRef.current = false
+    originalPositions.current.clear()
+    lastDropTarget.current = null
+    document.body.classList.remove('dragging-folder')
+  }, [draggedId, dragOverId, dropPosition, sortedFolders, onReorder])
+
+  // Global mouse event listeners for drag
+  useEffect(() => {
+    if (draggedId) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [draggedId, handleMouseMove, handleMouseUp])
+
+  const setCardRef = useCallback((folderId: string, el: HTMLDivElement | null) => {
+    if (el) {
+      cardRefs.current.set(folderId, el)
+    } else {
+      cardRefs.current.delete(folderId)
+    }
+  }, [])
+
+  // Build render items: all folders stay in place, ghost inserted at drop position
+  const renderItems = useMemo(() => {
+    const items: Array<{ type: 'folder' | 'ghost'; folder: Folder; key: string }> = []
+
+    sortedFolders.forEach((folder, index) => {
+      // Insert ghost before this folder if this is the ghost position
+      if (ghostInsertIndex === index && draggedFolder) {
+        items.push({ type: 'ghost', folder: draggedFolder, key: 'ghost' })
+      }
+
+      // Always render the folder (including dragged one - it just gets faded)
+      items.push({ type: 'folder', folder, key: folder.id })
+    })
+
+    // Ghost at the end (after all folders)
+    if (ghostInsertIndex === sortedFolders.length && draggedFolder) {
+      items.push({ type: 'ghost', folder: draggedFolder, key: 'ghost' })
+    }
+
+    return items
+  }, [sortedFolders, ghostInsertIndex, draggedFolder])
+
+  return (
+    <div ref={containerRef} className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
+      <AnimatePresence mode="popLayout">
+        {renderItems.map((item) => {
+          if (item.type === 'ghost') {
+            return (
+              <motion.div
+                key="ghost"
+                initial={{ opacity: 0, scale: 0.95, height: 0 }}
+                animate={{ opacity: 1, scale: 1, height: 'auto' }}
+                exit={{ opacity: 0, scale: 0.95, height: 0 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+              >
+                <TodoPluginFolderGhost folder={item.folder} />
+              </motion.div>
+            )
+          }
+
+          return (
+            <motion.div
+              key={item.key}
+              layout
+              layoutId={item.folder.id}
+              transition={{
+                layout: { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
+              }}
+            >
+              <TodoPluginFolderCard
+                folder={item.folder}
+                onClick={() => {
+                  // Only trigger click if not dragging
+                  if (!isDraggingRef.current) {
+                    onFolderClick(item.folder.id)
+                  }
+                }}
+                isDragging={draggedId === item.folder.id && isDraggingRef.current}
+                onMouseDown={(e) => handleMouseDown(e, item.folder.id)}
+                cardRef={(el) => setCardRef(item.folder.id, el)}
+              />
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+interface TodoPluginFolderCardProps {
+  folder: Folder
+  onClick: () => void
+  isDragging?: boolean
+  onMouseDown?: (e: React.MouseEvent) => void
+  cardRef?: (el: HTMLDivElement | null) => void
+}
+
+function TodoPluginFolderCard({
+  folder,
+  onClick,
+  isDragging = false,
+  onMouseDown,
+  cardRef,
+}: TodoPluginFolderCardProps) {
+  return (
+    <div
+      ref={cardRef}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      onMouseDown={onMouseDown}
+      className={cn(
+        'group flex w-full flex-col gap-2 rounded-lg text-left cursor-pointer select-none',
+        'border border-white/[0.04] bg-white/[0.02]',
+        'px-3.5 py-3 transition-all duration-150 ease-out',
+        'hover:border-white/[0.08] hover:bg-white/[0.04]',
+        'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
+        'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
+        isDragging && 'opacity-40 scale-[0.97] pointer-events-none'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <GripVertical
+          size={14}
+          className="shrink-0 text-white/20 transition-colors duration-150 group-hover:text-white/40 cursor-grab"
+        />
+        <span className="flex-1 text-[14px] font-medium text-white/90 tracking-[-0.01em]">
+          {folder.name}
+        </span>
+        <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
+          {folder.todoCount}
+        </span>
+      </div>
+
+      <div className="pl-5">
+        <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+      </div>
+    </div>
+  )
+}
+
+// Ghost folder shown at drop position during drag
+interface TodoPluginFolderGhostProps {
+  folder: Folder
+}
+
+function TodoPluginFolderGhost({ folder }: TodoPluginFolderGhostProps) {
+  return (
+    <div
+      className={cn(
+        'flex w-full flex-col gap-2 rounded-lg select-none',
+        'border border-dashed border-white/20',
+        'bg-gradient-to-b from-white/[0.06] to-white/[0.02]',
+        'px-3.5 py-3',
+        'shadow-[0_0_20px_rgba(255,255,255,0.05),inset_0_1px_0_rgba(255,255,255,0.05)]'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <GripVertical
+          size={14}
+          className="shrink-0 text-white/30"
+        />
+        <span className="flex-1 text-[14px] font-medium text-white/60 tracking-[-0.01em]">
+          {folder.name}
+        </span>
+        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/40">
+          {folder.todoCount}
+        </span>
+      </div>
+
+      <div className="pl-5 opacity-50">
+        <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+      </div>
+    </div>
+  )
+}
+
+interface TodoPluginFolderPreviewProps {
+  recentTodos: RecentTodo[]
+}
+
+function TodoPluginFolderPreview({ recentTodos }: TodoPluginFolderPreviewProps) {
+  if (recentTodos.length === 0) {
+    return (
+      <span className="text-[12px] text-white/25 italic">
+        (empty)
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {recentTodos.map((todo) => (
+        <div key={todo.id} className="flex items-center gap-2">
+          <span
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 rounded-full',
+              todo.status === 'completed' && 'bg-white/30',
+              todo.status === 'in_progress' && 'bg-amber-500/70',
+              todo.status === 'pending' && 'bg-white/40'
+            )}
+          />
+          <span
+            className={cn(
+              'truncate text-[12px] tracking-[-0.01em]',
+              todo.status === 'completed'
+                ? 'text-white/30 line-through decoration-white/20'
+                : 'text-white/50'
+            )}
+          >
+            {todo.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// --- Folder Settings Components ---
+
+interface TodoPluginFolderSettingsMenuProps {
+  onRename: () => void
+  onDelete: () => void
+  onClose: () => void
+  todoCount: number
+  tagCount: number
+}
+
+function TodoPluginFolderSettingsMenu({
+  onRename,
+  onDelete,
+  onClose,
+  todoCount,
+  tagCount,
+}: TodoPluginFolderSettingsMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute right-0 top-full z-20 mt-1 w-[180px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onRename}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-white/80 transition-colors hover:bg-white/6"
+      >
+        <Pencil size={14} className="text-white/50" />
+        Rename
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+      >
+        <X size={14} />
+        Delete
+      </button>
+      <div className="mx-2 my-1 border-t border-white/[0.06]" />
+      <div className="px-3 py-1.5 text-[11px] text-white/30">
+        {todoCount} task{todoCount !== 1 ? 's' : ''}, {tagCount} tag{tagCount !== 1 ? 's' : ''}
+      </div>
+    </div>
+  )
+}
+
+interface TodoPluginRenameFolderModalProps {
+  value: string
+  onChange: (value: string) => void
+  onSubmit: () => void
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  onClose: () => void
+}
+
+function TodoPluginRenameFolderModal({
+  value,
+  onChange,
+  onSubmit,
+  onKeyDown,
+  onClose,
+}: TodoPluginRenameFolderModalProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[280px] rounded-xl border border-white/10 bg-[#0a0a0a] p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-folder-title"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 id="rename-folder-title" className="text-[14px] font-medium text-white/90">
+            Rename Folder
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
+          autoComplete="off"
+        />
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!value.trim()}
+            className="flex-1 rounded-lg bg-white/90 px-4 py-2 text-[13px] font-medium text-[#0a0a0a] transition-all duration-150 ease-out hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Delete Folder Modal with Countdown ---
+
+interface TodoPluginDeleteFolderModalProps {
+  folderName: string
+  todoCount: number
+  tagCount: number
+  onConfirm: () => void
+  onClose: () => void
+}
+
+function TodoPluginDeleteFolderModal({
+  folderName,
+  todoCount,
+  tagCount,
+  onConfirm,
+  onClose,
+}: TodoPluginDeleteFolderModalProps) {
+  const [countdown, setCountdown] = useState(3)
+
+  useEffect(() => {
+    if (countdown <= 0) return
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => prev - 1)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [countdown])
+
+  const isDeleteEnabled = countdown <= 0
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[300px] rounded-xl border border-white/10 bg-[#0a0a0a] p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-folder-title"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 id="delete-folder-title" className="text-[14px] font-medium text-white/90">
+            Delete Folder
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-[13px] text-white/70 leading-relaxed">
+          Delete <span className="font-medium text-white/90">{folderName}</span>?{' '}
+          This will remove {todoCount} task{todoCount !== 1 ? 's' : ''} and {tagCount} tag{tagCount !== 1 ? 's' : ''}.
+        </p>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!isDeleteEnabled}
+            className={cn(
+              'flex-1 rounded-lg px-4 py-2 text-[13px] font-medium transition-all duration-150 ease-out active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+              isDeleteEnabled
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-red-500/40 text-white/50 cursor-not-allowed'
+            )}
+          >
+            {isDeleteEnabled ? 'Delete' : `Delete (${countdown}s)`}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

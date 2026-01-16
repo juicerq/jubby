@@ -30,18 +30,18 @@ pub struct TodoData {
 
 // Commands
 
-/// Get all todos and tags
+/// Get todos and tags for a specific folder
 #[tauri::command]
-pub fn todo_get_all(db: State<Database>) -> Result<TodoData, String> {
+pub fn todo_get_by_folder(db: State<Database>, folder_id: String) -> Result<TodoData, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    // Get all tags
+    // Get tags for this folder
     let mut tag_stmt = conn
-        .prepare("SELECT id, name, color FROM tags ORDER BY name")
+        .prepare("SELECT id, name, color FROM tags WHERE folder_id = ?1 ORDER BY name")
         .map_err(|e| e.to_string())?;
 
     let tags: Vec<Tag> = tag_stmt
-        .query_map([], |row| {
+        .query_map([&folder_id], |row| {
             Ok(Tag {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -52,13 +52,13 @@ pub fn todo_get_all(db: State<Database>) -> Result<TodoData, String> {
         .filter_map(|r| r.ok())
         .collect();
 
-    // Get all todos
+    // Get todos for this folder
     let mut todo_stmt = conn
-        .prepare("SELECT id, text, status, created_at FROM todos ORDER BY created_at DESC")
+        .prepare("SELECT id, text, status, created_at FROM todos WHERE folder_id = ?1 ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
 
     let todos_raw: Vec<(String, String, String, i64)> = todo_stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+        .query_map([&folder_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -92,6 +92,7 @@ pub fn todo_get_all(db: State<Database>) -> Result<TodoData, String> {
 #[tauri::command]
 pub fn todo_create(
     db: State<Database>,
+    folder_id: String,
     text: String,
     tag_ids: Option<Vec<String>>,
 ) -> Result<TodoWithTags, String> {
@@ -104,8 +105,8 @@ pub fn todo_create(
         .as_millis() as i64;
 
     conn.execute(
-        "INSERT INTO todos (id, text, status, created_at) VALUES (?1, ?2, 'pending', ?3)",
-        rusqlite::params![&id, &text, created_at],
+        "INSERT INTO todos (id, text, status, created_at, folder_id) VALUES (?1, ?2, 'pending', ?3, ?4)",
+        rusqlite::params![&id, &text, created_at, &folder_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -196,18 +197,18 @@ pub fn todo_set_tags(
 
 /// Create a new tag
 #[tauri::command]
-pub fn tag_create(db: State<Database>, name: String, color: String) -> Result<Tag, String> {
+pub fn tag_create(db: State<Database>, folder_id: String, name: String, color: String) -> Result<Tag, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     let id = Uuid::new_v4().to_string();
 
     conn.execute(
-        "INSERT INTO tags (id, name, color) VALUES (?1, ?2, ?3)",
-        [&id, &name, &color],
+        "INSERT INTO tags (id, name, color, folder_id) VALUES (?1, ?2, ?3, ?4)",
+        [&id, &name, &color, &folder_id],
     )
     .map_err(|e| {
         if e.to_string().contains("UNIQUE constraint failed") {
-            "Tag name already exists".to_string()
+            "Tag name already exists in this folder".to_string()
         } else {
             e.to_string()
         }
@@ -233,7 +234,7 @@ pub fn tag_update(
         )
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
-                "Tag name already exists".to_string()
+                "Tag name already exists in this folder".to_string()
             } else {
                 e.to_string()
             }

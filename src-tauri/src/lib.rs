@@ -44,7 +44,12 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            storage::todo::todo_get_all,
+            storage::folder::folder_get_all,
+            storage::folder::folder_create,
+            storage::folder::folder_rename,
+            storage::folder::folder_delete,
+            storage::folder::folder_reorder,
+            storage::todo::todo_get_by_folder,
             storage::todo::todo_create,
             storage::todo::todo_update_status,
             storage::todo::todo_delete,

@@ -155,3 +155,14 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0 0 / 50%);
 }
+
+/*
+ * Force grabbing cursor during folder drag
+ * EXCEPTION: Kept as CSS because we need to override browser drag cursor
+ * which cannot be controlled via JavaScript or Tailwind during drag operations.
+ */
+body.dragging-folder,
+body.dragging-folder * {
+  cursor: grabbing !important;
+  user-select: none;
+}
