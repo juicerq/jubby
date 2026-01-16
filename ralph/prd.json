@@ -1,137 +1,131 @@
 [
   {
-    "category": "backend",
-    "description": "Create folders table and migrate existing data",
+    "category": "frontend",
+    "description": "Remove 'tags' view from navigation system",
     "steps": [
-      "Create folders table with id, name, position, created_at",
-      "Add folder_id column to todos table with foreign key",
-      "Add folder_id column to tags table with foreign key",
-      "Create migration that creates 'Default' folder and assigns existing todos/tags to it"
+      "Remove 'tags' from TodoView type (keep only 'folders' | 'list')",
+      "Remove tags view case from header configuration",
+      "Remove tags view case from main render switch",
+      "Remove setView('tags') call from tag button"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Run cargo check after changes. Ensure CASCADE delete is configured."
-  },
-  {
-    "category": "backend",
-    "description": "Implement folder CRUD commands",
-    "steps": [
-      "Create folder_get_all command returning folders with todoCount and recentTodos (last 2)",
-      "Create folder_create command",
-      "Create folder_rename command",
-      "Create folder_delete command",
-      "Create folder_reorder command accepting ordered list of IDs",
-      "Register commands in main.rs"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "Read existing todo.rs commands for pattern reference."
-  },
-  {
-    "category": "backend",
-    "description": "Update existing todo/tag commands to use folder_id",
-    "steps": [
-      "Replace todo_get_all with todo_get_by_folder(folder_id)",
-      "Update todo_create to receive folder_id parameter",
-      "Update tag_create to receive folder_id parameter",
-      "Ensure tag uniqueness is scoped per folder, not global"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "Check how tag_create validates uniqueness and update to filter by folder_id."
+    "passes": false,
+    "notes": "This simplifies the navigation from 3-view to 2-view system."
   },
   {
     "category": "frontend",
-    "description": "Add Folder type and update useTodoStorage hook",
+    "description": "Create ManageTagsModal component",
     "steps": [
-      "Add Folder interface to types.ts",
-      "Add folder operations to useTodoStorage hook (getAll, create, rename, delete, reorder)",
-      "Update existing todo/tag operations to include folder_id",
-      "Implement optimistic updates for folder operations"
+      "Create modal using shadcn Dialog component",
+      "Add header with 'Manage Tags' title and close button",
+      "Include existing TodoPluginCreateTagRow component for tag creation",
+      "Add 'TAGS' section label (text-xs text-muted-foreground font-medium)",
+      "Add scrollable tag list area (max-height ~250px)",
+      "Set modal width to ~300px (compact popover-style)"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Read useTodoStorage.ts for existing optimistic update patterns."
+    "passes": false,
+    "notes": "Reuse existing create tag row component. No border separator - use TAGS label instead."
   },
   {
     "category": "frontend",
-    "description": "Implement folder list view (main screen)",
+    "description": "Implement inline tag editing",
     "steps": [
-      "Create FolderList view showing all folders",
-      "Create FolderCard component with name, todoCount, and 2 recent todos preview",
-      "Add '+' button in header that reveals inline input for new folder",
-      "Implement folder click to navigate into folder"
+      "Create TagRow component with idle and edit states",
+      "Idle state: color dot, tag name, delete icon (on hover)",
+      "Click tag name → input replaces text, auto-focused, text selected",
+      "Add save (checkmark) and cancel (X) buttons in edit mode",
+      "Enter key or checkmark → save changes",
+      "Escape key or X → cancel and revert",
+      "Click outside row → save changes (blur-save)",
+      "Validate: prevent empty names, warn on duplicates"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Use existing header customization system. Empty folders show '(empty)' in preview."
+    "passes": false,
+    "notes": "Remove TodoPluginTagEditModal - no longer needed with inline editing."
   },
   {
     "category": "frontend",
-    "description": "Implement folder content view with navigation",
+    "description": "Implement color picker dropdown",
     "steps": [
-      "Add back button in header when inside a folder",
-      "Show folder name in header",
-      "Add settings icon that opens menu with Rename/Delete options",
-      "Add 'Tasks' title above todo list",
-      "Remove border between tag filter and todo list"
+      "Make color dot clickable in TagRow",
+      "Show small dropdown below color dot on click",
+      "Display 8 color options in 2 rows of 4",
+      "Click color → select and close dropdown",
+      "Click outside → close without change",
+      "Reuse existing TAG_COLORS array"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Reuse existing TodoPlugin list/input components. Header shows: <- FolderName (gear icon)"
+    "passes": false,
+    "notes": "Use Popover component for the dropdown. Keep it minimal."
   },
   {
     "category": "frontend",
-    "description": "Implement folder rename functionality",
+    "description": "Implement two-step delete in modal",
     "steps": [
-      "Create inline input or simple modal for rename",
-      "Validate non-empty name",
-      "Update folder name optimistically",
-      "Handle errors with toast"
+      "Add delete icon to TagRow (visible on hover)",
+      "First click → icon changes to checkmark",
+      "Second click → confirms deletion",
+      "Auto-reset to trash icon after 1.5s if no second click",
+      "Reuse existing usePendingDelete hook"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Triggered from settings menu inside folder view."
+    "passes": false,
+    "notes": "This matches the existing app pattern for delete confirmation."
   },
   {
     "category": "frontend",
-    "description": "Implement folder delete with countdown confirmation",
+    "description": "Wire up modal trigger from tag button",
     "steps": [
-      "Create DeleteFolderModal component",
-      "Show message: Delete [name]? This will remove X todos and Y tags.",
-      "Delete button disabled with countdown (5s to 0s then enabled)",
-      "Execute delete and navigate back to folder list"
+      "Add isManageTagsOpen state to TodoPlugin",
+      "Tag button in input area opens modal instead of changing view",
+      "Pass necessary props: tags, createTag, updateTag, deleteTag",
+      "Modal closes on: X button, click outside, Escape key"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Use setInterval for countdown. Button text: 'Delete (5s)' then 'Delete'."
+    "passes": false,
+    "notes": "The tag button is in TodoPluginInputArea around line 337."
   },
   {
     "category": "frontend",
-    "description": "Implement drag and drop folder reordering",
+    "description": "Add empty state for tag list",
     "steps": [
-      "Add drag handle or make entire folder card draggable",
-      "Show visual indicator of drop position",
-      "Update positions optimistically on drop",
-      "Call folder_reorder with new order"
+      "Show 'No tags yet' centered muted text when tags array is empty",
+      "Keep 'TAGS' label visible even in empty state"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Used native HTML drag and drop API - no external dependencies needed."
+    "passes": false,
+    "notes": "Simple empty state, no illustrations needed."
+  },
+  {
+    "category": "cleanup",
+    "description": "Remove unused tag view components",
+    "steps": [
+      "Remove TodoPluginTagManager component",
+      "Remove TodoPluginTagManagerList component",
+      "Remove TodoPluginTagCard component (replaced by TagRow)",
+      "Remove TodoPluginTagEditModal component",
+      "Clean up any unused imports"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Run bun tsc --noEmit to verify no broken imports."
   },
   {
     "category": "test",
-    "description": "Manual verification of folder system",
+    "description": "Manual verification of manage tags modal",
     "steps": [
-      "Verify migration creates 'Default' folder with existing data",
-      "Test create, rename, delete folder flows",
-      "Test drag and drop reordering",
-      "Test delete countdown modal",
-      "Test navigation between folders",
-      "Run cargo check and bun tsc --noEmit"
+      "Verify modal opens from tag button in input area",
+      "Test create new tag with color selection",
+      "Test inline edit: click name, edit, Enter to save",
+      "Test inline edit: click name, edit, Escape to cancel",
+      "Test color picker: click dot, select color, verify change",
+      "Test two-step delete: first click shows check, second deletes",
+      "Test empty state when no tags exist",
+      "Run bun tsc --noEmit"
     ],
     "shouldCommit": false,
     "passes": false,
-    "notes": "Test with existing todo data to ensure migration works correctly."
+    "notes": "Test with existing tags to ensure data is preserved."
   }
 ]
