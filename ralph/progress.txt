@@ -27,3 +27,25 @@
   - `thiserror` crate is already available in Cargo.toml for custom errors
   - Functions are currently unused (will be connected in Task 3/4 for shortcut registration)
   - The `load_settings()` function intentionally returns default values on any error to ensure app always starts
+
+## 2026-01-16 - Task 3: Backend - Implementar registro dinâmico de shortcut global
+- What was implemented:
+  - Added `parse_shortcut()` function that converts strings like "Ctrl+Shift+J" or "F9" to `Shortcut` using the `global_hotkey` crate's parser
+  - Added `CurrentShortcut` state struct to track the currently registered shortcut string
+  - Created `register_toggle_shortcut()` helper that registers a shortcut with the window toggle handler
+  - Implemented `update_shortcut()` function that: unregisters current shortcut, parses and registers new one, updates state, and saves to settings
+  - Added `get_settings` Tauri command that returns current `AppSettings`
+  - Added `update_global_shortcut` Tauri command that updates the shortcut at runtime
+  - Registered both commands in `lib.rs` invoke_handler
+  - Added `CurrentShortcut` state management in setup
+- Files changed:
+  - `src-tauri/src/settings.rs` - Added parse_shortcut, CurrentShortcut, register_toggle_shortcut, update_shortcut, and Tauri commands
+  - `src-tauri/src/lib.rs` - Added command registration and CurrentShortcut state
+  - `src-tauri/Cargo.toml` - Added `global-hotkey = "0.7"` dependency for HotKeyParseError type
+- **Learnings for future iterations:**
+  - `tauri_plugin_global_shortcut` uses `global_hotkey::hotkey::HotKeyParseError` for parse errors
+  - The `Shortcut` type implements `FromStr` trait, so `shortcut_str.parse()` works directly
+  - `GlobalShortcutExt` trait provides `global_shortcut()` method on `AppHandle`
+  - `on_shortcut()` registers a shortcut with a handler, `unregister()` removes it
+  - Avoid generic `<R: Runtime>` when interfacing with non-generic code like `window::toggle`
+  - `ShortcutState` already exists in the plugin, so named our state `CurrentShortcut` to avoid collision

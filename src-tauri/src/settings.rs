@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_global_shortcut::{
+    GlobalShortcutExt, Shortcut, ShortcutState as ShortcutEventState,
+};
 use thiserror::Error;
+
+use crate::window;
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +30,23 @@ pub enum SettingsError {
     ReadError(#[from] std::io::Error),
     #[error("Failed to parse settings: {0}")]
     ParseError(#[from] serde_json::Error),
+    #[error("Failed to parse shortcut: {0}")]
+    ShortcutParseError(String),
+    #[error("Failed to register shortcut: {0}")]
+    ShortcutRegisterError(String),
+}
+
+/// State to track the currently registered shortcut
+pub struct CurrentShortcut {
+    pub current: Mutex<String>,
+}
+
+impl CurrentShortcut {
+    pub fn new(shortcut: String) -> Self {
+        Self {
+            current: Mutex::new(shortcut),
+        }
+    }
 }
 
 /// Get the storage directory path following XDG Base Directory Specification
@@ -86,4 +110,72 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), SettingsError> {
 
     eprintln!("[JUBBY] Settings saved to {:?}", path);
     Ok(())
+}
+
+/// Parse a shortcut string (e.g., "Ctrl+Shift+J", "F9") into a Shortcut
+pub fn parse_shortcut(shortcut_str: &str) -> Result<Shortcut, SettingsError> {
+    shortcut_str
+        .parse()
+        .map_err(|e: global_hotkey::hotkey::HotKeyParseError| {
+            SettingsError::ShortcutParseError(e.to_string())
+        })
+}
+
+/// Register the toggle shortcut handler for a given shortcut
+fn register_toggle_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), SettingsError> {
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app_handle, _shortcut, event| {
+            if event.state == ShortcutEventState::Released {
+                window::toggle(app_handle);
+            }
+        })
+        .map_err(|e| SettingsError::ShortcutRegisterError(e.to_string()))
+}
+
+/// Update the global shortcut at runtime
+/// Unregisters the current shortcut, registers the new one, and saves settings
+pub fn update_shortcut(app: &AppHandle, new_shortcut_str: &str) -> Result<(), SettingsError> {
+    // Parse the new shortcut first to validate it
+    let new_shortcut = parse_shortcut(new_shortcut_str)?;
+
+    // Get the current shortcut from state
+    let current_state = app.state::<CurrentShortcut>();
+    let current_str = current_state.current.lock().unwrap().clone();
+
+    // Unregister the current shortcut
+    if let Ok(current_shortcut) = parse_shortcut(&current_str) {
+        if let Err(e) = app.global_shortcut().unregister(current_shortcut) {
+            eprintln!(
+                "[JUBBY] Warning: failed to unregister old shortcut '{}': {}",
+                current_str, e
+            );
+        }
+    }
+
+    // Register the new shortcut with the toggle handler
+    register_toggle_shortcut(app, new_shortcut)?;
+
+    // Update state
+    *current_state.current.lock().unwrap() = new_shortcut_str.to_string();
+
+    // Save to settings file
+    let settings = AppSettings {
+        global_shortcut: new_shortcut_str.to_string(),
+    };
+    save_settings(&settings)?;
+
+    eprintln!("[JUBBY] Shortcut updated to: {}", new_shortcut_str);
+    Ok(())
+}
+
+/// Tauri command: Get current settings
+#[tauri::command]
+pub fn get_settings() -> AppSettings {
+    load_settings()
+}
+
+/// Tauri command: Update the global shortcut
+#[tauri::command]
+pub fn update_global_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
+    update_shortcut(&app, &shortcut).map_err(|e| e.to_string())
 }

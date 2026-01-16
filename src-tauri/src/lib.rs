@@ -7,6 +7,8 @@ mod window;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
 
+use settings::CurrentShortcut;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -51,12 +53,17 @@ pub fn run() {
             storage::todo::tag_update,
             storage::todo::tag_delete,
             enhancer::enhance_prompt,
+            settings::get_settings,
+            settings::update_global_shortcut,
         ])
         .setup(|app| {
             // Initialize database
             let db = storage::init_database(app)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
             app.manage(db);
+
+            // Initialize current shortcut state (tracks what's registered)
+            app.manage(CurrentShortcut::new("F9".to_string()));
 
             tray::setup_tray(app)?;
             eprintln!("[JUBBY] Setup completo. F9 deve funcionar agora.");
