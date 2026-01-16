@@ -12,6 +12,7 @@ export interface PluginCapabilities {
 export interface PluginManifest {
   id: string
   name: string
+  description: string
   icon: LucideIcon
   component: ComponentType<PluginProps>
   version: string

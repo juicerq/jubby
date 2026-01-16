@@ -5,6 +5,7 @@ import { PromptEnhancerPlugin } from './PromptEnhancerPlugin'
 export const PromptEnhancerManifest: PluginManifest = {
   id: 'prompt-enhancer',
   name: 'Prompt Enhancer',
+  description: 'Enhance prompts with AI',
   icon: Sparkles,
   component: PromptEnhancerPlugin,
   version: '1.0.0',

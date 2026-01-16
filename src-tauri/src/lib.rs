@@ -67,20 +67,19 @@ pub fn run() {
             app.manage(CurrentShortcut::new(shortcut_str.clone()));
 
             // Register the initial shortcut (handler is set globally in the plugin builder)
-            app.global_shortcut()
-                .register(shortcut)
-                .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+            // If shortcut is already registered, another instance is running - exit silently
+            if let Err(e) = app.global_shortcut().register(shortcut) {
+                if e.to_string().contains("already registered") {
+                    eprintln!("[JUBBY] Another instance is already running");
+                    std::process::exit(0);
+                }
+            }
 
             tray::setup_tray(app)?;
             Ok(())
         })
-        .build(tauri::generate_context!());
-
-    let app = match app {
-        Ok(app) => app,
-        Err(e) if e.to_string().contains("already registered") => std::process::exit(0),
-        Err(_) => std::process::exit(1),
-    };
+        .build(tauri::generate_context!())
+        .expect("Failed to build app");
 
     app.run(tray::handle_run_event);
 }

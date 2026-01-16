@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo, type RefObject } from 'react'
+import { useEffect, useCallback, useRef, useMemo, useState, type RefObject } from 'react'
 import { Search, Settings } from 'lucide-react'
 import type { PluginManifest } from '@/core/types'
 
@@ -8,10 +8,7 @@ interface PluginGridProps {
   onSettingsClick?: () => void
 }
 
-const COLUMNS = 4
-
 export function PluginGrid({ plugins, onPluginClick, onSettingsClick }: PluginGridProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -20,68 +17,17 @@ export function PluginGrid({ plugins, onPluginClick, onSettingsClick }: PluginGr
     const query = searchQuery.toLowerCase()
     return plugins.filter(plugin =>
       plugin.name.toLowerCase().includes(query) ||
-      plugin.id.toLowerCase().includes(query)
+      plugin.id.toLowerCase().includes(query) ||
+      plugin.description.toLowerCase().includes(query)
     )
   }, [plugins, searchQuery])
 
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [filteredPlugins.length])
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        return
-      }
-
-      if (document.activeElement === searchInputRef.current) {
-        if (e.key === 'ArrowDown' || e.key === 'Enter') {
-          e.preventDefault()
-          searchInputRef.current?.blur()
-        }
-        return
-      }
-
-      if (filteredPlugins.length === 0) return
-
-      const total = filteredPlugins.length
-      let newIndex = selectedIndex
-
-      switch (e.key) {
-        case 'ArrowRight':
-          e.preventDefault()
-          newIndex = (selectedIndex + 1) % total
-          break
-        case 'ArrowLeft':
-          e.preventDefault()
-          newIndex = (selectedIndex - 1 + total) % total
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          newIndex = Math.min(selectedIndex + COLUMNS, total - 1)
-          break
-        case 'ArrowUp':
-          e.preventDefault()
-          if (selectedIndex < COLUMNS) {
-            searchInputRef.current?.focus()
-          } else {
-            newIndex = selectedIndex - COLUMNS
-          }
-          break
-        case 'Enter':
-          e.preventDefault()
-          onPluginClick?.(filteredPlugins[selectedIndex])
-          return
-        default:
-          return
-      }
-
-      setSelectedIndex(newIndex)
-    },
-    [selectedIndex, filteredPlugins, onPluginClick]
-  )
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      searchInputRef.current?.focus()
+    }
+  }, [])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -102,7 +48,6 @@ export function PluginGrid({ plugins, onPluginClick, onSettingsClick }: PluginGr
       />
       <PluginGridContent
         filteredPlugins={filteredPlugins}
-        selectedIndex={selectedIndex}
         onPluginClick={onPluginClick}
       />
     </div>
@@ -146,11 +91,10 @@ function PluginGridSearch({ searchQuery, setSearchQuery, searchInputRef, onSetti
 
 interface PluginGridContentProps {
   filteredPlugins: PluginManifest[]
-  selectedIndex: number
   onPluginClick?: (plugin: PluginManifest) => void
 }
 
-function PluginGridContent({ filteredPlugins, selectedIndex, onPluginClick }: PluginGridContentProps) {
+function PluginGridContent({ filteredPlugins, onPluginClick }: PluginGridContentProps) {
   return (
     <div className="flex-1 flex flex-col gap-3 overflow-hidden">
       <span className="text-[10px] font-semibold tracking-widest uppercase text-white/40">Plugins</span>
@@ -158,12 +102,11 @@ function PluginGridContent({ filteredPlugins, selectedIndex, onPluginClick }: Pl
       {filteredPlugins.length === 0 ? (
         <PluginGridEmptyState />
       ) : (
-        <div className="grid grid-cols-[repeat(4,80px)] gap-2">
-          {filteredPlugins.map((plugin, index) => (
+        <div className="grid grid-cols-3 gap-2">
+          {filteredPlugins.map((plugin) => (
             <PluginGridCard
               key={plugin.id}
               plugin={plugin}
-              isSelected={index === selectedIndex}
               onClick={() => onPluginClick?.(plugin)}
             />
           ))}
@@ -183,36 +126,26 @@ function PluginGridEmptyState() {
 
 interface PluginGridCardProps {
   plugin: PluginManifest
-  isSelected: boolean
   onClick: () => void
 }
 
-function PluginGridCard({ plugin, isSelected, onClick }: PluginGridCardProps) {
+function PluginGridCard({ plugin, onClick }: PluginGridCardProps) {
   const Icon = plugin.icon
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`
-        group relative
-        flex flex-col items-center justify-center
-        w-20 h-20
-        rounded-lg
-        bg-transparent
-        border border-transparent
-        cursor-pointer
-        transition-all duration-150 ease-out
-        active:scale-95
-        focus:outline-none
-        before:content-[''] before:absolute before:inset-0 before:rounded-lg before:bg-transparent before:transition-all before:duration-150
-        hover:before:bg-white/8
-        ${isSelected ? 'before:bg-white/8 before:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] hover:before:bg-white/10' : ''}
-      `}
+      className="group relative flex items-center gap-3 p-3 rounded-lg bg-transparent border border-white/10 cursor-pointer transition-all duration-150 ease-out active:scale-[0.98] focus:outline-none before:content-[''] before:absolute before:inset-0 before:rounded-lg before:transition-all before:duration-150 hover:before:bg-white/5"
     >
-      <Icon className="relative z-10 w-8 h-8 text-white/80 mb-1.5" />
-      <span className="relative z-10 text-[10px] font-medium text-white/60 truncate max-w-[72px] text-center leading-tight transition-colors duration-150 group-hover:text-white/80">
-        {plugin.name}
-      </span>
+      <Icon className="relative z-10 w-[22px] h-[22px] text-white/80 shrink-0" />
+      <div className="relative z-10 flex flex-col min-w-0 overflow-hidden">
+        <span className="text-[12px] font-medium text-white/80 truncate text-left">
+          {plugin.name}
+        </span>
+        <span className="text-[10px] text-white/40 truncate text-left">
+          {plugin.description}
+        </span>
+      </div>
     </button>
   )
 }
