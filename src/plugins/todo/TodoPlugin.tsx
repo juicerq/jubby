@@ -1432,7 +1432,7 @@ function TodoPluginManageTagsModal({
                 <span className="text-[13px] text-white/35">No tags yet</span>
               </div>
             ) : (
-              <div className="flex flex-col gap-0.5">
+              <div className="grid grid-cols-2 gap-1">
                 {tags.map((tag) => (
                   <TodoPluginManageTagRow
                     key={tag.id}
@@ -1607,17 +1607,17 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
   return (
     <div
       ref={rowRef}
-      className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4"
+      className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4"
     >
       <div className="relative">
         <button
           type="button"
           onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
-          className="flex h-6 w-6 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15"
           aria-label="Change color"
         >
           <span
-            className="h-3.5 w-3.5 rounded-full"
+            className="h-3 w-3 rounded-full"
             style={{ backgroundColor: tag.color }}
           />
         </button>
@@ -1633,7 +1633,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
 
       {isEditing ? (
         <>
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col">
             <input
               ref={inputRef}
               type="text"
@@ -1641,7 +1641,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
               onChange={(e) => setEditName(e.target.value)}
               onKeyDown={handleKeyDown}
               className={cn(
-                'h-6 flex-1 rounded border bg-white/6 px-2 text-[13px] text-white/90 outline-none transition-all duration-150',
+                'h-6 w-full rounded border bg-white/6 px-2 text-[12px] text-white/90 outline-none transition-all duration-150',
                 hasError
                   ? 'border-red-500/50 focus:border-red-500'
                   : 'border-transparent focus:border-white/20'
@@ -1657,19 +1657,19 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
             type="button"
             onClick={saveEdit}
             disabled={hasError}
-            className="flex h-6 w-6 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40 active:border-white/15"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40 active:border-white/15"
             aria-label="Save"
           >
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-3 w-3" />
           </button>
 
           <button
             type="button"
             onClick={cancelEdit}
-            className="flex h-6 w-6 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:border-white/15"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:border-white/15"
             aria-label="Cancel"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
           </button>
         </>
       ) : (
@@ -1677,7 +1677,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
           <button
             type="button"
             onClick={startEditing}
-            className="flex-1 truncate text-left text-[13px] text-white/80 transition-colors hover:text-white/95"
+            className="min-w-0 flex-1 truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
           >
             {tag.name}
           </button>
@@ -1686,7 +1686,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
             type="button"
             onClick={() => handleDeleteClick(tag.id)}
             className={cn(
-              'flex h-6 w-6 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out active:border-white/15',
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out active:border-white/15',
               isPendingDelete
                 ? 'bg-red-500/20 text-red-500'
                 : 'text-white/30 opacity-0 hover:bg-white/8 hover:text-red-400 group-hover:opacity-100'
@@ -1694,9 +1694,9 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
             aria-label={isPendingDelete ? 'Confirm delete' : 'Delete tag'}
           >
             {isPendingDelete ? (
-              <Check className="h-3.5 w-3.5" />
+              <Check className="h-3 w-3" />
             ) : (
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-3 w-3" />
             )}
           </button>
         </>
@@ -1732,17 +1732,17 @@ function TodoPluginColorPickerDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="absolute left-0 top-full z-10 mt-1 rounded-lg border border-white/10 bg-[#0a0a0a] p-2 shadow-lg"
+      className="absolute left-0 top-full z-50 mt-1 w-max rounded-lg border border-white/10 bg-[#0a0a0a] p-2 shadow-lg"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1">
         {TAG_COLORS.map((color) => (
           <button
             key={color.hex}
             type="button"
             onClick={() => onSelectColor(color.hex)}
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md border transition-all duration-150 ease-out hover:scale-110',
+              'flex h-6 w-6 items-center justify-center rounded-md border transition-all duration-150 ease-out hover:scale-110',
               selectedColor === color.hex
                 ? 'border-white/40'
                 : 'border-transparent hover:border-white/20'
@@ -1751,7 +1751,7 @@ function TodoPluginColorPickerDropdown({
             title={color.name}
           >
             <span
-              className="h-4 w-4 rounded-full"
+              className="h-3.5 w-3.5 rounded-full"
               style={{ backgroundColor: color.hex }}
             />
           </button>
