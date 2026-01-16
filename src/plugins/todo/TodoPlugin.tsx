@@ -1437,6 +1437,7 @@ function TodoPluginManageTagsModal({
                   <TodoPluginManageTagRow
                     key={tag.id}
                     tag={tag}
+                    allTags={tags}
                     onUpdateTag={onUpdateTag}
                     onDeleteTag={onDeleteTag}
                   />
@@ -1529,14 +1530,74 @@ function TodoPluginCreateTagRow({ onCreateTag }: TodoPluginCreateTagRowProps) {
 
 interface TodoPluginManageTagRowProps {
   tag: TagType
+  allTags: TagType[]
   onUpdateTag: (id: string, name: string, color: string) => Promise<boolean>
   onDeleteTag: (id: string) => Promise<void>
 }
 
-function TodoPluginManageTagRow({ tag, onUpdateTag, onDeleteTag }: TodoPluginManageTagRowProps) {
+function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: TodoPluginManageTagRowProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(tag.name)
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false)
-  const { pendingId, handleDeleteClick } = usePendingDelete(onDeleteTag)
+  const { pendingId, handleDeleteClick, cancelDelete } = usePendingDelete(onDeleteTag)
   const isPendingDelete = pendingId === tag.id
+  const inputRef = useRef<HTMLInputElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  const isDuplicate = allTags.some(
+    (t) => t.id !== tag.id && t.name.toLowerCase() === editName.trim().toLowerCase()
+  )
+  const isEmpty = !editName.trim()
+  const hasError = isDuplicate || isEmpty
+
+  const startEditing = () => {
+    setIsEditing(true)
+    setEditName(tag.name)
+    cancelDelete()
+  }
+
+  const saveEdit = async () => {
+    if (hasError) return
+    if (editName.trim() !== tag.name) {
+      await onUpdateTag(tag.id, editName.trim(), tag.color)
+    }
+    setIsEditing(false)
+  }
+
+  const cancelEdit = () => {
+    setIsEditing(false)
+    setEditName(tag.name)
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveEdit()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  useEffect(() => {
+    if (!isEditing) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rowRef.current && !rowRef.current.contains(event.target as Node)) {
+        saveEdit()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isEditing, editName, hasError])
 
   const handleColorSelect = async (color: string) => {
     setIsColorPickerOpen(false)
@@ -1544,7 +1605,10 @@ function TodoPluginManageTagRow({ tag, onUpdateTag, onDeleteTag }: TodoPluginMan
   }
 
   return (
-    <div className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4">
+    <div
+      ref={rowRef}
+      className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4"
+    >
       <div className="relative">
         <button
           type="button"
@@ -1567,27 +1631,76 @@ function TodoPluginManageTagRow({ tag, onUpdateTag, onDeleteTag }: TodoPluginMan
         )}
       </div>
 
-      <span className="flex-1 truncate text-[13px] text-white/80">
-        {tag.name}
-      </span>
+      {isEditing ? (
+        <>
+          <div className="flex flex-1 flex-col">
+            <input
+              ref={inputRef}
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className={cn(
+                'h-6 flex-1 rounded border bg-white/6 px-2 text-[13px] text-white/90 outline-none transition-all duration-150',
+                hasError
+                  ? 'border-red-500/50 focus:border-red-500'
+                  : 'border-transparent focus:border-white/20'
+              )}
+              autoComplete="off"
+            />
+            {isDuplicate && (
+              <span className="mt-0.5 text-[10px] text-red-400">Name already exists</span>
+            )}
+          </div>
 
-      <button
-        type="button"
-        onClick={() => handleDeleteClick(tag.id)}
-        className={cn(
-          'flex h-6 w-6 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out active:border-white/15',
-          isPendingDelete
-            ? 'bg-red-500/20 text-red-500'
-            : 'text-white/30 opacity-0 hover:bg-white/8 hover:text-red-400 group-hover:opacity-100'
-        )}
-        aria-label={isPendingDelete ? 'Confirm delete' : 'Delete tag'}
-      >
-        {isPendingDelete ? (
-          <Check className="h-3.5 w-3.5" />
-        ) : (
-          <Trash2 className="h-3.5 w-3.5" />
-        )}
-      </button>
+          <button
+            type="button"
+            onClick={saveEdit}
+            disabled={hasError}
+            className="flex h-6 w-6 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40 active:border-white/15"
+            aria-label="Save"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="flex h-6 w-6 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:border-white/15"
+            aria-label="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={startEditing}
+            className="flex-1 truncate text-left text-[13px] text-white/80 transition-colors hover:text-white/95"
+          >
+            {tag.name}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDeleteClick(tag.id)}
+            className={cn(
+              'flex h-6 w-6 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out active:border-white/15',
+              isPendingDelete
+                ? 'bg-red-500/20 text-red-500'
+                : 'text-white/30 opacity-0 hover:bg-white/8 hover:text-red-400 group-hover:opacity-100'
+            )}
+            aria-label={isPendingDelete ? 'Confirm delete' : 'Delete tag'}
+          >
+            {isPendingDelete ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </>
+      )}
     </div>
   )
 }

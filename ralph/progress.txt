@@ -52,3 +52,21 @@ Refactor "Manage Tags" from a full-screen view to a compact modal within the fol
   - Reused usePendingDelete hook for two-step delete pattern in tag rows
   - Modal follows existing pattern: overlay with backdrop-blur, onClick on overlay closes, stopPropagation on inner container
 
+## 2026-01-16 - Task 3: Implement inline tag editing
+- What was implemented:
+  - Refactored TodoPluginManageTagRow to support idle and edit states
+  - Idle state: color dot (clickable), tag name (clickable to edit), delete icon (visible on hover)
+  - Edit state: input replaces text, auto-focused with text selected
+  - Added save (checkmark) and cancel (X) buttons in edit mode
+  - Enter key or checkmark saves changes, Escape key or X cancels
+  - Click outside row saves changes (blur-save behavior)
+  - Validation: empty names disabled save, duplicate names show error message
+  - Added allTags prop to enable duplicate detection
+  - Canceling pending delete when entering edit mode to avoid conflicting states
+- Files changed:
+  - src/plugins/todo/TodoPlugin.tsx
+- **Learnings for future iterations:**
+  - usePendingDelete hook returns cancelDelete function useful for clearing pending state when entering other modes
+  - Click outside to save requires careful handling of event propagation and effect dependencies
+  - Case-insensitive duplicate check provides better UX than case-sensitive
+
