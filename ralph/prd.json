@@ -9,7 +9,7 @@
       "Remove setView('tags') call from tag button"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "This simplifies the navigation from 3-view to 2-view system."
   },
   {

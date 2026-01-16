@@ -14,3 +14,22 @@ Refactor "Manage Tags" from a full-screen view to a compact modal within the fol
 
 ---
 
+## 2026-01-16 - Task 1: Remove 'tags' view from navigation system
+- What was implemented:
+  - Removed 'tags' from TodoView type (now only 'folders' | 'list')
+  - Removed tags view case from header configuration
+  - Removed tags view case from main render switch
+  - Changed tag button to no-op (will be wired to modal in Task 6)
+  - Cleaned up unused components/functions that were orphaned:
+    - Removed handleCreateTag, handleEditTag, handleDeleteTag handlers (will be recreated in Task 6)
+    - Removed createTag, updateTag, deleteTag from destructured storage (will be re-added in Task 6)
+    - Removed TodoPluginTagManager, TodoPluginTagManagerList, TodoPluginTagCard, TodoPluginTagEditModal
+    - Removed TodoPluginCreateTagRow, TodoPluginColorPicker, TodoPluginInlineColorPicker
+    - Exported TAG_COLORS for future use in color picker components
+- Files changed:
+  - src/plugins/todo/TodoPlugin.tsx
+- **Learnings for future iterations:**
+  - TypeScript's noUnusedLocals flag catches orphaned code during refactors - good for incremental cleanup
+  - Exporting constants that will be reused (TAG_COLORS) is a clean way to keep them during transitions
+  - Removing components that will be recreated is cleaner than suppressing warnings during transitional states
+
