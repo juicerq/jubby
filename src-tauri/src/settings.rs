@@ -2,12 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_global_shortcut::{
-    GlobalShortcutExt, Shortcut, ShortcutState as ShortcutEventState,
-};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 use thiserror::Error;
-
-use crate::window;
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,20 +68,10 @@ pub fn load_settings() -> AppSettings {
     let path = get_settings_path();
 
     if !path.exists() {
-        eprintln!("[JUBBY] Settings file not found, using defaults");
         return AppSettings::default();
     }
 
-    match load_settings_from_file(&path) {
-        Ok(settings) => {
-            eprintln!("[JUBBY] Settings loaded from {:?}", path);
-            settings
-        }
-        Err(e) => {
-            eprintln!("[JUBBY] Failed to load settings: {}, using defaults", e);
-            AppSettings::default()
-        }
-    }
+    load_settings_from_file(&path).unwrap_or_default()
 }
 
 /// Internal function to load settings from a specific path
@@ -107,8 +93,6 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), SettingsError> {
     let path = get_settings_path();
     let contents = serde_json::to_string_pretty(settings)?;
     std::fs::write(&path, contents)?;
-
-    eprintln!("[JUBBY] Settings saved to {:?}", path);
     Ok(())
 }
 
@@ -121,14 +105,10 @@ pub fn parse_shortcut(shortcut_str: &str) -> Result<Shortcut, SettingsError> {
         })
 }
 
-/// Register the toggle shortcut handler for a given shortcut
-fn register_toggle_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), SettingsError> {
+/// Register a shortcut (handler is set globally in the plugin builder)
+fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), SettingsError> {
     app.global_shortcut()
-        .on_shortcut(shortcut, |app_handle, _shortcut, event| {
-            if event.state == ShortcutEventState::Released {
-                window::toggle(app_handle);
-            }
-        })
+        .register(shortcut)
         .map_err(|e| SettingsError::ShortcutRegisterError(e.to_string()))
 }
 
@@ -144,16 +124,11 @@ pub fn update_shortcut(app: &AppHandle, new_shortcut_str: &str) -> Result<(), Se
 
     // Unregister the current shortcut
     if let Ok(current_shortcut) = parse_shortcut(&current_str) {
-        if let Err(e) = app.global_shortcut().unregister(current_shortcut) {
-            eprintln!(
-                "[JUBBY] Warning: failed to unregister old shortcut '{}': {}",
-                current_str, e
-            );
-        }
+        let _ = app.global_shortcut().unregister(current_shortcut);
     }
 
-    // Register the new shortcut with the toggle handler
-    register_toggle_shortcut(app, new_shortcut)?;
+    // Register the new shortcut (handler is set globally in the plugin builder)
+    register_shortcut(app, new_shortcut)?;
 
     // Update state
     *current_state.current.lock().unwrap() = new_shortcut_str.to_string();
@@ -163,8 +138,6 @@ pub fn update_shortcut(app: &AppHandle, new_shortcut_str: &str) -> Result<(), Se
         global_shortcut: new_shortcut_str.to_string(),
     };
     save_settings(&settings)?;
-
-    eprintln!("[JUBBY] Shortcut updated to: {}", new_shortcut_str);
     Ok(())
 }
 

@@ -21,15 +21,15 @@ function Settings({ onBack }: SettingsProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <PluginHeader
-        title="Configurações"
+        title="Settings"
         icon={SettingsIcon}
         onBack={onBack}
       />
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
-        <SettingsSection title="Atalho Global">
+        <SettingsSection title="Global Shortcut">
           <SettingsRow
-            label="Tecla de ativação"
-            description="Atalho para mostrar/ocultar a janela"
+            label="Activation key"
+            description="Shortcut to show/hide the window"
           >
             <ShortcutCapture
               value={settings.globalShortcut}

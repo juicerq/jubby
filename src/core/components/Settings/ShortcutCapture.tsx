@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { X, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ShortcutCaptureProps {
@@ -18,7 +19,7 @@ const MODIFIER_CODES = new Set([
   'MetaRight',
 ])
 
-const BLOCKED_KEYS = new Set(['Escape'])
+const BLOCKED_KEYS = new Set<string>([])
 
 function codeToKeyName(code: string): string {
   if (code.startsWith('Key')) return code.slice(3)
@@ -82,6 +83,31 @@ function ShortcutCapture({ value, onChange, disabled = false }: ShortcutCaptureP
       event.preventDefault()
       event.stopPropagation()
 
+      // Escape cancels capture
+      if (event.code === 'Escape') {
+        setIsCapturing(false)
+        return
+      }
+
+      const shortcut = buildShortcutString(event)
+      if (shortcut) {
+        onChange(shortcut)
+        setIsCapturing(false)
+      }
+    },
+    [onChange]
+  )
+
+  // Keyup handler for Ctrl+Fn - OS often intercepts these on keydown
+  const handleKeyUp = useCallback(
+    (event: KeyboardEvent) => {
+      // Only process F-keys with modifiers on keyup
+      if (!/^F\d+$/.test(event.code)) return
+      if (!event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
       const shortcut = buildShortcutString(event)
       if (shortcut) {
         onChange(shortcut)
@@ -95,8 +121,12 @@ function ShortcutCapture({ value, onChange, disabled = false }: ShortcutCaptureP
     if (!isCapturing) return
 
     window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isCapturing, handleKeyDown])
+    window.addEventListener('keyup', handleKeyUp, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keyup', handleKeyUp, true)
+    }
+  }, [isCapturing, handleKeyDown, handleKeyUp])
 
   useEffect(() => {
     if (!isCapturing) return
@@ -112,22 +142,46 @@ function ShortcutCapture({ value, onChange, disabled = false }: ShortcutCaptureP
     }
   }
 
+  const handleCancel = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsCapturing(false)
+  }
+
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={disabled}
       className={cn(
-        'h-10 min-w-[140px] rounded-[10px] px-4 text-[13px] font-medium tracking-[-0.01em]',
+        'group relative flex items-center justify-between gap-2 h-10 min-w-[140px] rounded-[10px] px-4 text-[13px] font-medium tracking-[-0.01em]',
         'transition-all duration-[180ms] ease-out',
         'outline-none',
         isCapturing
           ? 'border border-white/20 bg-white/8 text-white/60 shadow-[0_0_0_3px_rgba(255,255,255,0.06)]'
-          : 'border border-transparent bg-white/4 text-white/90 hover:bg-white/6',
+          : 'border border-transparent bg-white/4 text-white/90 hover:bg-white/10 cursor-pointer',
         disabled && 'cursor-not-allowed opacity-50'
       )}
     >
-      {isCapturing ? 'Press shortcut...' : value}
+      {isCapturing ? (
+        <>
+          <span>Press shortcut...</span>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="text-red-400/70 hover:text-red-400 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span>{value}</span>
+          <Pencil
+            size={12}
+            className="opacity-0 group-hover:opacity-40 transition-opacity"
+          />
+        </>
+      )}
     </button>
   )
 }

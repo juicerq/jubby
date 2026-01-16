@@ -88,6 +88,12 @@ Dados salvos automaticamente em `~/.local/share/jubby/meu-plugin.json`.
 
 ## Convenções
 
+### Idioma / Language
+- **UI texts:** Always in English (labels, buttons, descriptions, aria-labels, placeholders)
+- **Code:** English (variables, functions, comments)
+- **Documentation (CLAUDE.md, PRD):** Portuguese is acceptable
+- **Commit messages:** English
+
 ### TypeScript
 - Strict mode obrigatório
 - Interfaces para dados, types para unions

@@ -120,26 +120,26 @@ interface PluginGridSearchProps {
 
 function PluginGridSearch({ searchQuery, setSearchQuery, searchInputRef, onSettingsClick }: PluginGridSearchProps) {
   return (
-    <div className="relative shrink-0">
-      <input
-        ref={searchInputRef}
-        type="text"
-        className="w-full h-9 pl-9 pr-16 text-[13px] font-normal tracking-tight text-white/95 bg-white/[0.04] border border-transparent rounded-[10px] outline-none transition-all duration-200 placeholder:text-white/35 hover:bg-white/[0.06] focus:bg-white/[0.06] focus:border-white/15 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-        placeholder="Search plugins..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-      />
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" />
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-        <span className="text-[10px] font-medium tracking-wide text-white/25 bg-white/[0.06] px-1.5 py-0.5 rounded pointer-events-none opacity-70">⌘K</span>
-        <button
-          type="button"
-          onClick={onSettingsClick}
-          className="p-1 rounded text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors duration-150"
-        >
-          <Settings className="w-3.5 h-3.5" />
-        </button>
+    <div className="flex items-center gap-2 shrink-0">
+      <div className="relative flex-1">
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="w-full h-9 pl-9 pr-10 text-[13px] font-normal tracking-tight text-white/95 bg-white/[0.04] border border-transparent rounded-[10px] outline-none transition-all duration-200 placeholder:text-white/35 hover:bg-white/[0.06] focus:bg-white/[0.06] focus:border-white/15 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          placeholder="Search plugins..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none" />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium tracking-wide text-white/25 bg-white/[0.06] px-1.5 py-0.5 rounded pointer-events-none opacity-70">⌘K</span>
       </div>
+      <button
+        type="button"
+        onClick={onSettingsClick}
+        className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors duration-150"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
     </div>
   )
 }
