@@ -82,3 +82,22 @@
   - Import `invoke` from `@tauri-apps/api/core` (not `@tauri-apps/api`)
   - Toast is imported from `sonner` package
   - The hook returns a boolean from `updateShortcut` to indicate success/failure to the caller
+
+## 2026-01-16 - Task 6: Frontend - Criar componente ShortcutCapture
+- What was implemented:
+  - Created `src/core/components/Settings/ShortcutCapture.tsx`
+  - Implemented `isCapturing` state that enables keydown listener when active
+  - Built shortcut string from `event.ctrlKey`, `shiftKey`, `altKey`, `metaKey` + `event.code`
+  - Created `codeToKeyName()` helper to convert event.code to readable key names (e.g., KeyA → A, F9 → F9)
+  - Validates that shortcut has at least one non-modifier key (ignores modifier-only presses)
+  - Blocks invalid keys like Escape alone
+  - Calls `onChange` with captured shortcut and exits capture mode
+  - Window blur handler exits capture mode (user clicked away)
+- Files changed:
+  - `src/core/components/Settings/ShortcutCapture.tsx` - New file with ShortcutCapture component
+- **Learnings for future iterations:**
+  - Use `event.code` (not `event.key`) for consistency across keyboard layouts
+  - Modifier keys: ControlLeft/Right, ShiftLeft/Right, AltLeft/Right, MetaLeft/Right
+  - Use `{ capture: true }` (third arg `true`) on addEventListener to capture events before other handlers
+  - The component follows the pattern of other components: button-based with visual state for capturing mode
+  - Tauri global_shortcut uses "Ctrl", "Alt", "Shift", "Super" for modifiers (not "Control" or "Meta")
