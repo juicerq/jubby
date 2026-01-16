@@ -22,7 +22,7 @@
 				"Usar DEFAULT_SETTINGS como fallback se arquivo não existir"
 			],
 			"should-commit": true,
-			"passes": false,
+			"passes": true,
 			"notes": "Siga o padrão de storage.rs existente. Use thiserror para erros customizados."
 		},
 		{
@@ -35,7 +35,7 @@
 				"Registrar comandos em lib.rs"
 			],
 			"should-commit": true,
-			"passes": false,
+			"passes": true,
 			"notes": "Leia a documentação do tauri_plugin_global_shortcut para entender unregister/register em runtime."
 		},
 		{
@@ -48,7 +48,7 @@
 				"Remover hardcode de Code::F9"
 			],
 			"should-commit": true,
-			"passes": false,
+			"passes": true,
 			"notes": "Garanta que o app ainda funciona se settings.json não existir ou estiver corrompido."
 		},
 		{
@@ -61,7 +61,7 @@
 				"Retornar { settings, isLoading, updateShortcut }"
 			],
 			"should-commit": true,
-			"passes": false,
+			"passes": true,
 			"notes": "Siga o padrão de useTodoStorage.ts com loading state e error handling via toast."
 		},
 		{

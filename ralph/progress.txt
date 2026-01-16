@@ -65,3 +65,20 @@
   - The shortcut is registered before setup runs (in Builder chain), so settings must be loaded before Builder
   - Removed hardcoded `Code::F9` in favor of dynamic value from settings
   - App will always start even if settings are corrupted (uses F9 fallback)
+
+## 2026-01-16 - Task 5: Frontend - Criar hook useSettings
+- What was implemented:
+  - Created `src/core/hooks/useSettings.ts`
+  - Implemented settings loading via `invoke('get_settings')` in useEffect
+  - Implemented `updateShortcut()` function that calls `invoke('update_global_shortcut')`
+  - Returns `{ settings, isLoading, updateShortcut }` following the established pattern
+  - Uses optimistic updates with rollback on error
+  - Toast notifications for success and error states
+- Files changed:
+  - `src/core/hooks/useSettings.ts` - New file with useSettings hook
+- **Learnings for future iterations:**
+  - Follow the pattern in `useTodoStorage.ts` for hook structure: useState, useEffect for loading, useCallback for actions
+  - Use optimistic updates: update local state first, then invoke backend, rollback on error
+  - Import `invoke` from `@tauri-apps/api/core` (not `@tauri-apps/api`)
+  - Toast is imported from `sonner` package
+  - The hook returns a boolean from `updateShortcut` to indicate success/failure to the caller
