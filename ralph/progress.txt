@@ -118,3 +118,20 @@
   - Mini-components defined in same file per CLAUDE.md conventions
   - Toast success is already handled by useSettings hook, no need to duplicate
   - Settings component takes `onBack` prop (not `onExitPlugin` like plugins) since it's not a plugin
+
+## 2026-01-16 - Task 8: Frontend - Adicionar ícone de settings no PluginGrid
+- What was implemented:
+  - Added `onSettingsClick` prop to `PluginGridProps` interface
+  - Passed `onSettingsClick` from `PluginGrid` to `PluginGridSearch` component
+  - Updated `PluginGridSearchProps` to include `onSettingsClick`
+  - Replaced single `⌘K` hint with flex container containing both hint and Settings button
+  - Added Settings icon import from lucide-react
+  - Styled Settings button with subtle hover state (consistent with input styling)
+  - Increased input right padding from `pr-10` to `pr-16` to accommodate both elements
+- Files changed:
+  - `src/core/components/PluginGrid.tsx` - Added onSettingsClick prop and Settings button
+- **Learnings for future iterations:**
+  - Keep the ⌘K hint visible alongside the settings button (as per PRD requirement)
+  - Use small icon size (w-3.5 h-3.5) to match existing Search icon
+  - Button hover state uses subtle opacity transition (text-white/30 → text-white/60)
+  - Wrapping hint and button in flex container allows consistent spacing with gap-1.5
