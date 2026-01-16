@@ -258,7 +258,7 @@ function TodoPluginTagButton({ onClick }: { onClick: () => void }) {
         e.stopPropagation()
         onClick()
       }}
-      className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-[180ms] ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96]"
+      className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-[180ms] ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       aria-label="Manage tags"
       title="Manage tags"
     >
@@ -287,11 +287,9 @@ function TodoPluginTagSelector({ tags, selectedTagIds, onToggleTag }: TodoPlugin
               e.stopPropagation()
               onToggleTag(tag.id)
             }}
-            className={`inline-flex cursor-pointer items-center rounded px-2 py-1 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] ${
-              isSelected ? 'ring-1 ring-white/30' : ''
-            }`}
+            className="inline-flex cursor-pointer items-center rounded px-2 py-1 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
             style={{
-              backgroundColor: `${tag.color}${isSelected ? '40' : '20'}`,
+              backgroundColor: `${tag.color}${isSelected ? '50' : '20'}`,
               color: tag.color,
             }}
             title={isSelected ? `Remove ${tag.name} filter` : `Filter by ${tag.name}`}
@@ -324,7 +322,8 @@ function TodoPluginInlineColorPicker({
         className={cn(
           'flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full',
           'transition-all duration-150 ease-out',
-          'hover:scale-110 active:scale-95'
+          'hover:scale-110 active:scale-95',
+          'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]'
         )}
         style={{ backgroundColor: selectedColor }}
         aria-label="Select color"
@@ -355,6 +354,7 @@ function TodoPluginInlineColorPicker({
                 'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full',
                 'transition-all duration-100 ease-out',
                 'hover:scale-110 active:scale-95',
+                'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
                 isSelected && 'ring-1.5 ring-white/50 ring-offset-1 ring-offset-[#0a0a0a]'
               )}
               style={{ backgroundColor: color.hex }}
@@ -434,7 +434,7 @@ function TodoPluginCreateTagRow({
           type="button"
           onClick={handleSubmit}
           disabled={!hasText}
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-white/4 transition-all duration-150 ease-out hover:border-white/10 hover:bg-white/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-white/4"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-white/4 transition-all duration-150 ease-out hover:border-white/10 hover:bg-white/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-white/4 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
           aria-label="Create tag"
         >
           <Plus className="h-4 w-4 text-white/50" />
@@ -471,6 +471,7 @@ function TodoPluginColorPicker({
               'flex h-6 w-6 cursor-pointer items-center justify-center rounded-full',
               'transition-all duration-150 ease-out',
               'hover:scale-110 active:scale-95',
+              'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
               isSelected && 'ring-2 ring-offset-2 ring-offset-[#0a0a0a]'
             )}
             style={{
@@ -621,7 +622,7 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
         <button
           type="button"
           onClick={onEdit}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:scale-90"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:scale-90 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
           aria-label={`Edit ${tag.name}`}
         >
           <Pencil className="h-3.5 w-3.5" />
@@ -635,6 +636,7 @@ function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: Todo
           }}
           className={cn(
             'flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 ease-out active:scale-90',
+            'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
             isPendingDelete
               ? 'animate-pulse bg-red-500/25 text-red-500'
               : 'text-white/40 hover:bg-red-500/15 hover:text-red-500'
@@ -704,7 +706,7 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -741,7 +743,7 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98]"
+            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
           >
             Cancel
           </button>
@@ -749,7 +751,7 @@ function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagE
             type="button"
             onClick={handleSave}
             disabled={!editName.trim()}
-            className="flex-1 rounded-lg bg-white/90 px-4 py-2 text-[13px] font-medium text-[#0a0a0a] transition-all duration-150 ease-out hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-lg bg-white/90 px-4 py-2 text-[13px] font-medium text-[#0a0a0a] transition-all duration-150 ease-out hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
           >
             Save
           </button>
@@ -830,6 +832,7 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
         type="button"
         className={cn(
           'mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]',
+          'active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
           todo.status === 'completed' && 'border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75',
           todo.status === 'in_progress' && 'border-amber-500 bg-amber-500/20 hover:border-amber-400 hover:bg-amber-500/30',
           todo.status === 'pending' && 'border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4'
@@ -865,7 +868,7 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
                   onEditTags()
                 }
               }}
-              className={`flex flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out ${
+              className={`flex flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
                 isEditingTags
                   ? 'border-white/15 bg-white/4'
                   : 'hover:border-white/10 hover:bg-white/4'
@@ -899,7 +902,7 @@ function TodoPluginItem({ todo, tags, onToggle, onDeleteClick, isPendingDelete, 
 
       <button
         type="button"
-        className={`mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-transparent transition-all duration-150 ease-out active:scale-90 ${
+        className={`mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent transition-all duration-150 ease-out active:scale-90 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
           isPendingDelete
             ? 'bg-red-500/20 opacity-100 hover:bg-red-500/30'
             : 'opacity-0 hover:bg-red-500/15 group-hover:opacity-100'
@@ -952,7 +955,7 @@ function TodoPluginTagEditorPopover({ tags, selectedTagIds, onToggleTag, onClose
             e.stopPropagation()
             onClose()
           }}
-          className="flex h-5 w-5 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+          className="flex h-5 w-5 items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
           aria-label="Close"
         >
           <X className="h-3 w-3" />
@@ -971,7 +974,7 @@ function TodoPluginTagEditorPopover({ tags, selectedTagIds, onToggleTag, onClose
                 e.stopPropagation()
                 onToggleTag(tag.id)
               }}
-              className={`flex cursor-pointer items-center justify-center gap-1 truncate rounded px-2 py-1.5 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] ${
+              className={`flex cursor-pointer items-center justify-center gap-1 truncate rounded px-2 py-1.5 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
                 isSelected ? 'ring-1 ring-white/30' : ''
               }`}
               style={{

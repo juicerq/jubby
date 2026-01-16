@@ -16,7 +16,7 @@ export function PluginHeader({ title, icon: Icon, right, onBack }: PluginHeaderP
         type="button"
         onClick={onBack}
         aria-label="Back to grid"
-        className="flex items-center justify-center w-8 h-8 rounded-lg bg-transparent text-white/50 cursor-pointer transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] active:bg-white/8"
+        className="flex items-center justify-center w-8 h-8 rounded-lg bg-transparent text-white/50 cursor-pointer transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] active:bg-white/8 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       >
         <ChevronLeft size={16} aria-hidden="true" />
       </button>

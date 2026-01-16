@@ -81,7 +81,7 @@ function PluginGridSearch({ searchQuery, setSearchQuery, searchInputRef, onSetti
       <button
         type="button"
         onClick={onSettingsClick}
-        className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors duration-150"
+        className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.08] transition-colors duration-150 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       >
         <Settings className="w-4 h-4" />
       </button>
@@ -135,7 +135,7 @@ function PluginGridCard({ plugin, onClick }: PluginGridCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex items-center gap-3 p-3 rounded-lg bg-transparent border border-white/10 cursor-pointer transition-all duration-150 ease-out active:scale-[0.98] focus:outline-none before:content-[''] before:absolute before:inset-0 before:rounded-lg before:transition-all before:duration-150 hover:before:bg-white/5"
+      className="group relative flex items-center gap-3 p-3 rounded-lg bg-transparent border border-white/10 cursor-pointer transition-all duration-150 ease-out active:scale-[0.98] focus:outline-none before:content-[''] before:absolute before:inset-0 before:rounded-lg before:transition-all before:duration-150 hover:before:bg-white/5 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
     >
       <Icon className="relative z-10 w-[22px] h-[22px] text-white/80 shrink-0" />
       <div className="relative z-10 flex flex-col min-w-0 overflow-hidden">
