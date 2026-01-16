@@ -3,6 +3,51 @@ import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import type { Todo, Tag, TodoStatus, Folder, RecentTodo } from './types'
 
+const PENDING_DELETE_TIMEOUT_MS = 1500
+
+interface UsePendingDeleteReturn {
+  pendingId: string | null
+  handleDeleteClick: (id: string) => void
+  cancelDelete: () => void
+}
+
+/**
+ * Hook for two-step delete confirmation pattern.
+ * First click shows confirmation state, second click executes delete.
+ * Auto-cancels after timeout.
+ */
+export function usePendingDelete(onConfirmDelete: (id: string) => void): UsePendingDeleteReturn {
+  const [pendingId, setPendingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (pendingId === null) return
+
+    const timeout = setTimeout(() => {
+      setPendingId(null)
+    }, PENDING_DELETE_TIMEOUT_MS)
+
+    return () => clearTimeout(timeout)
+  }, [pendingId])
+
+  const handleDeleteClick = useCallback(
+    (id: string) => {
+      if (pendingId === id) {
+        onConfirmDelete(id)
+        setPendingId(null)
+      } else {
+        setPendingId(id)
+      }
+    },
+    [pendingId, onConfirmDelete]
+  )
+
+  const cancelDelete = useCallback(() => {
+    setPendingId(null)
+  }, [])
+
+  return { pendingId, handleDeleteClick, cancelDelete }
+}
+
 interface TodoFromBackend {
   id: string
   text: string
@@ -123,11 +168,12 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
 
   const updateTodoStatus = useCallback(
     async (id: string, status: TodoStatus) => {
-      const previousTodos = todos
+      let previousTodos: Todo[] = []
 
-      setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status } : t))
-      )
+      setTodos((prev) => {
+        previousTodos = prev
+        return prev.map((t) => (t.id === id ? { ...t, status } : t))
+      })
 
       try {
         await invoke('todo_update_status', { id, status })
@@ -136,14 +182,17 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
         toast.error('Failed to update todo')
       }
     },
-    [todos]
+    []
   )
 
   const deleteTodo = useCallback(
     async (id: string) => {
-      const previousTodos = todos
+      let previousTodos: Todo[] = []
 
-      setTodos((prev) => prev.filter((t) => t.id !== id))
+      setTodos((prev) => {
+        previousTodos = prev
+        return prev.filter((t) => t.id !== id)
+      })
 
       try {
         await invoke('todo_delete', { id })
@@ -152,16 +201,17 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
         toast.error('Failed to delete todo')
       }
     },
-    [todos]
+    []
   )
 
   const setTodoTags = useCallback(
     async (todoId: string, tagIds: string[]) => {
-      const previousTodos = todos
+      let previousTodos: Todo[] = []
 
-      setTodos((prev) =>
-        prev.map((t) => (t.id === todoId ? { ...t, tagIds } : t))
-      )
+      setTodos((prev) => {
+        previousTodos = prev
+        return prev.map((t) => (t.id === todoId ? { ...t, tagIds } : t))
+      })
 
       try {
         await invoke('todo_set_tags', { todoId, tagIds })
@@ -170,7 +220,7 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
         toast.error('Failed to update tags')
       }
     },
-    [todos]
+    []
   )
 
   const createTag = useCallback(async (name: string, color: string) => {
@@ -196,9 +246,12 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
 
   const updateTag = useCallback(
     async (id: string, name: string, color: string) => {
-      const previousTags = tags
+      let previousTags: Tag[] = []
 
-      setTags((prev) => prev.map((t) => (t.id === id ? { ...t, name, color } : t)))
+      setTags((prev) => {
+        previousTags = prev
+        return prev.map((t) => (t.id === id ? { ...t, name, color } : t))
+      })
 
       try {
         await invoke('tag_update', { id, name, color })
@@ -213,21 +266,25 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
         return false
       }
     },
-    [tags]
+    []
   )
 
   const deleteTag = useCallback(
     async (id: string) => {
-      const previousTags = tags
-      const previousTodos = todos
+      let previousTags: Tag[] = []
+      let previousTodos: Todo[] = []
 
-      setTags((prev) => prev.filter((t) => t.id !== id))
-      setTodos((prev) =>
-        prev.map((t) => ({
+      setTags((prev) => {
+        previousTags = prev
+        return prev.filter((t) => t.id !== id)
+      })
+      setTodos((prev) => {
+        previousTodos = prev
+        return prev.map((t) => ({
           ...t,
           tagIds: t.tagIds?.filter((tagId) => tagId !== id),
         }))
-      )
+      })
 
       try {
         await invoke('tag_delete', { id })
@@ -237,7 +294,7 @@ export function useTodoStorage(folderId: string): UseTodoStorageReturn {
         toast.error('Failed to delete tag')
       }
     },
-    [tags, todos]
+    []
   )
 
   return {
@@ -303,11 +360,12 @@ export function useFolderStorage(): UseFolderStorageReturn {
 
   const renameFolder = useCallback(
     async (id: string, name: string) => {
-      const previousFolders = folders
+      let previousFolders: Folder[] = []
 
-      setFolders((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, name } : f))
-      )
+      setFolders((prev) => {
+        previousFolders = prev
+        return prev.map((f) => (f.id === id ? { ...f, name } : f))
+      })
 
       try {
         await invoke('folder_rename', { id, name })
@@ -318,14 +376,17 @@ export function useFolderStorage(): UseFolderStorageReturn {
         return false
       }
     },
-    [folders]
+    []
   )
 
   const deleteFolder = useCallback(
     async (id: string) => {
-      const previousFolders = folders
+      let previousFolders: Folder[] = []
 
-      setFolders((prev) => prev.filter((f) => f.id !== id))
+      setFolders((prev) => {
+        previousFolders = prev
+        return prev.filter((f) => f.id !== id)
+      })
 
       try {
         await invoke('folder_delete', { id })
@@ -336,15 +397,16 @@ export function useFolderStorage(): UseFolderStorageReturn {
         return false
       }
     },
-    [folders]
+    []
   )
 
   const reorderFolders = useCallback(
     async (folderIds: string[]) => {
-      const previousFolders = folders
+      let previousFolders: Folder[] = []
 
       // Reorder folders based on the new ID order
       setFolders((prev) => {
+        previousFolders = prev
         const folderMap = new Map(prev.map((f) => [f.id, f]))
         return folderIds
           .map((id, index) => {
@@ -361,7 +423,7 @@ export function useFolderStorage(): UseFolderStorageReturn {
         toast.error('Failed to reorder folders')
       }
     },
-    [folders]
+    []
   )
 
   return {

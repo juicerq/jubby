@@ -40,57 +40,80 @@ pub struct Folder {
 pub fn folder_get_all(db: State<Database>) -> Result<Vec<FolderWithPreview>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    // Get all folders ordered by position
+    // Query 1: Get folders with todo counts using LEFT JOIN + GROUP BY
     let mut folder_stmt = conn
-        .prepare("SELECT id, name, position, created_at FROM folders ORDER BY position ASC")
+        .prepare(
+            "SELECT f.id, f.name, f.position, f.created_at, COUNT(t.id) as todo_count
+             FROM folders f
+             LEFT JOIN todos t ON t.folder_id = f.id
+             GROUP BY f.id, f.name, f.position, f.created_at
+             ORDER BY f.position ASC",
+        )
         .map_err(|e| e.to_string())?;
 
-    let folders_raw: Vec<(String, String, i32, i64)> = folder_stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+    let folders_raw: Vec<(String, String, i32, i64, i32)> = folder_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
 
-    let mut folders: Vec<FolderWithPreview> = Vec::new();
+    // Query 2: Get 2 most recent todos per folder using window function
+    let mut recent_stmt = conn
+        .prepare(
+            "SELECT folder_id, id, text, status FROM (
+                SELECT folder_id, id, text, status,
+                       ROW_NUMBER() OVER (PARTITION BY folder_id ORDER BY created_at DESC) as rn
+                FROM todos
+             ) WHERE rn <= 2",
+        )
+        .map_err(|e| e.to_string())?;
 
-    for (id, name, position, created_at) in folders_raw {
-        // Get todo count for this folder
-        let todo_count: i32 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM todos WHERE folder_id = ?1",
-                [&id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
+    // Build a map of folder_id -> recent_todos
+    let mut recent_todos_map: std::collections::HashMap<String, Vec<RecentTodo>> =
+        std::collections::HashMap::new();
 
-        // Get 2 most recent todos for preview
-        let mut recent_stmt = conn
-            .prepare(
-                "SELECT id, text, status FROM todos WHERE folder_id = ?1 ORDER BY created_at DESC LIMIT 2",
-            )
-            .map_err(|e| e.to_string())?;
+    let recent_rows = recent_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?, // folder_id
+                RecentTodo {
+                    id: row.get(1)?,
+                    text: row.get(2)?,
+                    status: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?;
 
-        let recent_todos: Vec<RecentTodo> = recent_stmt
-            .query_map([&id], |row| {
-                Ok(RecentTodo {
-                    id: row.get(0)?,
-                    text: row.get(1)?,
-                    status: row.get(2)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        folders.push(FolderWithPreview {
-            id,
-            name,
-            position,
-            created_at,
-            todo_count,
-            recent_todos,
-        });
+    for row in recent_rows {
+        if let Ok((folder_id, todo)) = row {
+            recent_todos_map.entry(folder_id).or_default().push(todo);
+        }
     }
+
+    // Build the result
+    let folders: Vec<FolderWithPreview> = folders_raw
+        .into_iter()
+        .map(|(id, name, position, created_at, todo_count)| {
+            let recent_todos = recent_todos_map.remove(&id).unwrap_or_default();
+            FolderWithPreview {
+                id,
+                name,
+                position,
+                created_at,
+                todo_count,
+                recent_todos,
+            }
+        })
+        .collect();
 
     Ok(folders)
 }
@@ -108,7 +131,7 @@ pub fn folder_create(db: State<Database>, name: String) -> Result<Folder, String
     let id = Uuid::new_v4().to_string();
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
+        .map_err(|e| format!("System time error: {}", e))?
         .as_millis() as i64;
 
     // Get the next position (max + 1)
@@ -177,16 +200,20 @@ pub fn folder_delete(db: State<Database>, id: String) -> Result<(), String> {
 /// Reorder folders by accepting an ordered list of folder IDs
 #[tauri::command]
 pub fn folder_reorder(db: State<Database>, folder_ids: Vec<String>) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Update position for each folder based on its index in the array
     for (index, folder_id) in folder_ids.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "UPDATE folders SET position = ?1 WHERE id = ?2",
             rusqlite::params![index as i32, folder_id],
         )
         .map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(())
 }

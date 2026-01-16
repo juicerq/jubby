@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical } from 'lucide-react'
-import { useTodoStorage, useFolderStorage } from './useTodoStorage'
+import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
@@ -57,7 +57,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   const isLoading = view === 'folders' ? foldersLoading : (foldersLoading || todosLoading)
 
   const [newTodoText, setNewTodoText] = useState('')
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const { pendingId: pendingDeleteId, handleDeleteClick, cancelDelete: handleCancelDelete } = usePendingDelete(deleteTodo)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [editingTagsTodoId, setEditingTagsTodoId] = useState<string | null>(null)
 
@@ -136,16 +136,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     }
   }
 
-  useEffect(() => {
-    if (pendingDeleteId === null) return
-
-    const timeout = setTimeout(() => {
-      setPendingDeleteId(null)
-    }, 1500)
-
-    return () => clearTimeout(timeout)
-  }, [pendingDeleteId])
-
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && newTodoText.trim()) {
       createTodo(newTodoText.trim(), selectedTagIds.length > 0 ? selectedTagIds : undefined)
@@ -177,19 +167,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     if (todo) {
       updateTodoStatus(id, getNextStatus(todo.status))
     }
-  }
-
-  const handleDeleteClick = (id: string) => {
-    if (pendingDeleteId === id) {
-      deleteTodo(id)
-      setPendingDeleteId(null)
-    } else {
-      setPendingDeleteId(id)
-    }
-  }
-
-  const handleCancelDelete = () => {
-    setPendingDeleteId(null)
   }
 
   if (isLoading) {
@@ -743,26 +720,7 @@ interface TodoPluginTagManagerListProps {
 }
 
 function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTagManagerListProps) {
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (pendingDeleteId === null) return
-
-    const timeout = setTimeout(() => {
-      setPendingDeleteId(null)
-    }, 1500)
-
-    return () => clearTimeout(timeout)
-  }, [pendingDeleteId])
-
-  const handleDeleteClick = (id: string) => {
-    if (pendingDeleteId === id) {
-      onDeleteTag(id)
-      setPendingDeleteId(null)
-    } else {
-      setPendingDeleteId(id)
-    }
-  }
+  const { pendingId: pendingDeleteId, handleDeleteClick } = usePendingDelete(onDeleteTag)
 
   return (
     <div className="flex flex-col gap-1">
@@ -1271,92 +1229,242 @@ function TodoPluginFolderList({ folders, onFolderClick, onReorder }: TodoPluginF
   // Sort folders by position
   const sortedFolders = [...folders].sort((a, b) => a.position - b.position)
 
-  // Drag state
+  // Drag state using mouse events (HTML5 drag API is broken in Tauri/WebKitGTK on Linux)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null)
+  const [isActiveDrag, setIsActiveDrag] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+  const isDraggingRef = useRef(false)
 
-  const handleDragStart = (e: React.DragEvent, folderId: string) => {
+  // Get the dragged folder for ghost rendering
+  const draggedFolder = useMemo(() => {
+    if (!draggedId) return null
+    return sortedFolders.find((f) => f.id === draggedId) ?? null
+  }, [sortedFolders, draggedId])
+
+  // Calculate where the ghost should appear (index in the list)
+  // Returns -1 if ghost shouldn't be shown (e.g., when it would be adjacent to dragged card)
+  const ghostInsertIndex = useMemo(() => {
+    if (!isActiveDrag || !draggedId || !dragOverId || !dropPosition) return -1
+
+    const draggedIndex = sortedFolders.findIndex((f) => f.id === draggedId)
+    const targetIndex = sortedFolders.findIndex((f) => f.id === dragOverId)
+    if (draggedIndex === -1 || targetIndex === -1) return -1
+
+    const insertIndex = dropPosition === 'above' ? targetIndex : targetIndex + 1
+
+    // Don't show ghost if it would appear directly above or below the dragged card
+    // (insertIndex === draggedIndex means directly above, insertIndex === draggedIndex + 1 means directly below)
+    if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) {
+      return -1
+    }
+
+    return insertIndex
+  }, [sortedFolders, isActiveDrag, draggedId, dragOverId, dropPosition])
+
+  const handleMouseDown = (e: React.MouseEvent, folderId: string) => {
+    // Only start drag tracking on left click
+    if (e.button !== 0) return
+    dragStartPos.current = { x: e.clientX, y: e.clientY }
     setDraggedId(folderId)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', folderId)
   }
 
-  const handleDragEnd = () => {
+  // Store original card positions when drag starts (for stable hit detection)
+  const originalPositions = useRef<Map<string, { top: number; bottom: number; midY: number }>>(new Map())
+  const lastDropTarget = useRef<{ id: string; position: 'above' | 'below' } | null>(null)
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!draggedId || !dragStartPos.current) return
+
+      // Require 5px movement to start actual drag (prevents accidental drags on click)
+      const dx = e.clientX - dragStartPos.current.x
+      const dy = e.clientY - dragStartPos.current.y
+      if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 5) return
+
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true
+        setIsActiveDrag(true)
+        document.body.classList.add('dragging-folder')
+
+        // Capture original positions of all cards at drag start
+        originalPositions.current.clear()
+        for (const [folderId, cardEl] of cardRefs.current.entries()) {
+          const rect = cardEl.getBoundingClientRect()
+          originalPositions.current.set(folderId, {
+            top: rect.top,
+            bottom: rect.bottom,
+            midY: rect.top + rect.height / 2,
+          })
+        }
+      }
+
+      let foundTarget = false
+      const cursorY = e.clientY
+
+      const sortedCards = Array.from(originalPositions.current.entries())
+        .filter(([id]) => id !== draggedId)
+        .sort((a, b) => a[1].top - b[1].top)
+
+      // Hysteresis prevents flickering when cursor is near zone boundaries
+      const hysteresis = lastDropTarget.current ? 8 : 0
+
+      for (let i = 0; i < sortedCards.length; i++) {
+        const [folderId, pos] = sortedCards[i]
+        const isCurrentTarget = lastDropTarget.current?.id === folderId
+
+        const prevCard = i > 0 ? sortedCards[i - 1][1] : null
+        const nextCard = i < sortedCards.length - 1 ? sortedCards[i + 1][1] : null
+
+        const aboveZoneTop = prevCard ? prevCard.midY : pos.top - 100
+        const aboveZoneBottom = pos.midY
+        const belowZoneTop = pos.midY
+        const belowZoneBottom = nextCard ? nextCard.midY : pos.bottom + 100
+
+        const aboveTopThreshold = isCurrentTarget && lastDropTarget.current?.position === 'above'
+          ? aboveZoneTop - hysteresis
+          : aboveZoneTop
+        const belowBottomThreshold = isCurrentTarget && lastDropTarget.current?.position === 'below'
+          ? belowZoneBottom + hysteresis
+          : belowZoneBottom
+
+        if (cursorY >= aboveTopThreshold && cursorY < aboveZoneBottom) {
+          if (dragOverId !== folderId || dropPosition !== 'above') {
+            setDragOverId(folderId)
+            setDropPosition('above')
+            lastDropTarget.current = { id: folderId, position: 'above' }
+          }
+          foundTarget = true
+          break
+        }
+
+        if (cursorY >= belowZoneTop && cursorY <= belowBottomThreshold) {
+          if (dragOverId !== folderId || dropPosition !== 'below') {
+            setDragOverId(folderId)
+            setDropPosition('below')
+            lastDropTarget.current = { id: folderId, position: 'below' }
+          }
+          foundTarget = true
+          break
+        }
+      }
+
+      if (!foundTarget) {
+        setDragOverId(null)
+        setDropPosition(null)
+        lastDropTarget.current = null
+      }
+    },
+    [draggedId, dragOverId, dropPosition]
+  )
+
+  const handleMouseUp = useCallback(() => {
+    if (draggedId && isDraggingRef.current && dragOverId && dropPosition) {
+      // Perform the reorder
+      const newOrder = [...sortedFolders]
+      const draggedIndex = newOrder.findIndex((f) => f.id === draggedId)
+      const targetIndex = newOrder.findIndex((f) => f.id === dragOverId)
+
+      if (draggedIndex !== -1 && targetIndex !== -1) {
+        const [draggedItem] = newOrder.splice(draggedIndex, 1)
+
+        let insertIndex = targetIndex
+        if (dropPosition === 'below') {
+          insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1
+        } else {
+          insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex
+        }
+
+        newOrder.splice(insertIndex, 0, draggedItem)
+        onReorder(newOrder.map((f) => f.id))
+      }
+    }
+
+    // Reset state
     setDraggedId(null)
     setDragOverId(null)
     setDropPosition(null)
-  }
+    setIsActiveDrag(false)
+    dragStartPos.current = null
+    isDraggingRef.current = false
+    originalPositions.current.clear()
+    lastDropTarget.current = null
+    document.body.classList.remove('dragging-folder')
+  }, [draggedId, dragOverId, dropPosition, sortedFolders, onReorder])
 
-  const handleDragOver = (e: React.DragEvent, folderId: string) => {
-    e.preventDefault()
-    if (draggedId === folderId) return
-
-    const rect = e.currentTarget.getBoundingClientRect()
-    const midY = rect.top + rect.height / 2
-    const position = e.clientY < midY ? 'above' : 'below'
-
-    setDragOverId(folderId)
-    setDropPosition(position)
-  }
-
-  const handleDragLeave = () => {
-    setDragOverId(null)
-    setDropPosition(null)
-  }
-
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault()
-    if (!draggedId || draggedId === targetId) {
-      handleDragEnd()
-      return
+  // Global mouse event listeners for drag
+  useEffect(() => {
+    if (draggedId) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
     }
+  }, [draggedId, handleMouseMove, handleMouseUp])
 
-    const newOrder = [...sortedFolders]
-    const draggedIndex = newOrder.findIndex((f) => f.id === draggedId)
-    const targetIndex = newOrder.findIndex((f) => f.id === targetId)
-
-    if (draggedIndex === -1 || targetIndex === -1) {
-      handleDragEnd()
-      return
-    }
-
-    // Remove dragged item
-    const [draggedItem] = newOrder.splice(draggedIndex, 1)
-
-    // Calculate insert index based on drop position
-    let insertIndex = targetIndex
-    if (dropPosition === 'below') {
-      insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1
+  const setCardRef = useCallback((folderId: string, el: HTMLDivElement | null) => {
+    if (el) {
+      cardRefs.current.set(folderId, el)
     } else {
-      insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex
+      cardRefs.current.delete(folderId)
+    }
+  }, [])
+
+  // Build render items: all folders stay in place, ghost inserted at drop position
+  const renderItems = useMemo(() => {
+    const items: Array<{ type: 'folder' | 'ghost'; folder: Folder; key: string }> = []
+
+    sortedFolders.forEach((folder, index) => {
+      // Insert ghost before this folder if this is the ghost position
+      if (ghostInsertIndex === index && draggedFolder) {
+        items.push({ type: 'ghost', folder: draggedFolder, key: 'ghost' })
+      }
+
+      // Always render the folder (including dragged one - it just gets faded)
+      items.push({ type: 'folder', folder, key: folder.id })
+    })
+
+    // Ghost at the end (after all folders)
+    if (ghostInsertIndex === sortedFolders.length && draggedFolder) {
+      items.push({ type: 'ghost', folder: draggedFolder, key: 'ghost' })
     }
 
-    // Insert at new position
-    newOrder.splice(insertIndex, 0, draggedItem)
-
-    // Call reorder with new order
-    onReorder(newOrder.map((f) => f.id))
-    handleDragEnd()
-  }
+    return items
+  }, [sortedFolders, ghostInsertIndex, draggedFolder])
 
   return (
-    <div className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
-      {sortedFolders.map((folder) => (
-        <TodoPluginFolderCard
-          key={folder.id}
-          folder={folder}
-          onClick={() => onFolderClick(folder.id)}
-          isDragging={draggedId === folder.id}
-          isDragOver={dragOverId === folder.id}
-          dropPosition={dragOverId === folder.id ? dropPosition : null}
-          onDragStart={(e) => handleDragStart(e, folder.id)}
-          onDragEnd={handleDragEnd}
-          onDragOver={(e) => handleDragOver(e, folder.id)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, folder.id)}
-        />
-      ))}
+    <div ref={containerRef} className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
+      {renderItems.map((item) => {
+        if (item.type === 'ghost') {
+          return (
+            <TodoPluginFolderGhost
+              key={item.key}
+              folder={item.folder}
+            />
+          )
+        }
+
+        return (
+          <TodoPluginFolderCard
+            key={item.key}
+            folder={item.folder}
+            onClick={() => {
+              // Only trigger click if not dragging
+              if (!isDraggingRef.current) {
+                onFolderClick(item.folder.id)
+              }
+            }}
+            isDragging={draggedId === item.folder.id && isDraggingRef.current}
+            onMouseDown={(e) => handleMouseDown(e, item.folder.id)}
+            cardRef={(el) => setCardRef(item.folder.id, el)}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -1365,71 +1473,94 @@ interface TodoPluginFolderCardProps {
   folder: Folder
   onClick: () => void
   isDragging?: boolean
-  isDragOver?: boolean
-  dropPosition?: 'above' | 'below' | null
-  onDragStart?: (e: React.DragEvent) => void
-  onDragEnd?: () => void
-  onDragOver?: (e: React.DragEvent) => void
-  onDragLeave?: () => void
-  onDrop?: (e: React.DragEvent) => void
+  onMouseDown?: (e: React.MouseEvent) => void
+  cardRef?: (el: HTMLDivElement | null) => void
 }
 
 function TodoPluginFolderCard({
   folder,
   onClick,
   isDragging = false,
-  isDragOver = false,
-  dropPosition = null,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
+  onMouseDown,
+  cardRef,
 }: TodoPluginFolderCardProps) {
   return (
     <div
+      ref={cardRef}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      onMouseDown={onMouseDown}
       className={cn(
-        'relative',
-        isDragOver && dropPosition === 'above' && 'before:absolute before:inset-x-0 before:-top-1 before:h-0.5 before:bg-white/40 before:rounded-full',
-        isDragOver && dropPosition === 'below' && 'after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:bg-white/40 after:rounded-full'
+        'group flex w-full flex-col gap-2 rounded-lg text-left cursor-pointer select-none',
+        'border border-white/[0.04] bg-white/[0.02]',
+        'px-3.5 py-3 transition-all duration-150 ease-out',
+        'hover:border-white/[0.08] hover:bg-white/[0.04]',
+        'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
+        'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
+        isDragging && 'opacity-40 scale-[0.97] pointer-events-none'
       )}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
     >
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-          'group flex w-full flex-col gap-2 rounded-lg text-left',
-          'border border-white/[0.04] bg-white/[0.02]',
-          'px-3.5 py-3 transition-all duration-150 ease-out',
-          'hover:border-white/[0.08] hover:bg-white/[0.04]',
-          'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
-          'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
-          isDragging && 'opacity-50 scale-[0.98]'
-        )}
-      >
-        <div className="flex items-center gap-2">
-          <GripVertical
-            size={14}
-            className="shrink-0 text-white/20 transition-colors duration-150 group-hover:text-white/40 cursor-grab active:cursor-grabbing"
-          />
-          <span className="flex-1 text-[14px] font-medium text-white/90 tracking-[-0.01em]">
-            {folder.name}
-          </span>
-          <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
-            {folder.todoCount}
-          </span>
-        </div>
+      <div className="flex items-center gap-2">
+        <GripVertical
+          size={14}
+          className="shrink-0 text-white/20 transition-colors duration-150 group-hover:text-white/40 cursor-grab"
+        />
+        <span className="flex-1 text-[14px] font-medium text-white/90 tracking-[-0.01em]">
+          {folder.name}
+        </span>
+        <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
+          {folder.todoCount}
+        </span>
+      </div>
 
-        <div className="pl-5">
-          <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
-        </div>
-      </button>
+      <div className="pl-5">
+        <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+      </div>
+    </div>
+  )
+}
+
+// Ghost folder shown at drop position during drag
+interface TodoPluginFolderGhostProps {
+  folder: Folder
+}
+
+function TodoPluginFolderGhost({ folder }: TodoPluginFolderGhostProps) {
+  return (
+    <div
+      className={cn(
+        'flex w-full flex-col gap-2 rounded-lg select-none',
+        'border border-dashed border-white/20',
+        'bg-gradient-to-b from-white/[0.06] to-white/[0.02]',
+        'px-3.5 py-3',
+        'shadow-[0_0_20px_rgba(255,255,255,0.05),inset_0_1px_0_rgba(255,255,255,0.05)]',
+        'animate-in fade-in-0 zoom-in-95 duration-150'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <GripVertical
+          size={14}
+          className="shrink-0 text-white/30"
+        />
+        <span className="flex-1 text-[14px] font-medium text-white/60 tracking-[-0.01em]">
+          {folder.name}
+        </span>
+        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/40">
+          {folder.todoCount}
+        </span>
+      </div>
+
+      <div className="pl-5 opacity-50">
+        <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+      </div>
     </div>
   )
 }
@@ -1632,7 +1763,7 @@ function TodoPluginDeleteFolderModal({
   onConfirm,
   onClose,
 }: TodoPluginDeleteFolderModalProps) {
-  const [countdown, setCountdown] = useState(5)
+  const [countdown, setCountdown] = useState(3)
 
   useEffect(() => {
     if (countdown <= 0) return
