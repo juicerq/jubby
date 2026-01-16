@@ -1,10 +1,13 @@
 mod enhancer;
+mod settings;
 mod storage;
 mod tray;
 mod window;
 
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+
+use settings::{load_settings, parse_shortcut, CurrentShortcut};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,15 +27,15 @@ pub fn run() {
         }
     }
 
-    let shortcut = Shortcut::new(None, Code::F9);
-    eprintln!("[JUBBY] Registrando atalho: F9");
+    // Load settings and parse shortcut (fallback to F9 if invalid)
+    let app_settings = load_settings();
+    let shortcut_str = app_settings.global_shortcut.clone();
+    let shortcut = parse_shortcut(&shortcut_str).unwrap_or(Shortcut::new(None, Code::F9));
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(shortcut)
-                .expect("failed to register shortcut")
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Released {
                         window::toggle(app);
@@ -50,30 +53,33 @@ pub fn run() {
             storage::todo::tag_update,
             storage::todo::tag_delete,
             enhancer::enhance_prompt,
+            settings::get_settings,
+            settings::update_global_shortcut,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             // Initialize database
             let db = storage::init_database(app)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
             app.manage(db);
 
+            // Initialize current shortcut state (tracks what's registered)
+            // Note: shortcut_str is captured from outer scope where settings were loaded
+            app.manage(CurrentShortcut::new(shortcut_str.clone()));
+
+            // Register the initial shortcut (handler is set globally in the plugin builder)
+            app.global_shortcut()
+                .register(shortcut)
+                .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+
             tray::setup_tray(app)?;
-            eprintln!("[JUBBY] Setup completo. F9 deve funcionar agora.");
             Ok(())
         })
         .build(tauri::generate_context!());
 
     let app = match app {
         Ok(app) => app,
-        Err(e) => {
-            let err_msg = e.to_string();
-            if err_msg.contains("already registered") {
-                eprintln!("[JUBBY] Jubby já está em execução. Encerrando...");
-                std::process::exit(0);
-            }
-            eprintln!("[JUBBY] Erro ao iniciar: {}", e);
-            std::process::exit(1);
-        }
+        Err(e) if e.to_string().contains("already registered") => std::process::exit(0),
+        Err(_) => std::process::exit(1),
     };
 
     app.run(tray::handle_run_event);

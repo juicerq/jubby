@@ -21,3 +21,13 @@ export interface PluginManifest {
 export interface PluginProps {
   onExitPlugin: () => void
 }
+
+// Settings
+
+export interface AppSettings {
+  globalShortcut: string
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  globalShortcut: 'F9',
+}

@@ -123,6 +123,11 @@
     background: transparent;
     @apply overflow-x-hidden;
   }
+  html,
+  #root {
+    border-radius: 0.75rem; /* matches rounded-xl */
+    @apply overflow-hidden;
+  }
   body {
     @apply text-foreground;
   }
