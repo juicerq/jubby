@@ -49,3 +49,19 @@
   - `on_shortcut()` registers a shortcut with a handler, `unregister()` removes it
   - Avoid generic `<R: Runtime>` when interfacing with non-generic code like `window::toggle`
   - `ShortcutState` already exists in the plugin, so named our state `CurrentShortcut` to avoid collision
+
+## 2026-01-16 - Task 4: Backend - Modificar startup para carregar shortcut dinâmico
+- What was implemented:
+  - Modified `lib.rs` to load settings at startup using `load_settings()`
+  - Parse shortcut string from settings using `parse_shortcut()`
+  - Fallback to `Shortcut::new(None, Code::F9)` if parsing fails
+  - Initialize `CurrentShortcut` state with the actual loaded shortcut string
+  - Updated log messages to show the actual shortcut being registered
+  - Changed setup closure to `move` to take ownership of `shortcut_str`
+- Files changed:
+  - `src-tauri/src/lib.rs` - Load settings at startup, dynamic shortcut registration
+- **Learnings for future iterations:**
+  - Closures passed to `.setup()` require `move` keyword when capturing variables from outer scope
+  - The shortcut is registered before setup runs (in Builder chain), so settings must be loaded before Builder
+  - Removed hardcoded `Code::F9` in favor of dynamic value from settings
+  - App will always start even if settings are corrupted (uses F9 fallback)

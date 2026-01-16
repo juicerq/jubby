@@ -7,7 +7,7 @@ mod window;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
 
-use settings::CurrentShortcut;
+use settings::{load_settings, parse_shortcut, CurrentShortcut};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,8 +27,17 @@ pub fn run() {
         }
     }
 
-    let shortcut = Shortcut::new(None, Code::F9);
-    eprintln!("[JUBBY] Registrando atalho: F9");
+    // Load settings and parse shortcut (fallback to F9 if invalid)
+    let app_settings = load_settings();
+    let shortcut_str = app_settings.global_shortcut.clone();
+    let shortcut = parse_shortcut(&shortcut_str).unwrap_or_else(|e| {
+        eprintln!(
+            "[JUBBY] Failed to parse shortcut '{}': {}, falling back to F9",
+            shortcut_str, e
+        );
+        Shortcut::new(None, Code::F9)
+    });
+    eprintln!("[JUBBY] Registrando atalho: {}", shortcut_str);
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -56,17 +65,18 @@ pub fn run() {
             settings::get_settings,
             settings::update_global_shortcut,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             // Initialize database
             let db = storage::init_database(app)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
             app.manage(db);
 
             // Initialize current shortcut state (tracks what's registered)
-            app.manage(CurrentShortcut::new("F9".to_string()));
+            // Note: shortcut_str is captured from outer scope where settings were loaded
+            app.manage(CurrentShortcut::new(shortcut_str.clone()));
 
             tray::setup_tray(app)?;
-            eprintln!("[JUBBY] Setup completo. F9 deve funcionar agora.");
+            eprintln!("[JUBBY] Setup completo. Atalho '{}' registrado.", shortcut_str);
             Ok(())
         })
         .build(tauri::generate_context!());
