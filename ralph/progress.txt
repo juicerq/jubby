@@ -135,3 +135,20 @@
   - Use small icon size (w-3.5 h-3.5) to match existing Search icon
   - Button hover state uses subtle opacity transition (text-white/30 → text-white/60)
   - Wrapping hint and button in flex container allows consistent spacing with gap-1.5
+
+## 2026-01-16 - Task 9: Frontend - Atualizar navegação em App.tsx
+- What was implemented:
+  - Created `View` discriminated union type with three variants: `{ type: 'grid' }`, `{ type: 'plugin', plugin: PluginManifest }`, `{ type: 'settings' }`
+  - Replaced `activePlugin` state with `view` state using the new `View` type
+  - Added navigation helper functions: `goToGrid()`, `goToPlugin()`, `goToSettings()`
+  - Updated `viewKey` computation to handle all three view types
+  - Conditionally render Grid, Plugin (with error boundary), or Settings based on `view.type`
+  - Connected `onSettingsClick` prop from PluginGrid to `goToSettings`
+  - Imported Settings component from `@/core/components/Settings/Settings`
+- Files changed:
+  - `src/App.tsx` - Complete navigation refactor with View type and Settings integration
+- **Learnings for future iterations:**
+  - Discriminated unions (`type View = { type: 'grid' } | ...`) provide exhaustive type checking in conditionals
+  - Helper functions (`goToGrid`, `goToPlugin`, `goToSettings`) make callbacks cleaner and more readable
+  - Keep `viewKey` derivation simple with ternary chains for small union types
+  - The Settings view is not a plugin (no `onExitPlugin`), so it uses `onBack` prop instead
