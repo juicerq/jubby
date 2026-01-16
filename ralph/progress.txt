@@ -12,3 +12,18 @@
   - The codebase uses `camelCase` for JSON serialization in Rust (via serde rename_all)
   - Storage uses SQLite via rusqlite, not JSON files as originally documented
   - The storage module has a `get_storage_dir()` function that can be reused for settings
+
+## 2026-01-16 - Task 2: Backend - Implementar persistência de settings no Rust
+- What was implemented:
+  - Added `SettingsError` enum using thiserror for proper error handling
+  - Implemented `load_settings()` that reads from `~/.local/share/jubby/settings.json`
+  - Implemented `save_settings()` that writes to the same file with pretty JSON
+  - Uses `AppSettings::default()` (F9) as fallback if file doesn't exist or is corrupted
+  - Added XDG Base Directory Specification support via `get_storage_dir()` helper
+- Files changed:
+  - `src-tauri/src/settings.rs` - Added load/save functions and error types
+- **Learnings for future iterations:**
+  - Settings use JSON file storage (separate from SQLite database used for app data)
+  - `thiserror` crate is already available in Cargo.toml for custom errors
+  - Functions are currently unused (will be connected in Task 3/4 for shortcut registration)
+  - The `load_settings()` function intentionally returns default values on any error to ensure app always starts
