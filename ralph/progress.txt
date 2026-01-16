@@ -33,3 +33,22 @@ Refactor "Manage Tags" from a full-screen view to a compact modal within the fol
   - Exporting constants that will be reused (TAG_COLORS) is a clean way to keep them during transitions
   - Removing components that will be recreated is cleaner than suppressing warnings during transitional states
 
+## 2026-01-16 - Task 2: Create ManageTagsModal component
+- What was implemented:
+  - Created TodoPluginManageTagsModal component with header, close button, and proper modal styling
+  - Created TodoPluginCreateTagRow component for creating new tags with color picker and name input
+  - Created TodoPluginManageTagRow component displaying tag color dot, name, and delete button (two-step delete)
+  - Created TodoPluginColorPickerDropdown component (8 colors in 2x4 grid, click outside to close)
+  - Added 'TAGS' section label (text-xs text-muted-foreground font-medium)
+  - Scrollable tag list area (max-height 250px)
+  - Modal width 300px (compact popover-style)
+  - Empty state: "No tags yet" centered muted text
+  - Re-added createTag, updateTag, deleteTag to destructured storage
+  - Added isManageTagsOpen state and wired tag button to open modal
+- Files changed:
+  - src/plugins/todo/TodoPlugin.tsx
+- **Learnings for future iterations:**
+  - TAG_COLORS is a readonly const array - need to explicitly type state as `string` when initializing with its values
+  - Reused usePendingDelete hook for two-step delete pattern in tag rows
+  - Modal follows existing pattern: overlay with backdrop-blur, onClick on overlay closes, stopPropagation on inner container
+
