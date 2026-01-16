@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical } from 'lucide-react'
 import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
@@ -1439,32 +1440,47 @@ function TodoPluginFolderList({ folders, onFolderClick, onReorder }: TodoPluginF
 
   return (
     <div ref={containerRef} className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
-      {renderItems.map((item) => {
-        if (item.type === 'ghost') {
-          return (
-            <TodoPluginFolderGhost
-              key={item.key}
-              folder={item.folder}
-            />
-          )
-        }
+      <AnimatePresence mode="popLayout">
+        {renderItems.map((item) => {
+          if (item.type === 'ghost') {
+            return (
+              <motion.div
+                key="ghost"
+                initial={{ opacity: 0, scale: 0.95, height: 0 }}
+                animate={{ opacity: 1, scale: 1, height: 'auto' }}
+                exit={{ opacity: 0, scale: 0.95, height: 0 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+              >
+                <TodoPluginFolderGhost folder={item.folder} />
+              </motion.div>
+            )
+          }
 
-        return (
-          <TodoPluginFolderCard
-            key={item.key}
-            folder={item.folder}
-            onClick={() => {
-              // Only trigger click if not dragging
-              if (!isDraggingRef.current) {
-                onFolderClick(item.folder.id)
-              }
-            }}
-            isDragging={draggedId === item.folder.id && isDraggingRef.current}
-            onMouseDown={(e) => handleMouseDown(e, item.folder.id)}
-            cardRef={(el) => setCardRef(item.folder.id, el)}
-          />
-        )
-      })}
+          return (
+            <motion.div
+              key={item.key}
+              layout
+              layoutId={item.folder.id}
+              transition={{
+                layout: { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
+              }}
+            >
+              <TodoPluginFolderCard
+                folder={item.folder}
+                onClick={() => {
+                  // Only trigger click if not dragging
+                  if (!isDraggingRef.current) {
+                    onFolderClick(item.folder.id)
+                  }
+                }}
+                isDragging={draggedId === item.folder.id && isDraggingRef.current}
+                onMouseDown={(e) => handleMouseDown(e, item.folder.id)}
+                cardRef={(el) => setCardRef(item.folder.id, el)}
+              />
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
     </div>
   )
 }
@@ -1541,8 +1557,7 @@ function TodoPluginFolderGhost({ folder }: TodoPluginFolderGhostProps) {
         'border border-dashed border-white/20',
         'bg-gradient-to-b from-white/[0.06] to-white/[0.02]',
         'px-3.5 py-3',
-        'shadow-[0_0_20px_rgba(255,255,255,0.05),inset_0_1px_0_rgba(255,255,255,0.05)]',
-        'animate-in fade-in-0 zoom-in-95 duration-150'
+        'shadow-[0_0_20px_rgba(255,255,255,0.05),inset_0_1px_0_rgba(255,255,255,0.05)]'
       )}
     >
       <div className="flex items-center gap-2">
