@@ -101,3 +101,20 @@
   - Use `{ capture: true }` (third arg `true`) on addEventListener to capture events before other handlers
   - The component follows the pattern of other components: button-based with visual state for capturing mode
   - Tauri global_shortcut uses "Ctrl", "Alt", "Shift", "Super" for modifiers (not "Control" or "Meta")
+
+## 2026-01-16 - Task 7: Frontend - Criar view Settings
+- What was implemented:
+  - Created `src/core/components/Settings/Settings.tsx`
+  - Used `PluginHeader` with title "Configurações" and Settings icon from lucide
+  - Rendered "Atalho Global" section with `ShortcutCapture` component
+  - Used `useSettings` hook to load and update settings
+  - Implemented loading state with spinner (same pattern as TodoPlugin)
+  - Created `SettingsSection` mini-component for section headers
+  - Created `SettingsRow` mini-component for label/description + control layout
+- Files changed:
+  - `src/core/components/Settings/Settings.tsx` - New file with Settings view
+- **Learnings for future iterations:**
+  - Follow the existing plugin pattern: PluginHeader at top, content in flex column with padding
+  - Mini-components defined in same file per CLAUDE.md conventions
+  - Toast success is already handled by useSettings hook, no need to duplicate
+  - Settings component takes `onBack` prop (not `onExitPlugin` like plugins) since it's not a plugin
