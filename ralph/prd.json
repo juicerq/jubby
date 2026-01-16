@@ -77,7 +77,7 @@
       "Remove border between tag filter and todo list"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Reuse existing TodoPlugin list/input components. Header shows: <- FolderName (gear icon)"
   },
   {

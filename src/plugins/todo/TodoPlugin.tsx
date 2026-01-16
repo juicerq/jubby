@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen } from 'lucide-react'
+import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings } from 'lucide-react'
 import { useTodoStorage, useFolderStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
@@ -25,6 +25,8 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     folders,
     isLoading: foldersLoading,
     createFolder,
+    renameFolder,
+    deleteFolder,
     loadFolders,
   } = useFolderStorage()
 
@@ -62,6 +64,11 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
 
+  // Folder settings menu state
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
+  const [isRenamingFolder, setIsRenamingFolder] = useState(false)
+  const [renameFolderValue, setRenameFolderValue] = useState('')
+
   // Navigation handlers
   const handleNavigateToFolder = (folderId: string) => {
     setCurrentFolderId(folderId)
@@ -89,6 +96,37 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
       setIsCreatingFolder(false)
       setNewFolderName('')
     }
+  }
+
+  const handleStartRenameFolder = () => {
+    setRenameFolderValue(currentFolder?.name ?? '')
+    setIsRenamingFolder(true)
+    setIsSettingsMenuOpen(false)
+  }
+
+  const handleRenameFolder = async () => {
+    if (!currentFolderId || !renameFolderValue.trim()) return
+    await renameFolder(currentFolderId, renameFolderValue.trim())
+    setIsRenamingFolder(false)
+    setRenameFolderValue('')
+  }
+
+  const handleRenameFolderKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleRenameFolder()
+    } else if (e.key === 'Escape') {
+      setIsRenamingFolder(false)
+      setRenameFolderValue('')
+    }
+  }
+
+  const handleDeleteFolder = async () => {
+    if (!currentFolderId) return
+    const success = await deleteFolder(currentFolderId)
+    if (success) {
+      handleNavigateToFolders()
+    }
+    setIsSettingsMenuOpen(false)
   }
 
   useEffect(() => {
@@ -218,12 +256,38 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     </button>
   ) : undefined
 
+  // Build the header right content for list view (settings button)
+  const folderSettingsButton = view === 'list' ? (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
+        className={cn(
+          'flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+          isSettingsMenuOpen && 'bg-white/6 text-white/90'
+        )}
+        aria-label="Folder settings"
+      >
+        <Settings size={16} />
+      </button>
+      {isSettingsMenuOpen && (
+        <TodoPluginFolderSettingsMenu
+          onRename={handleStartRenameFolder}
+          onDelete={handleDeleteFolder}
+          onClose={() => setIsSettingsMenuOpen(false)}
+          todoCount={currentFolder?.todoCount ?? 0}
+          tagCount={tags.length}
+        />
+      )}
+    </div>
+  ) : undefined
+
   // Determine header props based on current view
   const headerProps = view === 'tags'
     ? { title: 'Manage Tags', icon: Tag, onBack: () => setView('list'), right: tagCountBadge }
     : view === 'folders'
     ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
-    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders }
+    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders, right: folderSettingsButton }
 
   // Folders view
   if (view === 'folders') {
@@ -278,6 +342,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4" onClick={() => {
         handleCancelDelete()
         setEditingTagsTodoId(null)
+        setIsSettingsMenuOpen(false)
       }}>
         <TodoPluginInputArea
           value={newTodoText}
@@ -288,6 +353,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           selectedTagIds={selectedTagIds}
           onToggleTag={handleToggleTagSelection}
         />
+        <h2 className="text-[12px] font-medium text-white/40 uppercase tracking-wide">Tasks</h2>
         {filteredTodos.length === 0 ? (
           <TodoPluginEmptyState hasFilter={selectedTagIds.length > 0} />
         ) : (
@@ -303,6 +369,19 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           />
         )}
       </div>
+
+      {isRenamingFolder && (
+        <TodoPluginRenameFolderModal
+          value={renameFolderValue}
+          onChange={setRenameFolderValue}
+          onSubmit={handleRenameFolder}
+          onKeyDown={handleRenameFolderKeyDown}
+          onClose={() => {
+            setIsRenamingFolder(false)
+            setRenameFolderValue('')
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1256,6 +1335,146 @@ function TodoPluginFolderPreview({ recentTodos }: TodoPluginFolderPreviewProps) 
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// --- Folder Settings Components ---
+
+interface TodoPluginFolderSettingsMenuProps {
+  onRename: () => void
+  onDelete: () => void
+  onClose: () => void
+  todoCount: number
+  tagCount: number
+}
+
+function TodoPluginFolderSettingsMenu({
+  onRename,
+  onDelete,
+  onClose,
+  todoCount,
+  tagCount,
+}: TodoPluginFolderSettingsMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onClose()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute right-0 top-full z-20 mt-1 w-[180px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onRename}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-white/80 transition-colors hover:bg-white/6"
+      >
+        <Pencil size={14} className="text-white/50" />
+        Rename
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+      >
+        <X size={14} />
+        Delete
+      </button>
+      <div className="mx-2 my-1 border-t border-white/[0.06]" />
+      <div className="px-3 py-1.5 text-[11px] text-white/30">
+        {todoCount} task{todoCount !== 1 ? 's' : ''}, {tagCount} tag{tagCount !== 1 ? 's' : ''}
+      </div>
+    </div>
+  )
+}
+
+interface TodoPluginRenameFolderModalProps {
+  value: string
+  onChange: (value: string) => void
+  onSubmit: () => void
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  onClose: () => void
+}
+
+function TodoPluginRenameFolderModal({
+  value,
+  onChange,
+  onSubmit,
+  onKeyDown,
+  onClose,
+}: TodoPluginRenameFolderModalProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[280px] rounded-xl border border-white/10 bg-[#0a0a0a] p-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-folder-title"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 id="rename-folder-title" className="text-[14px] font-medium text-white/90">
+            Rename Folder
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
+          autoComplete="off"
+        />
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!value.trim()}
+            className="flex-1 rounded-lg bg-white/90 px-4 py-2 text-[13px] font-medium text-[#0a0a0a] transition-all duration-150 ease-out hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          >
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

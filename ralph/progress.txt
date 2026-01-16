@@ -146,3 +146,40 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - The `cn()` utility handles conditional class composition well
   - Empty state components with action buttons provide better UX than just text
 
+---
+
+## 2026-01-16 - Task 6: Frontend - Implement folder content view with navigation
+- What was implemented:
+  - Added settings icon (gear) in header when inside a folder:
+    - Uses `Settings` icon from lucide-react
+    - Clicking opens a dropdown menu with Rename/Delete options
+    - Shows folder stats (task count, tag count) at the bottom
+  - Created `TodoPluginFolderSettingsMenu` component:
+    - Dropdown menu positioned below the settings button
+    - Rename option with pencil icon
+    - Delete option in red with X icon
+    - Info footer showing "X tasks, Y tags"
+    - Closes when clicking outside (useEffect with mousedown listener)
+  - Created `TodoPluginRenameFolderModal` component:
+    - Modal overlay with backdrop blur
+    - Pre-filled input with current folder name
+    - Auto-focuses and selects text on open
+    - Enter to save, Escape to cancel
+    - Cancel and Save buttons
+  - Added "Tasks" section title above the todo list:
+    - Styled as uppercase 12px text with reduced opacity
+    - Provides visual separation between tag filter and todo list
+  - Added state management for folder operations:
+    - `isSettingsMenuOpen`: Controls visibility of settings dropdown
+    - `isRenamingFolder`: Controls visibility of rename modal
+    - `renameFolderValue`: Stores the new folder name during editing
+  - Header props now conditionally include the settings button for list view
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The `PluginHeader` component's `right` prop accepts any ReactNode, allowing complex UI elements
+  - Dropdown menus need `onClick={(e) => e.stopPropagation()}` to prevent closing when clicking inside
+  - Use `useRef` with mousedown event listener for click-outside detection
+  - When implementing modals, remember to auto-focus and select input content with `inputRef.current?.select()`
+  - Section titles (like "Tasks") help organize content without needing visual borders
+
