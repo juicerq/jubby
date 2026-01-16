@@ -1,4 +1,5 @@
 mod enhancer;
+mod settings;
 mod storage;
 mod tray;
 mod window;

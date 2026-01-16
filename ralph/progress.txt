@@ -1,0 +1,14 @@
+## 2026-01-16 - Task 1: Architecture - Criar modelo de dados AppSettings
+- What was implemented:
+  - Added `AppSettings` interface to `src/core/types.ts`
+  - Added `DEFAULT_SETTINGS` constant with `globalShortcut: 'F9'`
+  - Created `src-tauri/src/settings.rs` with `AppSettings` struct and `Default` trait
+  - Registered settings module in `lib.rs`
+- Files changed:
+  - `src/core/types.ts` - Added AppSettings interface and DEFAULT_SETTINGS
+  - `src-tauri/src/settings.rs` - New file with Rust AppSettings struct
+  - `src-tauri/src/lib.rs` - Added settings module declaration
+- **Learnings for future iterations:**
+  - The codebase uses `camelCase` for JSON serialization in Rust (via serde rename_all)
+  - Storage uses SQLite via rusqlite, not JSON files as originally documented
+  - The storage module has a `get_storage_dir()` function that can be reused for settings

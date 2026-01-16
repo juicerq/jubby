@@ -1,0 +1,123 @@
+{
+	"tasks": [
+		{
+			"category": "architecture",
+			"description": "Criar modelo de dados AppSettings",
+			"steps": [
+				"Adicionar interface AppSettings em src/core/types.ts",
+				"Adicionar DEFAULT_SETTINGS com globalShortcut: 'F9'",
+				"Criar struct AppSettings em src-tauri/src/settings.rs com Default trait"
+			],
+			"should-commit": true,
+			"passes": true,
+			"notes": "Este é o fundamento para todo o sistema de configurações. Mantenha o modelo simples e extensível."
+		},
+		{
+			"category": "backend",
+			"description": "Implementar persistência de settings no Rust",
+			"steps": [
+				"Criar src-tauri/src/settings.rs",
+				"Implementar load_settings() que lê de ~/.local/share/jubby/settings.json",
+				"Implementar save_settings() que salva no mesmo arquivo",
+				"Usar DEFAULT_SETTINGS como fallback se arquivo não existir"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Siga o padrão de storage.rs existente. Use thiserror para erros customizados."
+		},
+		{
+			"category": "backend",
+			"description": "Implementar registro dinâmico de shortcut global",
+			"steps": [
+				"Criar função parse_shortcut(s: &str) -> Result<Shortcut> que converte 'Ctrl+Shift+J' para Shortcut",
+				"Criar comando update_global_shortcut que: unregister atual, parse novo, register novo, salva settings",
+				"Criar comando get_settings que retorna AppSettings atual",
+				"Registrar comandos em lib.rs"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Leia a documentação do tauri_plugin_global_shortcut para entender unregister/register em runtime."
+		},
+		{
+			"category": "backend",
+			"description": "Modificar startup para carregar shortcut dinâmico",
+			"steps": [
+				"Em lib.rs, chamar settings::load_settings() antes de registrar shortcut",
+				"Usar parse_shortcut() para converter string para Shortcut",
+				"Manter F9 como fallback se parse falhar",
+				"Remover hardcode de Code::F9"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Garanta que o app ainda funciona se settings.json não existir ou estiver corrompido."
+		},
+		{
+			"category": "frontend",
+			"description": "Criar hook useSettings",
+			"steps": [
+				"Criar src/core/hooks/useSettings.ts",
+				"Implementar carregamento de settings via invoke('get_settings')",
+				"Implementar updateShortcut() que chama invoke('update_global_shortcut')",
+				"Retornar { settings, isLoading, updateShortcut }"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Siga o padrão de useTodoStorage.ts com loading state e error handling via toast."
+		},
+		{
+			"category": "frontend",
+			"description": "Criar componente ShortcutCapture",
+			"steps": [
+				"Criar src/core/components/Settings/ShortcutCapture.tsx",
+				"Implementar estado capturing que escuta keydown quando ativo",
+				"Construir string de shortcut a partir de event.ctrlKey, shiftKey, altKey, metaKey + event.code",
+				"Validar que há pelo menos uma tecla não-modificadora",
+				"Chamar onChange ao capturar combinação válida"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Use event.code (não event.key) para consistência. Previna teclas inválidas como Escape sozinho."
+		},
+		{
+			"category": "frontend",
+			"description": "Criar view Settings",
+			"steps": [
+				"Criar src/core/components/Settings/Settings.tsx",
+				"Usar PluginHeader com título 'Configurações' e ícone Settings do lucide",
+				"Renderizar seção 'Atalho Global' com ShortcutCapture",
+				"Usar useSettings para carregar e atualizar configurações",
+				"Mostrar toast de sucesso ao salvar"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Siga o padrão visual dos plugins existentes. Use mini-componentes se necessário."
+		},
+		{
+			"category": "frontend",
+			"description": "Adicionar ícone de settings no PluginGrid",
+			"steps": [
+				"Modificar PluginGridSearch para receber prop onSettingsClick",
+				"Substituir hint ⌘K por container flex com hint + botão Settings",
+				"Estilizar botão com hover state consistente",
+				"Passar onSettingsClick de PluginGrid para PluginGridSearch"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Mantenha o hint ⌘K visível. O ícone deve ser sutil mas clicável."
+		},
+		{
+			"category": "frontend",
+			"description": "Atualizar navegação em App.tsx",
+			"steps": [
+				"Criar tipo View = { type: 'grid' } | { type: 'plugin', plugin } | { type: 'settings' }",
+				"Substituir activePlugin por view state",
+				"Atualizar viewKey para suportar 'settings'",
+				"Renderizar condicionalmente Grid, Plugin ou Settings",
+				"Passar callbacks de navegação para cada view"
+			],
+			"should-commit": true,
+			"passes": false,
+			"notes": "Esta é a última task pois integra tudo. Teste navegação Grid ↔ Settings ↔ Grid."
+		}
+	]
+}
