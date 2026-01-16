@@ -50,7 +50,7 @@
       "Implement optimistic updates for folder operations"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Read useTodoStorage.ts for existing optimistic update patterns."
   },
   {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, X, Tag, Plus, Pencil, Minus } from 'lucide-react'
-import { useTodoStorage } from './useTodoStorage'
+import { useTodoStorage, useFolderStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
@@ -20,10 +20,14 @@ const TAG_COLORS = [
 type TodoView = 'list' | 'tags'
 
 function TodoPlugin({ onExitPlugin }: PluginProps) {
+  // Get folders first, then use the first folder's ID for todos
+  const { folders, isLoading: foldersLoading } = useFolderStorage()
+  const currentFolderId = folders[0]?.id ?? ''
+
   const {
     todos,
     tags,
-    isLoading,
+    isLoading: todosLoading,
     createTodo,
     updateTodoStatus,
     deleteTodo,
@@ -31,7 +35,9 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     createTag,
     updateTag,
     deleteTag,
-  } = useTodoStorage()
+  } = useTodoStorage(currentFolderId)
+
+  const isLoading = foldersLoading || todosLoading
 
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)

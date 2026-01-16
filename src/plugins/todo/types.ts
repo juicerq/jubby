@@ -13,3 +13,18 @@ export interface Todo {
   createdAt: number
   tagIds?: string[]
 }
+
+export interface RecentTodo {
+  id: string
+  text: string
+  status: string
+}
+
+export interface Folder {
+  id: string
+  name: string
+  position: number
+  createdAt: number
+  todoCount: number
+  recentTodos: RecentTodo[]
+}

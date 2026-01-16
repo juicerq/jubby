@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { Todo, Tag, TodoStatus } from './types'
+import type { Todo, Tag, TodoStatus, Folder, RecentTodo } from './types'
 
 interface TodoFromBackend {
   id: string
@@ -14,6 +14,15 @@ interface TodoFromBackend {
 interface TodoDataFromBackend {
   todos: TodoFromBackend[]
   tags: Tag[]
+}
+
+interface FolderFromBackend {
+  id: string
+  name: string
+  position: number
+  createdAt: number
+  todoCount: number
+  recentTodos: RecentTodo[]
 }
 
 interface UseTodoStorageReturn {
@@ -31,6 +40,17 @@ interface UseTodoStorageReturn {
   deleteTag: (id: string) => Promise<void>
 }
 
+interface UseFolderStorageReturn {
+  folders: Folder[]
+  isLoading: boolean
+
+  loadFolders: () => Promise<void>
+  createFolder: (name: string) => Promise<Folder | null>
+  renameFolder: (id: string, name: string) => Promise<boolean>
+  deleteFolder: (id: string) => Promise<boolean>
+  reorderFolders: (folderIds: string[]) => Promise<void>
+}
+
 function mapBackendTodo(todo: TodoFromBackend): Todo {
   return {
     id: todo.id,
@@ -41,7 +61,18 @@ function mapBackendTodo(todo: TodoFromBackend): Todo {
   }
 }
 
-export function useTodoStorage(): UseTodoStorageReturn {
+function mapBackendFolder(folder: FolderFromBackend): Folder {
+  return {
+    id: folder.id,
+    name: folder.name,
+    position: folder.position,
+    createdAt: folder.createdAt,
+    todoCount: folder.todoCount,
+    recentTodos: folder.recentTodos,
+  }
+}
+
+export function useTodoStorage(folderId: string): UseTodoStorageReturn {
   const [todos, setTodos] = useState<Todo[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -49,7 +80,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const data = await invoke<TodoDataFromBackend>('todo_get_all')
+        const data = await invoke<TodoDataFromBackend>('todo_get_by_folder', { folderId })
         setTodos(data.todos.map(mapBackendTodo))
         setTags(data.tags)
       } catch (error) {
@@ -61,7 +92,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
     }
 
     loadData()
-  }, [])
+  }, [folderId])
 
   const createTodo = useCallback(async (text: string, tagIds?: string[]) => {
     const tempId = `temp-${Date.now()}`
@@ -77,6 +108,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
 
     try {
       const newTodo = await invoke<TodoFromBackend>('todo_create', {
+        folderId,
         text,
         tagIds: tagIds ?? null,
       })
@@ -87,7 +119,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
       setTodos((prev) => prev.filter((t) => t.id !== tempId))
       toast.error('Failed to create todo')
     }
-  }, [])
+  }, [folderId])
 
   const updateTodoStatus = useCallback(
     async (id: string, status: TodoStatus) => {
@@ -148,7 +180,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
     setTags((prev) => [...prev, optimisticTag])
 
     try {
-      const newTag = await invoke<Tag>('tag_create', { name, color })
+      const newTag = await invoke<Tag>('tag_create', { folderId, name, color })
       setTags((prev) => prev.map((t) => (t.id === tempId ? newTag : t)))
       return true
     } catch (error) {
@@ -160,7 +192,7 @@ export function useTodoStorage(): UseTodoStorageReturn {
       toast.error('Failed to create tag')
       return false
     }
-  }, [])
+  }, [folderId])
 
   const updateTag = useCallback(
     async (id: string, name: string, color: string) => {
@@ -219,5 +251,126 @@ export function useTodoStorage(): UseTodoStorageReturn {
     createTag,
     updateTag,
     deleteTag,
+  }
+}
+
+export function useFolderStorage(): UseFolderStorageReturn {
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const loadFolders = useCallback(async () => {
+    try {
+      const data = await invoke<FolderFromBackend[]>('folder_get_all')
+      setFolders(data.map(mapBackendFolder))
+    } catch (error) {
+      console.error('Failed to load folders:', error)
+      toast.error('Failed to load folders')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadFolders()
+  }, [loadFolders])
+
+  const createFolder = useCallback(async (name: string) => {
+    const tempId = `temp-${Date.now()}`
+    const optimisticFolder: Folder = {
+      id: tempId,
+      name,
+      position: folders.length,
+      createdAt: Date.now(),
+      todoCount: 0,
+      recentTodos: [],
+    }
+
+    setFolders((prev) => [...prev, optimisticFolder])
+
+    try {
+      const newFolder = await invoke<FolderFromBackend>('folder_create', { name })
+      const mappedFolder = mapBackendFolder(newFolder)
+      setFolders((prev) =>
+        prev.map((f) => (f.id === tempId ? { ...mappedFolder, todoCount: 0, recentTodos: [] } : f))
+      )
+      return mappedFolder
+    } catch (error) {
+      setFolders((prev) => prev.filter((f) => f.id !== tempId))
+      toast.error('Failed to create folder')
+      return null
+    }
+  }, [folders.length])
+
+  const renameFolder = useCallback(
+    async (id: string, name: string) => {
+      const previousFolders = folders
+
+      setFolders((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, name } : f))
+      )
+
+      try {
+        await invoke('folder_rename', { id, name })
+        return true
+      } catch (error) {
+        setFolders(previousFolders)
+        toast.error('Failed to rename folder')
+        return false
+      }
+    },
+    [folders]
+  )
+
+  const deleteFolder = useCallback(
+    async (id: string) => {
+      const previousFolders = folders
+
+      setFolders((prev) => prev.filter((f) => f.id !== id))
+
+      try {
+        await invoke('folder_delete', { id })
+        return true
+      } catch (error) {
+        setFolders(previousFolders)
+        toast.error('Failed to delete folder')
+        return false
+      }
+    },
+    [folders]
+  )
+
+  const reorderFolders = useCallback(
+    async (folderIds: string[]) => {
+      const previousFolders = folders
+
+      // Reorder folders based on the new ID order
+      setFolders((prev) => {
+        const folderMap = new Map(prev.map((f) => [f.id, f]))
+        return folderIds
+          .map((id, index) => {
+            const folder = folderMap.get(id)
+            return folder ? { ...folder, position: index } : null
+          })
+          .filter((f): f is Folder => f !== null)
+      })
+
+      try {
+        await invoke('folder_reorder', { folderIds })
+      } catch (error) {
+        setFolders(previousFolders)
+        toast.error('Failed to reorder folders')
+      }
+    },
+    [folders]
+  )
+
+  return {
+    folders,
+    isLoading,
+    loadFolders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    reorderFolders,
   }
 }
