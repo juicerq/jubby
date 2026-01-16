@@ -116,8 +116,8 @@
       "Call folder_reorder with new order"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Consider using @dnd-kit/core or native HTML drag and drop API."
+    "passes": true,
+    "notes": "Used native HTML drag and drop API - no external dependencies needed."
   },
   {
     "category": "test",

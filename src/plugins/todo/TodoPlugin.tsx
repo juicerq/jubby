@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings } from 'lucide-react'
+import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical } from 'lucide-react'
 import { useTodoStorage, useFolderStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
@@ -28,6 +28,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     renameFolder,
     deleteFolder,
     loadFolders,
+    reorderFolders,
   } = useFolderStorage()
 
   // Current folder state (null means we're on the folder list view)
@@ -319,6 +320,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
             <TodoPluginFolderList
               folders={folders}
               onFolderClick={handleNavigateToFolder}
+              onReorder={reorderFolders}
             />
           )}
         </div>
@@ -1262,11 +1264,81 @@ function TodoPluginFoldersEmptyState({ onCreate }: { onCreate: () => void }) {
 interface TodoPluginFolderListProps {
   folders: Folder[]
   onFolderClick: (folderId: string) => void
+  onReorder: (folderIds: string[]) => void
 }
 
-function TodoPluginFolderList({ folders, onFolderClick }: TodoPluginFolderListProps) {
+function TodoPluginFolderList({ folders, onFolderClick, onReorder }: TodoPluginFolderListProps) {
   // Sort folders by position
   const sortedFolders = [...folders].sort((a, b) => a.position - b.position)
+
+  // Drag state
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, folderId: string) => {
+    setDraggedId(folderId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', folderId)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedId(null)
+    setDragOverId(null)
+    setDropPosition(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent, folderId: string) => {
+    e.preventDefault()
+    if (draggedId === folderId) return
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const midY = rect.top + rect.height / 2
+    const position = e.clientY < midY ? 'above' : 'below'
+
+    setDragOverId(folderId)
+    setDropPosition(position)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverId(null)
+    setDropPosition(null)
+  }
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault()
+    if (!draggedId || draggedId === targetId) {
+      handleDragEnd()
+      return
+    }
+
+    const newOrder = [...sortedFolders]
+    const draggedIndex = newOrder.findIndex((f) => f.id === draggedId)
+    const targetIndex = newOrder.findIndex((f) => f.id === targetId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      handleDragEnd()
+      return
+    }
+
+    // Remove dragged item
+    const [draggedItem] = newOrder.splice(draggedIndex, 1)
+
+    // Calculate insert index based on drop position
+    let insertIndex = targetIndex
+    if (dropPosition === 'below') {
+      insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1
+    } else {
+      insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex
+    }
+
+    // Insert at new position
+    newOrder.splice(insertIndex, 0, draggedItem)
+
+    // Call reorder with new order
+    onReorder(newOrder.map((f) => f.id))
+    handleDragEnd()
+  }
 
   return (
     <div className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
@@ -1275,6 +1347,14 @@ function TodoPluginFolderList({ folders, onFolderClick }: TodoPluginFolderListPr
           key={folder.id}
           folder={folder}
           onClick={() => onFolderClick(folder.id)}
+          isDragging={draggedId === folder.id}
+          isDragOver={dragOverId === folder.id}
+          dropPosition={dragOverId === folder.id ? dropPosition : null}
+          onDragStart={(e) => handleDragStart(e, folder.id)}
+          onDragEnd={handleDragEnd}
+          onDragOver={(e) => handleDragOver(e, folder.id)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, folder.id)}
         />
       ))}
     </div>
@@ -1284,33 +1364,73 @@ function TodoPluginFolderList({ folders, onFolderClick }: TodoPluginFolderListPr
 interface TodoPluginFolderCardProps {
   folder: Folder
   onClick: () => void
+  isDragging?: boolean
+  isDragOver?: boolean
+  dropPosition?: 'above' | 'below' | null
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDragLeave?: () => void
+  onDrop?: (e: React.DragEvent) => void
 }
 
-function TodoPluginFolderCard({ folder, onClick }: TodoPluginFolderCardProps) {
+function TodoPluginFolderCard({
+  folder,
+  onClick,
+  isDragging = false,
+  isDragOver = false,
+  dropPosition = null,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: TodoPluginFolderCardProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        'group flex w-full flex-col gap-2 rounded-lg text-left',
-        'border border-white/[0.04] bg-white/[0.02]',
-        'px-3.5 py-3 transition-all duration-150 ease-out',
-        'hover:border-white/[0.08] hover:bg-white/[0.04]',
-        'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
-        'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]'
+        'relative',
+        isDragOver && dropPosition === 'above' && 'before:absolute before:inset-x-0 before:-top-1 before:h-0.5 before:bg-white/40 before:rounded-full',
+        isDragOver && dropPosition === 'below' && 'after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:bg-white/40 after:rounded-full'
       )}
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[14px] font-medium text-white/90 tracking-[-0.01em]">
-          {folder.name}
-        </span>
-        <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
-          {folder.todoCount}
-        </span>
-      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'group flex w-full flex-col gap-2 rounded-lg text-left',
+          'border border-white/[0.04] bg-white/[0.02]',
+          'px-3.5 py-3 transition-all duration-150 ease-out',
+          'hover:border-white/[0.08] hover:bg-white/[0.04]',
+          'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
+          'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
+          isDragging && 'opacity-50 scale-[0.98]'
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <GripVertical
+            size={14}
+            className="shrink-0 text-white/20 transition-colors duration-150 group-hover:text-white/40 cursor-grab active:cursor-grabbing"
+          />
+          <span className="flex-1 text-[14px] font-medium text-white/90 tracking-[-0.01em]">
+            {folder.name}
+          </span>
+          <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
+            {folder.todoCount}
+          </span>
+        </div>
 
-      <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
-    </button>
+        <div className="pl-5">
+          <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+        </div>
+      </button>
+    </div>
   )
 }
 

@@ -231,3 +231,34 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - Destructive action modals should prevent accidental clicks - the 5s countdown gives users time to cancel
   - Consistent modal styling (width, border-radius, padding, backdrop) across the app makes implementation faster
 
+---
+
+## 2026-01-16 - Task 9: Frontend - Implement drag and drop folder reordering
+- What was implemented:
+  - Added `GripVertical` drag handle icon from lucide-react to each folder card
+  - Added drag state management to `TodoPluginFolderList` component:
+    - `draggedId`: tracks which folder is being dragged
+    - `dragOverId`: tracks which folder is being hovered over
+    - `dropPosition`: tracks whether to drop 'above' or 'below' the target
+  - Implemented native HTML5 Drag and Drop API with event handlers:
+    - `handleDragStart`: sets dragged folder ID and dataTransfer
+    - `handleDragEnd`: clears all drag state
+    - `handleDragOver`: calculates drop position based on mouse Y relative to element midpoint
+    - `handleDragLeave`: clears drag over state
+    - `handleDrop`: reorders the folder array and calls `reorderFolders`
+  - Visual indicators for drop position:
+    - White horizontal line (h-0.5) appears above or below the target card
+    - Dragged card becomes semi-transparent (opacity-50) with slight scale reduction
+    - Drag handle shows cursor-grab/cursor-grabbing states
+  - Updated `TodoPluginFolderCard` to accept drag-related props and show visual feedback
+  - Passed `reorderFolders` from `useFolderStorage` hook to the folder list component
+  - Folder preview content now indented (pl-5) to align with drag handle
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - Native HTML5 Drag and Drop API is sufficient for simple list reordering without external dependencies
+  - Use `e.currentTarget.getBoundingClientRect()` and compare `e.clientY` to midpoint for above/below positioning
+  - Tailwind's `before:` and `after:` pseudo-element utilities work well for drop position indicators
+  - The reorder logic needs to account for whether the dragged item was above or below the target when calculating the insert index
+  - `draggable` attribute goes on the outer container, click handler goes on the inner button to keep them separate
+
