@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, X, Tag, Plus, Pencil, Minus } from 'lucide-react'
+import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen } from 'lucide-react'
 import { useTodoStorage, useFolderStorage } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
 import type { PluginProps } from '@/core/types'
-import type { Tag as TagType, Todo, TodoStatus } from './types'
+import type { Tag as TagType, Todo, TodoStatus, Folder, RecentTodo } from './types'
 
 const TAG_COLORS = [
   { name: 'Red', hex: '#ef4444', contrastText: 'white' },
@@ -17,13 +17,27 @@ const TAG_COLORS = [
   { name: 'Gray', hex: '#6b7280', contrastText: 'white' },
 ] as const
 
-type TodoView = 'list' | 'tags'
+type TodoView = 'folders' | 'list' | 'tags'
 
 function TodoPlugin({ onExitPlugin }: PluginProps) {
-  // Get folders first, then use the first folder's ID for todos
-  const { folders, isLoading: foldersLoading } = useFolderStorage()
-  const currentFolderId = folders[0]?.id ?? ''
+  // Folder management
+  const {
+    folders,
+    isLoading: foldersLoading,
+    createFolder,
+    loadFolders,
+  } = useFolderStorage()
 
+  // Current folder state (null means we're on the folder list view)
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+  const [view, setView] = useState<TodoView>('folders')
+
+  // Get current folder details
+  const currentFolder = currentFolderId
+    ? folders.find((f) => f.id === currentFolderId) ?? null
+    : null
+
+  // Todo storage - only loads when we have a folder selected
   const {
     todos,
     tags,
@@ -35,15 +49,47 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     createTag,
     updateTag,
     deleteTag,
-  } = useTodoStorage(currentFolderId)
+  } = useTodoStorage(currentFolderId ?? '')
 
-  const isLoading = foldersLoading || todosLoading
+  const isLoading = view === 'folders' ? foldersLoading : (foldersLoading || todosLoading)
 
   const [newTodoText, setNewTodoText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-  const [view, setView] = useState<TodoView>('list')
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [editingTagsTodoId, setEditingTagsTodoId] = useState<string | null>(null)
+
+  // Folder creation state
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+
+  // Navigation handlers
+  const handleNavigateToFolder = (folderId: string) => {
+    setCurrentFolderId(folderId)
+    setView('list')
+    setSelectedTagIds([]) // Reset tag filter when entering folder
+  }
+
+  const handleNavigateToFolders = () => {
+    setCurrentFolderId(null)
+    setView('folders')
+    loadFolders() // Refresh folder data when returning
+  }
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return
+    await createFolder(newFolderName.trim())
+    setNewFolderName('')
+    setIsCreatingFolder(false)
+  }
+
+  const handleFolderInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleCreateFolder()
+    } else if (e.key === 'Escape') {
+      setIsCreatingFolder(false)
+      setNewFolderName('')
+    }
+  }
 
   useEffect(() => {
     if (pendingDeleteId === null) return
@@ -160,10 +206,55 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     </span>
   ) : undefined
 
+  // Build the header right content for folders view (+ button)
+  const folderAddButton = view === 'folders' ? (
+    <button
+      type="button"
+      onClick={() => setIsCreatingFolder(true)}
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+      aria-label="Create folder"
+    >
+      <Plus size={16} />
+    </button>
+  ) : undefined
+
   // Determine header props based on current view
   const headerProps = view === 'tags'
     ? { title: 'Manage Tags', icon: Tag, onBack: () => setView('list'), right: tagCountBadge }
-    : { title: 'Todo', icon: Check, onBack: onExitPlugin }
+    : view === 'folders'
+    ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
+    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders }
+
+  // Folders view
+  if (view === 'folders') {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <PluginHeader {...headerProps} />
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          {isCreatingFolder && (
+            <TodoPluginFolderInput
+              value={newFolderName}
+              onChange={setNewFolderName}
+              onKeyDown={handleFolderInputKeyDown}
+              onBlur={() => {
+                if (!newFolderName.trim()) {
+                  setIsCreatingFolder(false)
+                }
+              }}
+            />
+          )}
+          {folders.length === 0 && !isCreatingFolder ? (
+            <TodoPluginFoldersEmptyState onCreate={() => setIsCreatingFolder(true)} />
+          ) : (
+            <TodoPluginFolderList
+              folders={folders}
+              onFolderClick={handleNavigateToFolder}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (view === 'tags') {
     return (
@@ -1018,6 +1109,154 @@ function TodoPluginTagBadge({ tag, isCompleted = false }: TodoPluginTagBadgeProp
     >
       {tag.name}
     </span>
+  )
+}
+
+// --- Folder Components ---
+
+interface TodoPluginFolderInputProps {
+  value: string
+  onChange: (value: string) => void
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
+  onBlur: () => void
+}
+
+function TodoPluginFolderInput({ value, onChange, onKeyDown, onBlur }: TodoPluginFolderInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  return (
+    <div className="mb-3">
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Folder name..."
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={onBlur}
+        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+        autoComplete="off"
+      />
+    </div>
+  )
+}
+
+function TodoPluginFoldersEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-white/35">
+      <FolderOpen className="h-10 w-10 opacity-40" />
+      <p className="text-[13px] font-normal tracking-[-0.01em]">
+        No folders yet
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="flex items-center gap-1.5 rounded-lg bg-white/8 px-3 py-1.5 text-[12px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/12 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Create folder
+      </button>
+    </div>
+  )
+}
+
+interface TodoPluginFolderListProps {
+  folders: Folder[]
+  onFolderClick: (folderId: string) => void
+}
+
+function TodoPluginFolderList({ folders, onFolderClick }: TodoPluginFolderListProps) {
+  // Sort folders by position
+  const sortedFolders = [...folders].sort((a, b) => a.position - b.position)
+
+  return (
+    <div className="-mx-2 flex flex-1 flex-col gap-1.5 overflow-y-auto px-2">
+      {sortedFolders.map((folder) => (
+        <TodoPluginFolderCard
+          key={folder.id}
+          folder={folder}
+          onClick={() => onFolderClick(folder.id)}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface TodoPluginFolderCardProps {
+  folder: Folder
+  onClick: () => void
+}
+
+function TodoPluginFolderCard({ folder, onClick }: TodoPluginFolderCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group flex w-full flex-col gap-2 rounded-lg text-left',
+        'border border-white/[0.04] bg-white/[0.02]',
+        'px-3.5 py-3 transition-all duration-150 ease-out',
+        'hover:border-white/[0.08] hover:bg-white/[0.04]',
+        'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]',
+        'active:scale-[0.99] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]'
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] font-medium text-white/90 tracking-[-0.01em]">
+          {folder.name}
+        </span>
+        <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
+          {folder.todoCount}
+        </span>
+      </div>
+
+      <TodoPluginFolderPreview recentTodos={folder.recentTodos} />
+    </button>
+  )
+}
+
+interface TodoPluginFolderPreviewProps {
+  recentTodos: RecentTodo[]
+}
+
+function TodoPluginFolderPreview({ recentTodos }: TodoPluginFolderPreviewProps) {
+  if (recentTodos.length === 0) {
+    return (
+      <span className="text-[12px] text-white/25 italic">
+        (empty)
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {recentTodos.map((todo) => (
+        <div key={todo.id} className="flex items-center gap-2">
+          <span
+            className={cn(
+              'h-1.5 w-1.5 shrink-0 rounded-full',
+              todo.status === 'completed' && 'bg-white/30',
+              todo.status === 'in_progress' && 'bg-amber-500/70',
+              todo.status === 'pending' && 'bg-white/40'
+            )}
+          />
+          <span
+            className={cn(
+              'truncate text-[12px] tracking-[-0.01em]',
+              todo.status === 'completed'
+                ? 'text-white/30 line-through decoration-white/20'
+                : 'text-white/50'
+            )}
+          >
+            {todo.text}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 

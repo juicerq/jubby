@@ -112,3 +112,37 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - The `folders[0]?.id ?? ''` pattern is a temporary solution until proper folder navigation is implemented in Task 5/6
   - Backend response types with `#[serde(rename_all = "camelCase")]` map directly to frontend interfaces
 
+---
+
+## 2026-01-16 - Task 5: Frontend - Implement folder list view (main screen)
+- What was implemented:
+  - Refactored `TodoPlugin` to have three views: `folders`, `list`, `tags`
+  - Added `currentFolderId` state (null when on folder list, folder ID when inside a folder)
+  - Folder list view is now the main entry point (instead of going directly to todos)
+  - Created `TodoPluginFolderList` component showing all folders sorted by position
+  - Created `TodoPluginFolderCard` component displaying:
+    - Folder name with 14px font weight medium
+    - Todo count badge (rounded pill on the right)
+    - Preview of last 2 todos with status indicators (colored dots)
+  - Created `TodoPluginFolderPreview` component:
+    - Shows "(empty)" in italic when no todos
+    - Shows truncated todo text with status-appropriate styling
+    - Pending/in-progress todos show as white/50, completed as white/30 with line-through
+  - Created `TodoPluginFolderInput` component for inline folder creation:
+    - Auto-focuses on mount
+    - Enter to submit, Escape to cancel
+    - Blur closes if empty
+  - Created `TodoPluginFoldersEmptyState` for when no folders exist
+  - Added '+' button in header (right side) that reveals inline input
+  - Navigation: Clicking folder sets `currentFolderId` and switches to `list` view
+  - Back navigation from folder view refreshes folder list data
+  - Imported `FolderOpen` icon from lucide-react for the folders view header
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The `PluginHeader` component accepts a `right` prop for custom content in the header
+  - Follow the existing pattern of mini-components defined after the main component
+  - Use `useRef` + `useEffect` to auto-focus inputs on mount
+  - The `cn()` utility handles conditional class composition well
+  - Empty state components with action buttons provide better UX than just text
+

@@ -63,7 +63,7 @@
       "Implement folder click to navigate into folder"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Use existing header customization system. Empty folders show '(empty)' in preview."
   },
   {
