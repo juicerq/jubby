@@ -90,7 +90,7 @@
       "Handle errors with toast"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Triggered from settings menu inside folder view."
   },
   {

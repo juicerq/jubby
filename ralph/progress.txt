@@ -183,3 +183,27 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - When implementing modals, remember to auto-focus and select input content with `inputRef.current?.select()`
   - Section titles (like "Tasks") help organize content without needing visual borders
 
+---
+
+## 2026-01-16 - Task 7: Frontend - Implement folder rename functionality
+- What was implemented:
+  - Verified that all rename functionality was already implemented in Task 6:
+    - `TodoPluginRenameFolderModal` component with modal overlay and backdrop blur
+    - Pre-filled input with current folder name that auto-focuses and selects text
+    - Enter to save, Escape to cancel keyboard shortcuts
+    - Cancel and Save buttons with Save disabled when input is empty
+  - Verified `renameFolder` in `useFolderStorage` hook:
+    - Optimistic update: folder name updates immediately in UI
+    - Rollback on error: reverts to previous state if backend fails
+    - Toast notification: `toast.error('Failed to rename folder')` on failure
+  - Validation: Non-empty name check in `handleRenameFolder` with `renameFolderValue.trim()`
+  - All requirements from PRD were already satisfied by Task 6 implementation
+- Files changed:
+  - `ralph/prd.json` (marked task as passes: true)
+  - No code changes required - implementation was already complete
+- **Learnings for future iterations:**
+  - When implementing a feature with settings menu + rename/delete options, the rename modal often gets implemented together with the settings menu
+  - Always verify existing implementation before adding new code - duplicate functionality may already exist
+  - The separation of concerns in PRD tasks doesn't always match implementation order; complex features often get partially implemented across multiple tasks
+  - Toast notifications via `sonner` are already integrated in `useTodoStorage.ts` - reuse existing patterns
+
