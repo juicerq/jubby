@@ -33,3 +33,26 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - Migration runs on every startup - use `CREATE TABLE IF NOT EXISTS` for idempotency
   - The `execute_batch` function doesn't support parameterized queries - use format! for dynamic values
 
+---
+
+## 2026-01-16 - Task 2: Backend - Implement folder CRUD commands
+- What was implemented:
+  - Created `folder.rs` module with 5 Tauri commands:
+    - `folder_get_all`: Returns all folders with `todoCount` and `recentTodos` (last 2 todos preview)
+    - `folder_create`: Creates new folder with auto-incremented position, validates non-empty name
+    - `folder_rename`: Renames folder by ID, validates non-empty name
+    - `folder_delete`: Deletes folder (CASCADE handles todos/tags cleanup)
+    - `folder_reorder`: Accepts ordered list of folder IDs and updates positions
+  - Response types use `#[serde(rename_all = "camelCase")]` for frontend compatibility
+  - Registered module in `storage/mod.rs`
+  - Registered all 5 commands in `lib.rs` invoke_handler
+- Files changed:
+  - `src-tauri/src/storage/folder.rs` (new file)
+  - `src-tauri/src/storage/mod.rs`
+  - `src-tauri/src/lib.rs`
+- **Learnings for future iterations:**
+  - Follow same patterns as `todo.rs`: State<Database>, map_err for errors, filter_map for queries
+  - Position field uses `COALESCE(MAX(position), -1) + 1` for next position calculation
+  - For N+1 queries (getting count/recent for each folder), consider JOIN optimization if performance becomes an issue
+  - Folder deletion relies on CASCADE - no need to manually delete todos/tags
+

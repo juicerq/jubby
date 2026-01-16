@@ -1,3 +1,4 @@
+pub mod folder;
 pub mod migrations;
 pub mod todo;
 
