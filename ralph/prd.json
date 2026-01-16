@@ -103,7 +103,7 @@
       "Execute delete and navigate back to folder list"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Use setInterval for countdown. Button text: 'Delete (5s)' then 'Delete'."
   },
   {

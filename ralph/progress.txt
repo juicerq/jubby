@@ -207,3 +207,27 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - The separation of concerns in PRD tasks doesn't always match implementation order; complex features often get partially implemented across multiple tasks
   - Toast notifications via `sonner` are already integrated in `useTodoStorage.ts` - reuse existing patterns
 
+---
+
+## 2026-01-16 - Task 8: Frontend - Implement folder delete with countdown confirmation
+- What was implemented:
+  - Created `TodoPluginDeleteFolderModal` component with:
+    - Modal overlay with backdrop blur (consistent with rename modal)
+    - Message showing "Delete [folderName]? This will remove X tasks and Y tags."
+    - 5-second countdown timer using `setInterval`
+    - Delete button disabled during countdown, showing "Delete (5s)" → "Delete (4s)" → ... → "Delete"
+    - Button styling: red-500/40 when disabled, red-500 when enabled
+    - Cancel button to dismiss modal
+  - Added `isDeletingFolder` state to track modal visibility
+  - Renamed `handleDeleteFolder` to `handleStartDeleteFolder` (opens modal)
+  - Added `handleConfirmDeleteFolder` (executes actual deletion)
+  - Modal displays current folder's todoCount and tags.length for accurate counts
+  - On successful deletion, modal closes and navigates back to folder list
+- Files changed:
+  - `src/plugins/todo/TodoPlugin.tsx`
+- **Learnings for future iterations:**
+  - The countdown pattern using `setInterval` with cleanup in `useEffect` is straightforward: decrement until 0, then stop
+  - For countdown-style buttons, track `countdown <= 0` as `isDeleteEnabled` for clean conditional rendering
+  - Destructive action modals should prevent accidental clicks - the 5s countdown gives users time to cancel
+  - Consistent modal styling (width, border-radius, padding, backdrop) across the app makes implementation faster
+
