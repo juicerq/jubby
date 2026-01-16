@@ -56,3 +56,27 @@ Implement a folder system for the Todo plugin. The main screen shows a list of f
   - For N+1 queries (getting count/recent for each folder), consider JOIN optimization if performance becomes an issue
   - Folder deletion relies on CASCADE - no need to manually delete todos/tags
 
+---
+
+## 2026-01-16 - Task 3: Backend - Update existing todo/tag commands to use folder_id
+- What was implemented:
+  - Replaced `todo_get_all` with `todo_get_by_folder(folder_id)`:
+    - Now filters todos and tags by the specified folder_id
+    - Queries use `WHERE folder_id = ?1` for both todos and tags
+  - Updated `todo_create` to receive `folder_id` parameter:
+    - Added `folder_id` as the first parameter (before text and tag_ids)
+    - INSERT now includes folder_id column
+  - Updated `tag_create` to receive `folder_id` parameter:
+    - Added `folder_id` as the first parameter (before name and color)
+    - INSERT now includes folder_id column
+  - Updated error messages to clarify per-folder scope:
+    - Both `tag_create` and `tag_update` now show "Tag name already exists in this folder"
+  - Updated command registration in `lib.rs` to use `todo_get_by_folder` instead of `todo_get_all`
+- Files changed:
+  - `src-tauri/src/storage/todo.rs`
+  - `src-tauri/src/lib.rs`
+- **Learnings for future iterations:**
+  - Tag uniqueness is enforced by DB constraint `UNIQUE(name, folder_id)` - no additional code needed
+  - When renaming commands, update both the function and the invoke_handler registration
+  - The `tag_update` function doesn't need folder_id since it updates by tag ID (folder_id is immutable after creation)
+

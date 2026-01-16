@@ -24,7 +24,7 @@
       "Register commands in main.rs"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Read existing todo.rs commands for pattern reference."
   },
   {
@@ -37,7 +37,7 @@
       "Ensure tag uniqueness is scoped per folder, not global"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Check how tag_create validates uniqueness and update to filter by folder_id."
   },
   {

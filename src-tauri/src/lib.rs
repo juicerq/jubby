@@ -49,7 +49,7 @@ pub fn run() {
             storage::folder::folder_rename,
             storage::folder::folder_delete,
             storage::folder::folder_reorder,
-            storage::todo::todo_get_all,
+            storage::todo::todo_get_by_folder,
             storage::todo::todo_create,
             storage::todo::todo_update_status,
             storage::todo::todo_delete,
