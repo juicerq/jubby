@@ -7,7 +7,7 @@
 - [x] Add PipeWire dependencies to Cargo.toml
 - [x] Add new error variants to RecorderError
 - [x] Create pipewire_capture module with portal integration
-- [ ] Implement PipeWire stream frame capture
+- [x] Implement PipeWire stream frame capture
 - [ ] Refactor recorder.rs to use pipewire_capture
 - [ ] Update frontend with capture mode buttons
 - [ ] Manual verification of PipeWire capture
@@ -60,3 +60,30 @@ Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
   - `SourceType` must be converted to `BitFlags` using `.into()` when passed to `select_sources()`
   - Session lifetime requires unsafe transmute to 'static for storage in struct
   - Portal handles area selection UI - we just pass `multiple=true` for Area mode
+
+## 2026-01-17 - Implement PipeWire Stream Frame Capture
+
+- **What was implemented:** Added PipeWire stream capture functionality to pipewire_capture.rs
+- **Files changed:**
+  - `src-tauri/src/pipewire_capture.rs` - Added `run_capture_loop()` function and supporting types
+- **Key features:**
+  - `CaptureState` struct to hold frames, format info, and capture statistics
+  - `CaptureResult` struct returned with frames, dimensions, and frame count
+  - `run_capture_loop()` function that:
+    - Initializes PipeWire with `pw::init()`
+    - Creates MainLoop and Context
+    - Connects to PipeWire using portal-provided fd via `context.connect_fd()`
+    - Creates Stream with Video/Capture/Screen properties
+    - Registers `param_changed` callback to parse VideoInfoRaw format
+    - Registers `process` callback to dequeue buffers and store frame data
+    - Handles memory limit (1.5GB) with auto-stop
+    - Logs every 30th frame to avoid spam
+  - `convert_bgrx_to_rgba()` helper for pixel format conversion
+  - Video format negotiation with BGRx (preferred), RGBA, RGBx, RGB options
+- **Learnings for future iterations:**
+  - `Context::new()` requires `&MainLoop`, not `&LoopRef`
+  - Object must be wrapped in `Value::Object(obj)` before serializing with `PodSerializer`
+  - `data.chunk()` returns `&Chunk` directly, not `Option<&Chunk>`
+  - Stream type aliasing required: `Stream as PortalStream` to avoid conflict with `pipewire::stream::Stream`
+  - Format params built with `object!` macro then serialized via `PodSerializer::serialize()`
+  - Memory mapped buffers via `StreamFlags::MAP_BUFFERS` - no manual mmap needed
