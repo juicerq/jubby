@@ -23,3 +23,5 @@ uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["time"] }
 thiserror = "1"
 global-hotkey = "0.7"
+xcap = "0.0.14"
+image = "0.25"

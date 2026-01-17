@@ -6,7 +6,7 @@ Design doc: docs/plans/2026-01-16-quickclip-design.md
 Tasks:
 [x] Research screen capture and video encoding on Linux/Tauri
 [x] Create QuickClip plugin scaffold and manifest
-[ ] Implement Rust backend for screen capture
+[x] Implement Rust backend for screen capture
 [ ] Implement video encoding and storage
 [ ] Implement clipboard integration for video
 [ ] Implement global hotkey for recording toggle
@@ -17,7 +17,7 @@ Tasks:
 [ ] Implement recording metadata and persistence
 [ ] Polish and edge cases
 
-Current: Plugin scaffold complete
+Current: Rust screen capture backend complete
 
 ---
 
@@ -169,3 +169,48 @@ Created the foundational plugin scaffold following existing plugin patterns (tod
 
 ### Next Steps
 Ready for Rust backend implementation (task 3: screen capture) or UI work (task 8: empty state and onboarding).
+
+---
+
+## 2026-01-16 - Implement Rust backend for screen capture
+
+### What was implemented
+Created the Rust capture module providing IPC commands for screen capture functionality using xcap library.
+
+**IPC Commands:**
+- `capture_get_sources` - Lists all monitors and windows available for capture
+- `capture_monitor(monitor_id)` - Captures a specific monitor by ID
+- `capture_window(window_id)` - Captures a specific window by ID
+- `capture_primary` - Captures the primary monitor (or first available)
+
+**Features:**
+- Proper error handling with `thiserror` (no unwrap/panic in production code)
+- Saves captured frames to `~/.local/share/jubby/quickclip/frames/`
+- Returns structured response with path, dimensions, and timestamp
+- Filters out minimized windows from source list
+- Follows existing codebase patterns (camelCase serde, Result<T, String> IPC)
+
+### Files changed
+- `src-tauri/Cargo.toml` - Added xcap (0.0.14) and image (0.25) dependencies
+- `src-tauri/src/capture.rs` - New module with capture logic and IPC commands
+- `src-tauri/src/lib.rs` - Registered capture module and commands
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- IPC commands return `Result<T, String>` where internal implementation uses proper error types
+- Internal functions use `_internal` suffix pattern for separating IPC boundary from logic
+- XDG directory handling should be consistent across modules (get_storage_dir pattern)
+
+**Gotchas encountered:**
+- xcap has a future-incompatibility warning but still compiles fine
+- Window capture on Wayland may require PipeWire permissions (user will see portal dialog)
+- Minimized windows cannot be captured (xcap limitation)
+
+**Useful context:**
+- Monitor IDs are strings (display connector names on Linux)
+- Window IDs are u32 (X11 window IDs)
+- Frame files use timestamp as filename: `frame_{timestamp}.png`
+
+### Next Steps
+Ready for video encoding (task 4) or frontend integration to test capture commands.

@@ -1,3 +1,4 @@
+mod capture;
 mod enhancer;
 mod settings;
 mod storage;
@@ -60,6 +61,10 @@ pub fn run() {
             enhancer::enhance_prompt,
             settings::get_settings,
             settings::update_global_shortcut,
+            capture::capture_get_sources,
+            capture::capture_monitor,
+            capture::capture_window,
+            capture::capture_primary,
         ])
         .setup(move |app| {
             // Initialize database
