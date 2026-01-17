@@ -1,0 +1,164 @@
+[
+  {
+    "category": "research",
+    "description": "Research screen capture and video encoding on Linux/Tauri",
+    "steps": [
+      "Investigate screen capture libraries for Rust (scrap, xcap, pipewire)",
+      "Research ffmpeg integration options (CLI vs bindings)",
+      "Test clipboard video support on Linux (wl-copy, xclip)",
+      "Validate overlay window exclusion from capture"
+    ],
+    "shouldCommit": false,
+    "passes": true,
+    "notes": "COMPLETE. Recommended: xcap for capture, ffmpeg-sidecar for encoding. Clipboard video paste to Discord not supported on Linux - use drag-drop workflow. Overlay content protection is compositor-dependent."
+  },
+  {
+    "category": "functional",
+    "description": "Create QuickClip plugin scaffold and manifest",
+    "steps": [
+      "Create plugins/quickclip/ folder structure",
+      "Create index.tsx with PluginManifest",
+      "Create QuickClipPlugin.tsx with basic component",
+      "Register plugin in registry.ts",
+      "Define types.ts with Recording, Settings interfaces"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "COMPLETE. Followed existing plugin patterns. Scaffold includes manifest with capabilities, basic empty state UI, and typed interfaces for Recording/Settings."
+  },
+  {
+    "category": "functional",
+    "description": "Implement Rust backend for screen capture",
+    "steps": [
+      "Add screen capture dependencies to Cargo.toml",
+      "Create capture.rs module with capture logic",
+      "Implement region/window/fullscreen selection",
+      "Create IPC commands: start_capture, stop_capture, get_sources"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use Result types, proper error handling with thiserror. No unwrap() in production code."
+  },
+  {
+    "category": "functional",
+    "description": "Implement video encoding and storage",
+    "steps": [
+      "Integrate ffmpeg for video encoding",
+      "Implement quality profiles (light/high)",
+      "Implement audio capture (system/mic/both/none)",
+      "Save videos to ~/.local/share/jubby/quickclip/videos/",
+      "Generate thumbnails for recordings"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Consider using ffmpeg CLI for simplicity. Implement timeout for encoding operations."
+  },
+  {
+    "category": "functional",
+    "description": "Implement clipboard integration for video",
+    "steps": [
+      "Research Linux clipboard video support (Wayland/X11)",
+      "Implement copy_video_to_clipboard IPC command",
+      "Auto-copy to clipboard when recording stops",
+      "Test with Discord paste"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "May need different implementations for Wayland vs X11. wl-copy supports file:// URIs."
+  },
+  {
+    "category": "functional",
+    "description": "Implement global hotkey for recording toggle",
+    "steps": [
+      "Use Tauri global shortcut API",
+      "Register configurable hotkey (default: Ctrl+Shift+R)",
+      "Toggle recording on/off with same hotkey",
+      "Persist hotkey preference in settings"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Check for conflicts with existing system shortcuts."
+  },
+  {
+    "category": "functional",
+    "description": "Implement recording overlay window",
+    "steps": [
+      "Create separate Tauri window for overlay",
+      "Style as small red pulsing circle (~32px)",
+      "Position in top-right corner, always on top",
+      "Set content protection to exclude from capture",
+      "Show on recording start, hide on stop"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Test content protection on both Wayland and X11. Implement fallback positioning if exclusion fails."
+  },
+  {
+    "category": "functional",
+    "description": "Build plugin UI - empty state and onboarding",
+    "steps": [
+      "Create empty state with onboarding message",
+      "Add large 'Start Recording' button",
+      "Show configured hotkey hint",
+      "Implement first-time capture mode selector"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use frontend-design skill for distinctive UI. Keep it minimal and action-focused."
+  },
+  {
+    "category": "functional",
+    "description": "Build plugin UI - recordings grid",
+    "steps": [
+      "Create grid layout for thumbnails (2x3 or 3x3)",
+      "Display thumbnail with duration badge",
+      "Implement hover preview (animated)",
+      "Click to copy to clipboard with feedback",
+      "Secondary actions menu (open file, delete)"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use frontend-design skill. Hover preview can use video tag with autoplay on mouseenter."
+  },
+  {
+    "category": "functional",
+    "description": "Build plugin UI - settings screen",
+    "steps": [
+      "Create settings view with navigation",
+      "Capture mode selector (Fullscreen/Window/Region)",
+      "Audio toggles (System Audio, Microphone)",
+      "Quality toggle (Light/High)",
+      "Hotkey configuration input"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use frontend-design skill. Settings should persist via usePluginStorage."
+  },
+  {
+    "category": "functional",
+    "description": "Implement recording metadata and persistence",
+    "steps": [
+      "Define Recording interface (id, path, thumbnail, duration, timestamp, settings)",
+      "Save metadata to quickclip.json via usePluginStorage",
+      "Load and display recordings on plugin open",
+      "Implement delete recording (file + metadata)"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Sort recordings by most recent first. Consider cleanup of orphaned files."
+  },
+  {
+    "category": "polish",
+    "description": "Polish and edge cases",
+    "steps": [
+      "Handle recording errors gracefully",
+      "Add loading states during encoding",
+      "Implement disk space warning",
+      "Test with long recordings",
+      "Test all capture modes thoroughly"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Focus on reliability over features. Users should trust the tool to work every time."
+  }
+]

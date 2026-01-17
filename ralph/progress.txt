@@ -1,0 +1,171 @@
+QuickClip Plugin - Progress Tracker
+
+Design: APPROVED (2026-01-16)
+Design doc: docs/plans/2026-01-16-quickclip-design.md
+
+Tasks:
+[x] Research screen capture and video encoding on Linux/Tauri
+[x] Create QuickClip plugin scaffold and manifest
+[ ] Implement Rust backend for screen capture
+[ ] Implement video encoding and storage
+[ ] Implement clipboard integration for video
+[ ] Implement global hotkey for recording toggle
+[ ] Implement recording overlay window
+[ ] Build plugin UI - empty state and onboarding
+[ ] Build plugin UI - recordings grid
+[ ] Build plugin UI - settings screen
+[ ] Implement recording metadata and persistence
+[ ] Polish and edge cases
+
+Current: Plugin scaffold complete
+
+---
+
+## 2026-01-16 16:30 - Research Task
+
+### What was implemented
+Comprehensive research on technical feasibility of QuickClip plugin on Linux/Tauri.
+
+### Research Findings
+
+#### 1. Screen Capture Libraries for Rust
+
+**Recommended: xcap (v0.8.1)**
+- Cross-platform: Linux (X11, Wayland), macOS, Windows
+- Uses PipeWire for Wayland support
+- Video recording: WIP but functional for screen recording
+- 886 stars, 163 commits, actively maintained (Jan 2026)
+- Dependencies: `libxcb-dev libxrandr-dev libdbus-1-dev libpipewire-0.3-dev`
+
+**Limitations:**
+- Wayland support is partial ("not fully supported in some special scenarios")
+- Window recording still "to be developed"
+- Minimized windows cannot be captured
+
+**Alternative: scap (CapSoftware)**
+- High-performance, uses PipeWire on Linux
+- Frame capture only, no video file output (need separate encoding)
+- Still in beta (v0.1.0-beta.1)
+- No audio capture support
+
+#### 2. FFmpeg Integration
+
+**Recommended: ffmpeg-sidecar**
+- Wraps standalone FFmpeg binary with Rust Iterator interface
+- Data moves via stdin/stdout pipes
+- Progress reporting from stderr parsing
+- Auto-download of FFmpeg binary at runtime
+- Best for Tauri: bundle static binaries per platform
+
+**Why CLI over bindings:**
+- Avoids C API complexity and memory management issues
+- Full FFmpeg codec/format support
+- Easier cross-platform deployment
+- ~100MB binary size when zipped
+
+**Alternative: ffmpeg-next**
+- Direct bindings, more control
+- Higher complexity, FFI challenges
+- Version compatibility concerns
+
+#### 3. Clipboard Video Support on Linux
+
+**Critical Finding: Limited support**
+
+**Discord limitation:**
+- Discord on Linux only accepts `image/png` MIME type for paste
+- Video files CANNOT be pasted into Discord via clipboard
+- Workaround: Drag-and-drop from file manager, or use upload dialog
+
+**wl-copy capabilities:**
+- Can copy arbitrary MIME types including `video/mp4`
+- Use `wl-copy -t video/mp4 < video.mp4`
+- Use `--fork` for persistence after process exits
+- Can use `text/uri-list` with `file://` URIs
+
+**Recommendation:**
+- Auto-copy the file path to clipboard for quick access
+- Provide "Open in file manager" action for drag-and-drop
+- Show clear instructions about drag-and-drop workflow
+- Consider integration with OS file picker
+
+#### 4. Overlay Window Exclusion from Capture
+
+**Tauri support:**
+- `setContentProtected(true)` available in Tauri v2
+- Config option: `"contentProtected": true`
+
+**Linux reality:**
+- GTK implementation depends on window manager
+- No reliable Wayland protocol for desktop apps
+- `weston-content-protection` protocol exists but designed for DRM/HDCP in closed systems
+- On Wayland, screenshot permission is interactive (user must confirm)
+
+**Practical approach:**
+- Use `setContentProtected` (may work on some compositors)
+- Position overlay at screen edge (easy to exclude manually if needed)
+- Keep overlay minimal (small indicator dot)
+- Consider overlay being captured acceptable (common in screen recorders)
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- xcap is the go-to for Rust screen capture on Linux
+- ffmpeg-sidecar is the standard for Tauri + FFmpeg integration
+- Wayland security model prevents arbitrary window content access
+
+**Gotchas encountered:**
+- Discord paste limitation is fundamental - can't paste videos on Linux
+- Wayland content protection is compositor-dependent
+- PipeWire permission dialogs appear every time (user friction)
+
+**Useful context:**
+- For a personal tool, some limitations are acceptable
+- Drag-and-drop workflow is common for video sharing on Linux
+- Recording indicator being captured is industry standard (OBS, etc.)
+
+### Technical Decision Summary
+
+| Component | Choice | Risk Level |
+|-----------|--------|------------|
+| Screen Capture | xcap | Medium (Wayland partial) |
+| Video Encoding | ffmpeg-sidecar + bundled binary | Low |
+| Clipboard | wl-copy for path, drag-drop for Discord | Medium (UX friction) |
+| Overlay | setContentProtected + accept capture risk | Low |
+
+### Files changed
+- ralph/progress.txt (this file)
+
+### Next Steps
+Ready to proceed with plugin scaffold (task 2). The research confirms the plugin is feasible with known limitations around clipboard video paste to Discord.
+
+---
+
+## 2026-01-16 - Create QuickClip plugin scaffold and manifest
+
+### What was implemented
+Created the foundational plugin scaffold following existing plugin patterns (todo, prompt-enhancer).
+
+### Files changed
+- `src/plugins/quickclip/index.tsx` - Plugin manifest with capabilities for screen-capture, global-shortcut, clipboard-video
+- `src/plugins/quickclip/QuickClipPlugin.tsx` - Basic component with empty state UI showing hotkey hint and "Start Recording" button
+- `src/plugins/quickclip/types.ts` - TypeScript interfaces for Recording, QuickClipSettings, CaptureMode, AudioMode, QualityMode
+- `src/plugins/registry.ts` - Registered QuickClipManifest
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- Plugin scaffold follows consistent structure: index.tsx (manifest), PluginName.tsx (component), types.ts (interfaces)
+- useNavigationLevels() is required for breadcrumb integration
+- Capabilities defined in manifest signal native feature requirements to the system
+
+**Gotchas encountered:**
+- cargo check must be run from src-tauri directory, not project root
+- Icons must come from lucide-react per CLAUDE.md conventions
+
+**Useful context:**
+- Empty state component pattern: icon in muted circle + description + action button
+- kbd element styling for keyboard shortcuts: `rounded bg-muted px-1.5 py-0.5 font-mono text-xs`
+
+### Next Steps
+Ready for Rust backend implementation (task 3: screen capture) or UI work (task 8: empty state and onboarding).
