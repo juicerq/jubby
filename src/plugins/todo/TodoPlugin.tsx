@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react'
 import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical, Trash2 } from 'lucide-react'
 import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
-import { PluginHeader } from '@/core/components/PluginHeader'
+import { Breadcrumb } from '@/core/components/Breadcrumb'
+import { useNavigation } from '@/core/context/NavigationContext'
 import type { PluginProps } from '@/core/types'
 import type { Tag as TagType, Todo, TodoStatus, Folder, RecentTodo } from './types'
 
@@ -20,7 +21,10 @@ const TAG_COLORS = [
 
 type TodoView = 'folders' | 'list'
 
-function TodoPlugin({ onExitPlugin }: PluginProps) {
+function TodoPlugin(_props: PluginProps) {
+  // Navigation
+  const { pushLevel, popLevel, resetToRoot } = useNavigation()
+
   // Folder management
   const {
     folders,
@@ -35,6 +39,18 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   // Current folder state (null means we're on the folder list view)
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
   const [view, setView] = useState<TodoView>('folders')
+
+  // Push 'Todo' level on mount
+  useEffect(() => {
+    pushLevel({ id: 'todo', label: 'Todo', onClick: () => {
+      setCurrentFolderId(null)
+      setView('folders')
+      loadFolders()
+    }})
+    return () => {
+      resetToRoot()
+    }
+  }, [pushLevel, resetToRoot, loadFolders])
 
   // Get current folder details
   const currentFolder = currentFolderId
@@ -86,15 +102,22 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
   // Navigation handlers
   const handleNavigateToFolder = (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId)
     setCurrentFolderId(folderId)
     setView('list')
     setSelectedTagIds([]) // Reset tag filter when entering folder
+
+    // Push folder level to breadcrumb
+    if (folder) {
+      pushLevel({ id: `folder-${folderId}`, label: folder.name })
+    }
   }
 
   const handleNavigateToFolders = () => {
     setCurrentFolderId(null)
     setView('folders')
     loadFolders() // Refresh folder data when returning
+    popLevel() // Pop folder level from breadcrumb
   }
 
   const handleCreateFolder = async () => {
@@ -248,16 +271,11 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     </div>
   ) : undefined
 
-  // Determine header props based on current view
-  const headerProps = view === 'folders'
-    ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
-    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders, right: folderSettingsButton }
-
   // Folders view
   if (view === 'folders') {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <PluginHeader {...headerProps} />
+        <Breadcrumb right={folderAddButton} />
         <div className="flex flex-1 flex-col overflow-hidden p-4">
           {isCreatingFolder && (
             <TodoPluginFolderInput
@@ -287,7 +305,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <PluginHeader {...headerProps} />
+      <Breadcrumb right={folderSettingsButton} />
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4" onClick={() => {
         handleCancelDelete()
         setEditingTagsTodoId(null)
@@ -1406,7 +1424,7 @@ function TodoPluginManageTagsModal({
       onClick={onClose}
     >
       <div
-        className="w-[300px] rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
+        className="w-[360px] rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -1686,7 +1704,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
           <button
             type="button"
             onClick={startEditing}
-            className="min-w-0 flex-1 truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
+            className="min-w-0 flex-1 cursor-text truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
           >
             {tag.name}
           </button>
