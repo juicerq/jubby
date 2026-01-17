@@ -24,7 +24,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 /// Duration to continue capturing after stop signal to drain PipeWire's internal buffer
-const DRAIN_DURATION: Duration = Duration::from_secs(3);
+/// 200ms is sufficient for any real PipeWire buffer, while 3s caused recordings to be too long
+const DRAIN_DURATION: Duration = Duration::from_millis(200);
 
 /// Message sent from capture loop to writer thread
 pub enum CaptureMessage {
