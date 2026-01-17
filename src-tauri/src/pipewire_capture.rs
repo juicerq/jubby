@@ -15,12 +15,142 @@ use pw::spa::pod::serialize::PodSerializer;
 use pw::spa::pod::Pod;
 use pw::spa::utils::SpaTypes;
 use pw::stream::StreamFlags;
+use serde::{Deserialize, Serialize};
 use std::os::fd::OwnedFd;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::SyncSender;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 
-/// Maximum memory for frame buffer (~1.5GB)
-const MAX_FRAME_BUFFER_BYTES: usize = 1_500_000_000;
+/// Duration to continue capturing after stop signal to drain PipeWire's internal buffer
+const DRAIN_DURATION: Duration = Duration::from_secs(3);
+
+/// Message sent from capture loop to writer thread
+pub enum CaptureMessage {
+    /// Video format metadata (sent once after format negotiation)
+    /// Note: framerate is not included because PipeWire doesn't report accurate framerate
+    /// for screen capture (returns 0/1). The actual rate depends on monitor refresh rate
+    /// and is measured by the writer thread from frame arrival times.
+    Metadata { width: u32, height: u32 },
+    /// A single frame in RGBA format
+    Frame(Vec<u8>),
+    /// End of stream signal
+    EndOfStream,
+}
+
+/// Statistics from a capture session
+pub struct CaptureStats {
+    /// Total frames captured
+    pub frame_count: u32,
+    /// Actual capture framerate (from PipeWire, typically monitor refresh rate)
+    pub source_framerate: f64,
+}
+
+/// Restore token for skipping portal dialog on subsequent recordings
+/// This persists across recordings within the same app session (fallback for in-memory)
+static RESTORE_TOKEN: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Persistent tokens for XDG Portal, stored per capture mode
+#[derive(Serialize, Deserialize, Default)]
+struct QuickClipTokens {
+    fullscreen: Option<String>,
+    area: Option<String>,
+}
+
+/// Get the storage directory path following XDG Base Directory Specification
+fn get_storage_dir() -> PathBuf {
+    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        return PathBuf::from(xdg_data).join("jubby");
+    }
+
+    let home = std::env::var("HOME").expect("HOME environment variable must be set");
+    PathBuf::from(home)
+        .join(".local")
+        .join("share")
+        .join("jubby")
+}
+
+/// Get the path to the quickclip tokens file
+fn get_tokens_path() -> PathBuf {
+    get_storage_dir().join("quickclip-tokens.json")
+}
+
+/// Load tokens from disk, returning default if file doesn't exist or is invalid
+fn load_tokens() -> QuickClipTokens {
+    let path = get_tokens_path();
+
+    if !path.exists() {
+        return QuickClipTokens::default();
+    }
+
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+        Err(e) => {
+            tracing::warn!(target: "quickclip", "[TOKENS] Failed to read tokens file: {}", e);
+            QuickClipTokens::default()
+        }
+    }
+}
+
+/// Save a token for a specific capture source
+fn save_token(source: CaptureSource, token: &str) {
+    let storage_dir = get_storage_dir();
+
+    if !storage_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&storage_dir) {
+            tracing::warn!(target: "quickclip", "[TOKENS] Failed to create storage dir: {}", e);
+            return;
+        }
+    }
+
+    let mut tokens = load_tokens();
+    match source {
+        CaptureSource::Fullscreen => tokens.fullscreen = Some(token.to_string()),
+        CaptureSource::Area => tokens.area = Some(token.to_string()),
+    }
+
+    let path = get_tokens_path();
+    match serde_json::to_string_pretty(&tokens) {
+        Ok(contents) => {
+            if let Err(e) = std::fs::write(&path, contents) {
+                tracing::warn!(target: "quickclip", "[TOKENS] Failed to write tokens file: {}", e);
+            } else {
+                tracing::info!(target: "quickclip", "[TOKENS] Saved {:?} token to disk", source);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(target: "quickclip", "[TOKENS] Failed to serialize tokens: {}", e);
+        }
+    }
+}
+
+/// Clear a token for a specific capture source (when token is invalid/expired)
+fn clear_token(source: CaptureSource) {
+    let path = get_tokens_path();
+    if !path.exists() {
+        return;
+    }
+
+    let mut tokens = load_tokens();
+    match source {
+        CaptureSource::Fullscreen => tokens.fullscreen = None,
+        CaptureSource::Area => tokens.area = None,
+    }
+
+    match serde_json::to_string_pretty(&tokens) {
+        Ok(contents) => {
+            if let Err(e) = std::fs::write(&path, contents) {
+                tracing::warn!(target: "quickclip", "[TOKENS] Failed to clear token: {}", e);
+            } else {
+                tracing::info!(target: "quickclip", "[TOKENS] Cleared {:?} token from disk", source);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(target: "quickclip", "[TOKENS] Failed to serialize tokens: {}", e);
+        }
+    }
+}
 
 /// Capture mode requested by the user
 #[derive(Clone, Copy, Debug)]
@@ -37,8 +167,6 @@ pub struct ScreencastSession {
     pub pipewire_fd: OwnedFd,
     /// PipeWire node ID for the capture stream
     pub node_id: u32,
-    /// Stream dimensions if available
-    pub size: Option<(i32, i32)>,
     /// Internal session handle (kept alive to maintain the capture)
     #[allow(dead_code)]
     session: ashpd::desktop::Session<'static, Screencast<'static>>,
@@ -47,23 +175,61 @@ pub struct ScreencastSession {
 impl ScreencastSession {
     /// Create a new screencast session via XDG Desktop Portal
     pub async fn new(source: CaptureSource) -> Result<Self, RecorderError> {
-        tracing::info!(target: "quickclip", "[CAPTURE] Starting portal screencast session (source: {:?})", source);
+        tracing::info!(target: "quickclip", "[PORTAL] Creating screencast session: source={:?}", source);
 
+        // Load restore token: prioritize persisted token on disk, fallback to in-memory
+        let tokens = load_tokens();
+        let stored_token = match source {
+            CaptureSource::Fullscreen => tokens.fullscreen,
+            CaptureSource::Area => tokens.area,
+        };
+        let restore_token = stored_token.or_else(|| RESTORE_TOKEN.lock().unwrap().clone());
+        let had_token = restore_token.is_some();
+
+        if had_token {
+            tracing::debug!(target: "quickclip", "[PORTAL] Using restore token to skip dialog");
+        }
+
+        // Try with token first
+        match Self::create_session_internal(source, restore_token.as_deref()).await {
+            Ok(session) => Ok(session),
+            Err(RecorderError::UserCancelled) => {
+                // User cancelled - don't retry, just propagate
+                Err(RecorderError::UserCancelled)
+            }
+            Err(e) if had_token => {
+                // Failed with a token - token might be invalid/expired
+                // Clear the invalid token and retry without it
+                tracing::warn!(target: "quickclip", "[PORTAL] Token invalid, clearing and retrying: {}", e);
+                clear_token(source);
+                *RESTORE_TOKEN.lock().unwrap() = None;
+
+                // Retry without token (will show portal dialog)
+                Self::create_session_internal(source, None).await
+            }
+            Err(e) => {
+                // Failed without a token - just propagate the error
+                Err(e)
+            }
+        }
+    }
+
+    /// Internal function to create a session with an optional restore token
+    async fn create_session_internal(
+        source: CaptureSource,
+        restore_token: Option<&str>,
+    ) -> Result<Self, RecorderError> {
         // Create screencast proxy
         let proxy = Screencast::new().await.map_err(|e| {
-            tracing::error!(target: "quickclip", "[CAPTURE] Failed to create Screencast proxy: {}", e);
+            tracing::error!(target: "quickclip", "[PORTAL] Failed to create Screencast proxy: {}", e);
             RecorderError::PortalUnavailable
         })?;
-
-        tracing::debug!(target: "quickclip", "[CAPTURE] Screencast proxy created");
 
         // Create session
         let session = proxy.create_session().await.map_err(|e| {
-            tracing::error!(target: "quickclip", "[CAPTURE] Failed to create session: {}", e);
+            tracing::error!(target: "quickclip", "[PORTAL] Failed to create session: {}", e);
             RecorderError::PortalUnavailable
         })?;
-
-        tracing::debug!(target: "quickclip", "[CAPTURE] Session created");
 
         // Select sources based on capture mode
         let source_type = match source {
@@ -73,21 +239,21 @@ impl ScreencastSession {
 
         let multiple = matches!(source, CaptureSource::Area);
 
-        tracing::debug!(target: "quickclip", "[CAPTURE] Selecting sources: type={:?}, multiple={}", source_type, multiple);
+        tracing::debug!(target: "quickclip", "[PORTAL] Selecting sources: type={:?}, multiple={}", source_type, multiple);
 
         proxy
             .select_sources(
                 &session,
-                CursorMode::Embedded, // Include cursor in capture
-                source_type.into(),   // Convert to BitFlags
+                CursorMode::Embedded,      // Include cursor in capture
+                source_type.into(),        // Convert to BitFlags
                 multiple,
-                None,                 // No restore token
-                PersistMode::DoNot,   // Don't persist selection
+                restore_token,             // Use restore token if available
+                PersistMode::Application,  // Persist selection for this app session
             )
             .await
             .map_err(|e| {
                 let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[CAPTURE] Source selection failed: {}", err_str);
+                tracing::warn!(target: "quickclip", "[PORTAL] Source selection failed: {}", err_str);
                 if err_str.contains("cancelled") || err_str.contains("Cancelled") {
                     RecorderError::UserCancelled
                 } else {
@@ -95,15 +261,13 @@ impl ScreencastSession {
                 }
             })?;
 
-        tracing::debug!(target: "quickclip", "[CAPTURE] Sources selected, starting session");
-
         // Start the session (this shows the portal UI if needed)
         let response = proxy
             .start(&session, None)
             .await
             .map_err(|e| {
                 let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[CAPTURE] Failed to start session: {}", err_str);
+                tracing::warn!(target: "quickclip", "[PORTAL] Failed to start session: {}", err_str);
                 if err_str.contains("cancelled") || err_str.contains("Cancelled") {
                     RecorderError::UserCancelled
                 } else {
@@ -113,7 +277,7 @@ impl ScreencastSession {
             .response()
             .map_err(|e| {
                 let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[CAPTURE] Session response error: {}", err_str);
+                tracing::warn!(target: "quickclip", "[PORTAL] Session response error: {}", err_str);
                 if err_str.contains("cancelled") || err_str.contains("Cancelled") {
                     RecorderError::UserCancelled
                 } else {
@@ -121,10 +285,19 @@ impl ScreencastSession {
                 }
             })?;
 
+        // Save restore token for future recordings (skips portal dialog)
+        if let Some(token) = response.restore_token() {
+            tracing::debug!(target: "quickclip", "[PORTAL] Saving restore token");
+            // Persist to disk for cross-session reuse
+            save_token(source, token);
+            // Also keep in memory as fallback
+            *RESTORE_TOKEN.lock().unwrap() = Some(token.to_string());
+        }
+
         // Get stream info
         let streams: Vec<&PortalStream> = response.streams().iter().collect();
         if streams.is_empty() {
-            tracing::error!(target: "quickclip", "[CAPTURE] No streams returned from portal");
+            tracing::error!(target: "quickclip", "[PORTAL] No streams returned");
             return Err(RecorderError::PipeWireError(
                 "No streams returned from portal".to_string(),
             ));
@@ -132,17 +305,19 @@ impl ScreencastSession {
 
         let stream = streams[0];
         let node_id = stream.pipe_wire_node_id();
-        let size = stream.size();
+        let portal_size = stream.size();
 
-        tracing::info!(target: "quickclip", "[CAPTURE] Got stream: node_id={}, size={:?}", node_id, size);
+        tracing::info!(target: "quickclip",
+            "[PORTAL] Stream acquired: node_id={}, portal_size={:?}",
+            node_id, portal_size);
 
         // Open PipeWire remote
         let pipewire_fd = proxy.open_pipe_wire_remote(&session).await.map_err(|e| {
-            tracing::error!(target: "quickclip", "[CAPTURE] Failed to open PipeWire remote: {}", e);
+            tracing::error!(target: "quickclip", "[PORTAL] Failed to open PipeWire remote: {}", e);
             RecorderError::PipeWireError(format!("Failed to open PipeWire remote: {}", e))
         })?;
 
-        tracing::info!(target: "quickclip", "[CAPTURE] PipeWire remote opened successfully");
+        tracing::debug!(target: "quickclip", "[PORTAL] PipeWire remote fd acquired");
 
         // We need to leak the session to get a 'static lifetime
         // This is safe because we keep it in the struct and drop it properly
@@ -152,7 +327,6 @@ impl ScreencastSession {
         Ok(Self {
             pipewire_fd,
             node_id,
-            size,
             session,
         })
     }
@@ -160,87 +334,79 @@ impl ScreencastSession {
 
 /// Shared state for frame capture between PipeWire callbacks and main thread
 struct CaptureState {
-    /// Captured frames as RGBA buffers
-    frames: Vec<Vec<u8>>,
     /// Current video format info
     format: VideoInfoRaw,
     /// Whether format has been negotiated
     format_ready: bool,
-    /// Accumulated buffer size for memory limit checking
-    total_buffer_bytes: usize,
+    /// Whether metadata has been sent to the channel
+    metadata_sent: bool,
     /// Frame counter for logging
     frame_count: u32,
     /// Width of captured frames
     width: u32,
     /// Height of captured frames
     height: u32,
+    /// When stop was signaled (to track drain duration)
+    drain_start: Option<std::time::Instant>,
 }
 
 impl Default for CaptureState {
     fn default() -> Self {
         Self {
-            frames: Vec::new(),
             format: VideoInfoRaw::new(),
             format_ready: false,
-            total_buffer_bytes: 0,
+            metadata_sent: false,
             frame_count: 0,
             width: 0,
             height: 0,
+            drain_start: None,
         }
     }
-}
-
-/// Result of a capture session containing captured frames
-pub struct CaptureResult {
-    /// Captured frames as RGBA buffers
-    pub frames: Vec<Vec<u8>>,
-    /// Width of captured frames
-    pub width: u32,
-    /// Height of captured frames
-    pub height: u32,
-    /// Number of frames captured
-    pub frame_count: u32,
 }
 
 /// Run the PipeWire capture loop in a blocking thread
 ///
 /// This function takes ownership of the ScreencastSession and runs the PipeWire
-/// main loop until the stop signal is set. It captures frames from the screencast
-/// stream and returns them as RGBA buffers.
+/// main loop until the stop signal is set. Frames are streamed directly to the
+/// writer thread via the provided channel instead of being buffered in memory.
+///
+/// The `recording_start` parameter should be the Instant when recording began,
+/// used for accurate duration calculation (frame arrival timestamps are unreliable).
 pub fn run_capture_loop(
     session: ScreencastSession,
     stop_signal: Arc<AtomicBool>,
-) -> Result<CaptureResult, RecorderError> {
-    tracing::info!(target: "quickclip", "[CAPTURE] Starting PipeWire capture loop");
+    recording_start: std::time::Instant,
+    frame_sender: SyncSender<CaptureMessage>,
+) -> Result<CaptureStats, RecorderError> {
+    tracing::info!(target: "quickclip", "[PIPEWIRE] Initializing capture loop: node_id={}", session.node_id);
 
     // Initialize PipeWire
     pw::init();
 
     // Create main loop
     let mainloop = pw::main_loop::MainLoop::new(None).map_err(|e| {
-        tracing::error!(target: "quickclip", "[CAPTURE] Failed to create main loop: {}", e);
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create main loop: {}", e);
         RecorderError::PipeWireError(format!("Failed to create main loop: {}", e))
     })?;
 
     // Create context from mainloop
     let context = pw::context::Context::new(&mainloop).map_err(|e| {
-        tracing::error!(target: "quickclip", "[CAPTURE] Failed to create context: {}", e);
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create context: {}", e);
         RecorderError::PipeWireError(format!("Failed to create context: {}", e))
     })?;
 
-    tracing::debug!(target: "quickclip", "[CAPTURE] PipeWire context created");
-
     // Connect using the portal-provided file descriptor
     let core = context.connect_fd(session.pipewire_fd, None).map_err(|e| {
-        tracing::error!(target: "quickclip", "[CAPTURE] Failed to connect with fd: {}", e);
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to connect with fd: {}", e);
         RecorderError::PipeWireError(format!("Failed to connect with fd: {}", e))
     })?;
 
-    tracing::debug!(target: "quickclip", "[CAPTURE] Connected to PipeWire via fd");
+    tracing::debug!(target: "quickclip", "[PIPEWIRE] Connected to core via portal fd");
 
     // Shared state for callbacks
     let state = Arc::new(Mutex::new(CaptureState::default()));
-    let memory_exceeded = Arc::new(AtomicBool::new(false));
+    // Track if channel is still open (set to false when SendError occurs)
+    let channel_open = Arc::new(AtomicBool::new(true));
 
     // Create video stream
     let stream = pw::stream::Stream::new(
@@ -253,17 +419,16 @@ pub fn run_capture_loop(
         },
     )
     .map_err(|e| {
-        tracing::error!(target: "quickclip", "[CAPTURE] Failed to create stream: {}", e);
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create stream: {}", e);
         RecorderError::PipeWireError(format!("Failed to create stream: {}", e))
     })?;
-
-    tracing::debug!(target: "quickclip", "[CAPTURE] Stream created");
 
     // Clone references for callbacks
     let state_param = Arc::clone(&state);
     let state_process = Arc::clone(&state);
     let stop_signal_process = Arc::clone(&stop_signal);
-    let memory_exceeded_process = Arc::clone(&memory_exceeded);
+    let channel_open_process = Arc::clone(&channel_open);
+    let frame_sender_process = frame_sender.clone();
     let mainloop_quit = mainloop.clone();
 
     // Register stream listener
@@ -276,13 +441,11 @@ pub fn run_capture_loop(
                 return;
             }
 
-            tracing::debug!(target: "quickclip", "[CAPTURE] param_changed: id={}", id);
-
             let mut state_guard = state_param.lock().unwrap();
 
             // Parse video format
             if let Err(e) = state_guard.format.parse(param) {
-                tracing::error!(target: "quickclip", "[CAPTURE] Failed to parse video format: {}", e);
+                tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to parse video format: {}", e);
                 return;
             }
 
@@ -294,17 +457,55 @@ pub fn run_capture_loop(
             state_guard.format_ready = true;
 
             tracing::info!(target: "quickclip",
-                "[CAPTURE] Video format negotiated: {}x{}, format={:?}",
+                "[PIPEWIRE] Format negotiated: {}x{} {:?}",
                 size.width, size.height, format
             );
         })
         .process(move |stream, _user_data| {
-            // Check stop signal
-            if stop_signal_process.load(Ordering::SeqCst) {
-                tracing::debug!(target: "quickclip", "[CAPTURE] Stop signal received, quitting mainloop");
+            // Check if channel is closed (writer thread died)
+            if !channel_open_process.load(Ordering::SeqCst) {
                 mainloop_quit.quit();
                 return;
             }
+
+            let mut state_guard = state_process.lock().unwrap();
+
+            // Check if we should start draining
+            if stop_signal_process.load(Ordering::SeqCst) && state_guard.drain_start.is_none() {
+                state_guard.drain_start = Some(std::time::Instant::now());
+                tracing::info!(target: "quickclip", "[CAPTURE] Stop signal received, draining buffer for {:?}...", DRAIN_DURATION);
+            }
+
+            // Check if drain period is complete
+            if let Some(drain_start) = state_guard.drain_start {
+                if drain_start.elapsed() >= DRAIN_DURATION {
+                    tracing::info!(target: "quickclip", "[CAPTURE] Drain complete, captured {} frames total", state_guard.frame_count);
+                    drop(state_guard);
+                    mainloop_quit.quit();
+                    return;
+                }
+            }
+
+            // Send metadata if not yet sent and format is ready
+            if state_guard.format_ready && !state_guard.metadata_sent {
+                let width = state_guard.width;
+                let height = state_guard.height;
+                state_guard.metadata_sent = true;
+                drop(state_guard);
+
+                if frame_sender_process.send(CaptureMessage::Metadata { width, height }).is_err() {
+                    tracing::warn!(target: "quickclip", "[CAPTURE] Channel closed, stopping capture");
+                    channel_open_process.store(false, Ordering::SeqCst);
+                    mainloop_quit.quit();
+                    return;
+                }
+
+                // Re-acquire lock for frame processing
+                state_guard = state_process.lock().unwrap();
+            }
+
+            // Release lock before dequeuing buffer
+            drop(state_guard);
 
             // Try to dequeue a buffer
             let Some(mut buffer) = stream.dequeue_buffer() else {
@@ -333,40 +534,42 @@ pub fn run_capture_loop(
 
             // Validate bounds
             if chunk_offset + chunk_size > slice.len() {
-                tracing::warn!(target: "quickclip", "[CAPTURE] Invalid chunk bounds: offset={}, size={}, slice_len={}",
+                tracing::warn!(target: "quickclip", "[CAPTURE] Invalid chunk bounds: offset={}, size={}, len={}",
                     chunk_offset, chunk_size, slice.len());
                 return;
             }
 
             let frame_data = &slice[chunk_offset..chunk_offset + chunk_size];
 
-            // Lock state and store frame
-            let mut state_guard = state_process.lock().unwrap();
+            // Convert BGRx to RGBA in-place and send frame
+            let mut rgba_frame = frame_data.to_vec();
+            for pixel in rgba_frame.chunks_exact_mut(4) {
+                // BGRx: [B, G, R, x] -> RGBA: [R, G, B, A]
+                pixel.swap(0, 2);
+                pixel[3] = 255;
+            }
 
-            // Check memory limit
-            if state_guard.total_buffer_bytes + chunk_size > MAX_FRAME_BUFFER_BYTES {
-                tracing::warn!(target: "quickclip", "[CAPTURE] Memory limit exceeded ({} MB), stopping capture",
-                    state_guard.total_buffer_bytes / 1_000_000);
-                memory_exceeded_process.store(true, Ordering::SeqCst);
-                drop(state_guard);
+            // Send frame to writer thread (blocks if channel is full - backpressure)
+            if frame_sender_process.send(CaptureMessage::Frame(rgba_frame)).is_err() {
+                tracing::warn!(target: "quickclip", "[CAPTURE] Channel closed, stopping capture");
+                channel_open_process.store(false, Ordering::SeqCst);
                 mainloop_quit.quit();
                 return;
             }
 
-            // Store the frame
-            state_guard.frames.push(frame_data.to_vec());
-            state_guard.total_buffer_bytes += chunk_size;
+            // Lock state and update counter
+            let mut state_guard = state_process.lock().unwrap();
             state_guard.frame_count += 1;
 
-            // Log every 30th frame to avoid spam
-            if state_guard.frame_count % 30 == 0 {
-                tracing::debug!(target: "quickclip", "[CAPTURE] Captured frame {}: {} bytes (total: {} MB)",
-                    state_guard.frame_count, chunk_size, state_guard.total_buffer_bytes / 1_000_000);
+            // Log progress every 60 frames (~1 second at 60fps)
+            if state_guard.frame_count % 60 == 0 {
+                tracing::debug!(target: "quickclip", "[CAPTURE] Progress: {} frames streamed",
+                    state_guard.frame_count);
             }
         })
         .register()
         .map_err(|e| {
-            tracing::error!(target: "quickclip", "[CAPTURE] Failed to register stream listener: {}", e);
+            tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to register stream listener: {}", e);
             RecorderError::PipeWireError(format!("Failed to register listener: {}", e))
         })?;
 
@@ -413,15 +616,13 @@ pub fn run_capture_loop(
         &pw::spa::pod::Value::Object(obj),
     )
     .map_err(|e| {
-        tracing::error!(target: "quickclip", "[CAPTURE] Failed to serialize format pod: {:?}", e);
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to serialize format pod: {:?}", e);
         RecorderError::PipeWireError(format!("Failed to serialize format pod: {:?}", e))
     })?
     .0
     .into_inner();
 
     let mut params = [Pod::from_bytes(&values).expect("Pod from bytes should succeed")];
-
-    tracing::debug!(target: "quickclip", "[CAPTURE] Connecting stream to node {}", session.node_id);
 
     // Connect the stream
     stream
@@ -432,52 +633,81 @@ pub fn run_capture_loop(
             &mut params,
         )
         .map_err(|e| {
-            tracing::error!(target: "quickclip", "[CAPTURE] Failed to connect stream: {}", e);
+            tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to connect stream: {}", e);
             RecorderError::PipeWireError(format!("Failed to connect stream: {}", e))
         })?;
 
-    tracing::info!(target: "quickclip", "[CAPTURE] Stream connected, starting main loop");
+    tracing::info!(target: "quickclip", "[PIPEWIRE] Stream connected, entering capture loop");
+
+    // Add a timer to periodically check stop signal (handles case where no frames arrive)
+    let stop_signal_timer = Arc::clone(&stop_signal);
+    let mainloop_for_timer = mainloop.clone();
+    let state_timer = Arc::clone(&state);
+    let timer_callback = move |_expirations: u64| {
+        if stop_signal_timer.load(Ordering::SeqCst) {
+            // Let the process callback handle the drain logic
+            // Only quit from timer if drain is complete
+            let mut state_guard = state_timer.lock().unwrap();
+
+            // Start drain if not already started
+            if state_guard.drain_start.is_none() {
+                state_guard.drain_start = Some(std::time::Instant::now());
+                tracing::info!(target: "quickclip", "[CAPTURE] Stop signal (timer), draining buffer for {:?}...", DRAIN_DURATION);
+            }
+
+            // Check if drain period is complete
+            if let Some(drain_start) = state_guard.drain_start {
+                if drain_start.elapsed() >= DRAIN_DURATION {
+                    mainloop_for_timer.quit();
+                }
+            }
+        }
+    };
+
+    // Create timer source that fires every 100ms
+    let timer = mainloop.loop_().add_timer(timer_callback);
+    timer.update_timer(
+        Some(Duration::from_millis(100)), // Initial delay
+        Some(Duration::from_millis(100)), // Repeat interval
+    );
 
     // Run the main loop until stop signal or error
     mainloop.run();
 
-    tracing::info!(target: "quickclip", "[CAPTURE] Main loop finished");
+    // Send EndOfStream to signal writer thread that capture is complete
+    let _ = frame_sender.send(CaptureMessage::EndOfStream);
 
-    // Check for memory exceeded error
-    if memory_exceeded.load(Ordering::SeqCst) {
-        return Err(RecorderError::MemoryLimitExceeded(
-            MAX_FRAME_BUFFER_BYTES as u64 / 1_000_000,
-        ));
-    }
-
-    // Extract results
+    // Extract statistics
     let state_guard = state.lock().unwrap();
 
-    if state_guard.frames.is_empty() {
+    if state_guard.frame_count == 0 {
         tracing::warn!(target: "quickclip", "[CAPTURE] No frames captured");
         return Err(RecorderError::NoFrames);
     }
 
-    tracing::info!(target: "quickclip", "[CAPTURE] Capture complete: {} frames, {}x{}",
-        state_guard.frame_count, state_guard.width, state_guard.height);
+    // Calculate fps from actual wall-clock recording duration
+    // Using recording_start (when recording began) is more reliable than frame arrival timestamps,
+    // because PipeWire buffers frames and delivers them in batches.
+    // Duration is from start to when stop was signaled (not including drain time).
+    let actual_duration = state_guard
+        .drain_start
+        .map(|drain| drain.duration_since(recording_start).as_secs_f64())
+        .unwrap_or_else(|| recording_start.elapsed().as_secs_f64());
+    let source_framerate = if actual_duration > 0.1 && state_guard.frame_count > 0 {
+        state_guard.frame_count as f64 / actual_duration
+    } else {
+        60.0 // Fallback for very short recordings
+    };
 
-    Ok(CaptureResult {
-        frames: state_guard.frames.clone(),
-        width: state_guard.width,
-        height: state_guard.height,
+    tracing::info!(target: "quickclip",
+        "[CAPTURE] Complete: frames={}, size={}x{}, duration={:.2}s, fps={:.2}",
+        state_guard.frame_count, state_guard.width, state_guard.height,
+        actual_duration, source_framerate);
+
+    Ok(CaptureStats {
         frame_count: state_guard.frame_count,
+        source_framerate,
     })
-}
-
-/// Convert frames from BGRx to RGBA format (in-place modification)
-pub fn convert_bgrx_to_rgba(frames: &mut [Vec<u8>]) {
-    for frame in frames.iter_mut() {
-        for pixel in frame.chunks_exact_mut(4) {
-            // BGRx: [B, G, R, x] -> RGBA: [R, G, B, A]
-            pixel.swap(0, 2); // Swap B and R
-            pixel[3] = 255;   // Set alpha to opaque
-        }
-    }
 }
 
 #[cfg(test)]
@@ -489,15 +719,5 @@ mod tests {
         // Just ensure the types compile
         let _fullscreen = CaptureSource::Fullscreen;
         let _area = CaptureSource::Area;
-    }
-
-    #[test]
-    fn test_bgrx_to_rgba_conversion() {
-        let mut frames = vec![
-            vec![0u8, 128, 255, 0], // BGRx: Blue=0, Green=128, Red=255
-        ];
-        convert_bgrx_to_rgba(&mut frames);
-        // After conversion: RGBA: Red=255, Green=128, Blue=0, Alpha=255
-        assert_eq!(frames[0], vec![255, 128, 0, 255]);
     }
 }

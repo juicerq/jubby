@@ -1,6 +1,7 @@
-export type CaptureMode = 'fullscreen' | 'area'
+export type CaptureMode = 'fullscreen'
 export type AudioMode = 'none' | 'system' | 'microphone' | 'both'
 export type QualityMode = 'light' | 'high'
+export type ResolutionScale = 'native' | 'p720' | 'p480'
 
 export interface QuickClipSettings {
   captureMode: CaptureMode

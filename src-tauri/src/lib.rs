@@ -14,6 +14,46 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutSt
 
 use settings::{load_settings, parse_shortcut, CurrentShortcut};
 
+#[tauri::command]
+fn reveal_in_folder(path: String) -> Result<(), String> {
+    let file_uri = format!("file://{}", path);
+
+    // Use DBus FileManager1.ShowItems to open folder and highlight the file
+    let result = std::process::Command::new("dbus-send")
+        .args([
+            "--session",
+            "--dest=org.freedesktop.FileManager1",
+            "--type=method_call",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+            &format!("array:string:{}", file_uri),
+            "string:",
+        ])
+        .spawn();
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            // Fallback: open parent folder with gio/xdg-open
+            let folder = std::path::Path::new(&path)
+                .parent()
+                .unwrap_or(std::path::Path::new(&path));
+
+            std::process::Command::new("gio")
+                .arg("open")
+                .arg(folder)
+                .spawn()
+                .or_else(|_| {
+                    std::process::Command::new("xdg-open")
+                        .arg(folder)
+                        .spawn()
+                })
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -80,6 +120,7 @@ pub fn run() {
             recorder::read_video_file,
             logging::log_from_frontend,
             clipboard::copy_file_to_clipboard,
+            reveal_in_folder,
         ])
         .setup(move |app| {
             // Initialize logging first (before any other initialization)

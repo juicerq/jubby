@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Circle, Monitor, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film, Scan } from 'lucide-react'
+import { Circle, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film } from 'lucide-react'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 import { useQuickClip } from './useQuickClip'
-import { DEFAULT_SETTINGS, type CaptureMode, type Recording } from './types'
+import { DEFAULT_SETTINGS, type Recording } from './types'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 
@@ -30,13 +29,11 @@ function QuickClipPlugin(_props: PluginProps) {
     deleteRecording,
   } = useQuickClip()
 
-  const [selectedMode, setSelectedMode] = useState<CaptureMode>(DEFAULT_SETTINGS.captureMode)
-
   const handleToggleRecording = async () => {
     if (isRecording) {
       await stopRecording()
     } else {
-      await startRecording(DEFAULT_SETTINGS.qualityMode, selectedMode)
+      await startRecording(DEFAULT_SETTINGS.qualityMode, 'fullscreen')
     }
   }
 
@@ -95,13 +92,7 @@ function QuickClipPlugin(_props: PluginProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
-                className="flex flex-col items-center gap-4"
               >
-                <QuickClipModeSelector
-                  selectedMode={selectedMode}
-                  onSelectMode={setSelectedMode}
-                />
-
                 <QuickClipHotkeyHint hotkey={DEFAULT_SETTINGS.hotkey} />
               </motion.div>
             )}
@@ -233,44 +224,6 @@ function QuickClipRecordButton({
           transition={{ duration: 0.8, repeat: Infinity }}
         />
       )}
-    </div>
-  )
-}
-
-interface QuickClipModeSelectorProps {
-  selectedMode: CaptureMode
-  onSelectMode: (mode: CaptureMode) => void
-}
-
-function QuickClipModeSelector({ selectedMode, onSelectMode }: QuickClipModeSelectorProps) {
-  const modes: Array<{ id: CaptureMode; label: string; icon: typeof Monitor }> = [
-    { id: 'fullscreen', label: 'Fullscreen', icon: Monitor },
-    { id: 'area', label: 'Area', icon: Scan },
-  ]
-
-  return (
-    <div className="flex items-center gap-1 rounded-lg bg-white/[0.03] p-1">
-      {modes.map((mode) => {
-        const Icon = mode.icon
-        const isSelected = selectedMode === mode.id
-
-        return (
-          <button
-            key={mode.id}
-            onClick={() => onSelectMode(mode.id)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium',
-              'transition-all duration-150',
-              isSelected
-                ? 'bg-white/10 text-white/90'
-                : 'text-white/50 hover:text-white/70 hover:bg-white/5'
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {mode.label}
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -648,8 +601,9 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
   const handleRevealFile = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await revealItemInDir(recording.videoPath)
-    } catch {
+      await invoke('reveal_in_folder', { path: recording.videoPath })
+    } catch (error) {
+      log.error('Failed to reveal file', { path: recording.videoPath, error: String(error) })
       toast.error('Failed to reveal file')
     }
   }
@@ -821,7 +775,7 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
             {formatTimestamp(recording.timestamp)}
           </span>
           <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/40">
-            {recording.settings.qualityMode}
+            {recording.settings.qualityMode === 'light' ? 'HD' : 'FHD'}
           </span>
         </div>
       </div>

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { QualityMode, CaptureMode, AudioMode, Recording } from './types'
+import type { QualityMode, CaptureMode, AudioMode, Recording, ResolutionScale } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
 import { createLogger } from '@/lib/logger'
 
@@ -81,6 +81,9 @@ export function useQuickClip(): UseQuickClipReturn {
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
   const [currentSettings, setCurrentSettings] = useState<CurrentRecordingSettings | null>(null)
 
+  // Ref to track intentional stop (prevents false "stopped unexpectedly" during user-initiated stop)
+  const isStoppingRef = useRef(false)
+
   const {
     recordings,
     isLoading: isLoadingRecordings,
@@ -117,7 +120,9 @@ export function useQuickClip(): UseQuickClipReturn {
     captureMode: CaptureMode = 'fullscreen',
     audioMode: AudioMode = 'none'
   ) => {
-    log.info('Starting recording', { quality, captureMode, audioMode })
+    // Determine resolution scale based on quality mode
+    const resolutionScale: ResolutionScale = quality === 'light' ? 'p720' : 'native'
+    log.info('Starting recording', { quality, captureMode, audioMode, resolutionScale })
     setIsPreparing(true)
 
     try {
@@ -126,8 +131,8 @@ export function useQuickClip(): UseQuickClipReturn {
 
       await invoke('recorder_start', {
         quality,
-        fps: 30,
         captureMode,
+        resolutionScale,
       })
 
       setIsRecording(true)
@@ -149,6 +154,7 @@ export function useQuickClip(): UseQuickClipReturn {
     if (!isRecording) return null
 
     log.info('Stopping recording...')
+    isStoppingRef.current = true
     setIsEncoding(true)
 
     try {
@@ -192,6 +198,7 @@ export function useQuickClip(): UseQuickClipReturn {
       setCurrentSettings(null)
       return null
     } finally {
+      isStoppingRef.current = false
       setIsEncoding(false)
     }
   }, [isRecording, currentSettings, saveRecording])
@@ -207,6 +214,13 @@ export function useQuickClip(): UseQuickClipReturn {
       try {
         const status = await invoke<RecordingStatus>('recorder_status')
         setRecordingStatus(status)
+
+        // Sync frontend state with backend - detect unexpected stop
+        if (!status.isRecording && !isStoppingRef.current) {
+          setIsRecording(false)
+          setCurrentSettings(null)
+          toast.error('Recording stopped unexpectedly')
+        }
       } catch (error) {
         log.warn('Failed to get recording status', { error: String(error) })
       }

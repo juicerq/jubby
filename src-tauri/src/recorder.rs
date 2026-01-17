@@ -1,11 +1,15 @@
-use crate::pipewire_capture::{self, CaptureSource, ScreencastSession};
+use crate::pipewire_capture::{
+    self, CaptureMessage, CaptureSource, CaptureStats, ScreencastSession,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -29,8 +33,6 @@ pub enum RecorderError {
     NotRecording,
     #[error("Encoding timeout after {0} seconds")]
     EncodingTimeout(u64),
-    #[error("Memory limit exceeded ({0} MB). Recording auto-stopped.")]
-    MemoryLimitExceeded(u64),
     #[error("XDG Desktop Portal is not available")]
     PortalUnavailable,
     #[error("User cancelled the capture selection")]
@@ -49,7 +51,7 @@ pub enum QualityMode {
 impl QualityMode {
     fn crf(&self) -> &str {
         match self {
-            QualityMode::Light => "28",
+            QualityMode::Light => "32",
             QualityMode::High => "18",
         }
     }
@@ -58,6 +60,37 @@ impl QualityMode {
         match self {
             QualityMode::Light => "fast",
             QualityMode::High => "slower",
+        }
+    }
+
+    fn default_scale(&self) -> ResolutionScale {
+        match self {
+            QualityMode::Light => ResolutionScale::P720,
+            QualityMode::High => ResolutionScale::Native,
+        }
+    }
+
+    fn default_target_fps(&self) -> u32 {
+        // 30fps is Discord-friendly and keeps file sizes small
+        30
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ResolutionScale {
+    #[default]
+    Native,
+    P720,
+    P480,
+}
+
+impl ResolutionScale {
+    fn scale_filter(&self) -> Option<&str> {
+        match self {
+            ResolutionScale::Native => None,
+            ResolutionScale::P720 => Some("1280:-2"),
+            ResolutionScale::P480 => Some("854:-2"),
         }
     }
 }
@@ -85,19 +118,19 @@ pub struct RecordingStatus {
 
 struct RecordingSession {
     session_dir: PathBuf,
-    quality: QualityMode,
-    frame_count: u32,
-    width: u32,
-    height: u32,
     start_time: std::time::Instant,
-    fps: u32,
-    frames: Vec<Vec<u8>>,
+    video_path: PathBuf,
+    thumbnail_path: PathBuf,
+    recording_id: String,
+    timestamp: i64,
 }
 
 pub struct RecorderState {
     is_recording: Arc<AtomicBool>,
     session: Arc<Mutex<Option<RecordingSession>>>,
     stop_signal: Mutex<Option<Arc<AtomicBool>>>,
+    writer_handle: std::sync::Mutex<Option<JoinHandle<Result<WriterResult, RecorderError>>>>,
+    capture_handle: std::sync::Mutex<Option<JoinHandle<Result<CaptureStats, RecorderError>>>>,
 }
 
 impl RecorderState {
@@ -106,6 +139,8 @@ impl RecorderState {
             is_recording: Arc::new(AtomicBool::new(false)),
             session: Arc::new(Mutex::new(None)),
             stop_signal: Mutex::new(None),
+            writer_handle: std::sync::Mutex::new(None),
+            capture_handle: std::sync::Mutex::new(None),
         }
     }
 }
@@ -177,117 +212,6 @@ fn check_ffmpeg() -> Result<(), RecorderError> {
     Ok(())
 }
 
-fn encode_frames_to_video_piped(
-    frames: Vec<Vec<u8>>,
-    width: u32,
-    height: u32,
-    fps: u32,
-    output_path: &PathBuf,
-    quality: QualityMode,
-) -> Result<f64, RecorderError> {
-    let expected_size = (width * height * 4) as usize;
-    let frame_count = frames.len();
-
-    // Validate frame sizes upfront
-    for (i, frame) in frames.iter().enumerate() {
-        if frame.len() != expected_size {
-            return Err(RecorderError::CaptureFailure(format!(
-                "Frame {} size mismatch: expected {}, got {}",
-                i, expected_size, frame.len()
-            )));
-        }
-    }
-
-    tracing::info!(target: "quickclip", "[ENCODE] Piping {} frames to FFmpeg ({}x{}, preset={}, crf={})...",
-        frame_count, width, height, quality.preset(), quality.crf());
-
-    let pipe_start = std::time::Instant::now();
-
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-f", "rawvideo",
-            "-pixel_format", "rgba",
-            "-video_size", &format!("{}x{}", width, height),
-            "-framerate", &fps.to_string(),
-            "-i", "pipe:0",
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-crf", quality.crf(),
-            "-preset", quality.preset(),
-            "-movflags", "+faststart",
-            "-y",
-            &output_path.to_string_lossy(),
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| RecorderError::EncodingError(format!("Failed to spawn FFmpeg: {}", e)))?;
-
-    let mut stdin = child.stdin.take()
-        .ok_or_else(|| RecorderError::EncodingError("Failed to capture FFmpeg stdin".to_string()))?;
-
-    // Pipe frames to FFmpeg
-    for (i, frame) in frames.into_iter().enumerate() {
-        if let Err(e) = stdin.write_all(&frame) {
-            // FFmpeg probably died - get stderr for context
-            drop(stdin);
-            let output = child.wait_with_output()
-                .map_err(|e2| RecorderError::EncodingError(format!("Write failed: {}, then wait failed: {}", e, e2)))?;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(RecorderError::EncodingError(format!(
-                "Failed to write frame {}: {} - FFmpeg stderr: {}",
-                i, e, stderr
-            )));
-        }
-    }
-
-    // Signal EOF by dropping stdin
-    drop(stdin);
-
-    let pipe_elapsed = pipe_start.elapsed();
-    tracing::info!(target: "quickclip", "[ENCODE] Piped {} frames in {:.2}s ({:.1}ms/frame avg)",
-        frame_count, pipe_elapsed.as_secs_f64(),
-        pipe_elapsed.as_secs_f64() * 1000.0 / frame_count as f64);
-
-    // Wait for FFmpeg to finish
-    let encode_start = std::time::Instant::now();
-    let output = child.wait_with_output()
-        .map_err(|e| RecorderError::EncodingError(format!("FFmpeg wait failed: {}", e)))?;
-
-    tracing::info!(target: "quickclip", "[ENCODE] FFmpeg finished in {:.2}s", encode_start.elapsed().as_secs_f64());
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::error!(target: "quickclip", "FFmpeg encoding failed: {}", stderr);
-        return Err(RecorderError::EncodingError(stderr.to_string()));
-    }
-
-    // Get video duration using ffprobe
-    tracing::debug!(target: "quickclip", "[ENCODE] Getting duration with ffprobe...");
-    let probe_start = std::time::Instant::now();
-
-    let duration_output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            &output_path.to_string_lossy(),
-        ])
-        .output()
-        .map_err(|e| RecorderError::EncodingError(format!("ffprobe failed: {}", e)))?;
-
-    tracing::debug!(target: "quickclip", "[ENCODE] ffprobe finished in {:.2}s", probe_start.elapsed().as_secs_f64());
-
-    let duration_str = String::from_utf8_lossy(&duration_output.stdout);
-    let duration: f64 = duration_str.trim().parse().unwrap_or(0.0);
-
-    Ok(duration)
-}
-
 fn generate_thumbnail(video_path: &PathBuf, thumbnail_path: &PathBuf) -> Result<(), RecorderError> {
     let output = Command::new("ffmpeg")
         .args([
@@ -309,14 +233,12 @@ fn generate_thumbnail(video_path: &PathBuf, thumbnail_path: &PathBuf) -> Result<
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::error!(target: "quickclip", "Thumbnail generation failed: {}", stderr);
+        tracing::error!(target: "quickclip", "[ENCODE] Thumbnail failed: {}", stderr);
         return Err(RecorderError::EncodingError(format!(
             "Thumbnail generation failed: {}",
             stderr
         )));
     }
-
-    tracing::debug!(target: "quickclip", "Thumbnail generated: {:?}", thumbnail_path);
 
     Ok(())
 }
@@ -325,6 +247,273 @@ fn cleanup_session_dir(session_dir: &PathBuf) {
     if session_dir.exists() {
         let _ = std::fs::remove_dir_all(session_dir);
     }
+}
+
+/// Result from the writer thread
+pub struct WriterResult {
+    /// Duration of the video in seconds
+    pub duration: f64,
+    /// Width of the video
+    pub width: u32,
+    /// Height of the video
+    pub height: u32,
+    /// Total frames written
+    pub frame_count: u32,
+}
+
+/// Number of frames to buffer during calibration phase to measure actual framerate
+const CALIBRATION_FRAMES: usize = 30;
+
+/// Spawns a thread that receives frames from the capture loop and writes them to FFmpeg.
+///
+/// Uses a calibration phase to measure the actual capture framerate from frame arrival times
+/// before starting FFmpeg. This is necessary because PipeWire doesn't report accurate framerate
+/// for screen capture (returns 0/1), but the actual rate depends on monitor refresh rate.
+fn spawn_writer_thread(
+    frame_receiver: Receiver<CaptureMessage>,
+    video_path: PathBuf,
+    quality: QualityMode,
+    resolution_scale: ResolutionScale,
+) -> JoinHandle<Result<WriterResult, RecorderError>> {
+    std::thread::spawn(move || {
+        // Phase 1: Wait for metadata message to get dimensions
+        let (width, height) = loop {
+            match frame_receiver.recv() {
+                Ok(CaptureMessage::Metadata { width, height }) => {
+                    tracing::info!(target: "quickclip", "[WRITER] Received metadata: {}x{}", width, height);
+                    break (width, height);
+                }
+                Ok(CaptureMessage::EndOfStream) => {
+                    tracing::warn!(target: "quickclip", "[WRITER] EndOfStream before metadata");
+                    return Err(RecorderError::NoFrames);
+                }
+                Ok(CaptureMessage::Frame(_)) => {
+                    tracing::warn!(target: "quickclip", "[WRITER] Frame received before metadata, skipping");
+                    continue;
+                }
+                Err(_) => {
+                    tracing::error!(target: "quickclip", "[WRITER] Channel closed before metadata");
+                    return Err(RecorderError::NoFrames);
+                }
+            }
+        };
+
+        let expected_size = (width * height * 4) as usize;
+
+        // Phase 2: Calibration - buffer frames and measure timing
+        let mut frame_buffer: Vec<Vec<u8>> = Vec::with_capacity(CALIBRATION_FRAMES);
+        let calibration_start = std::time::Instant::now();
+        let mut got_end_of_stream = false;
+
+        tracing::debug!(target: "quickclip", "[WRITER] Starting calibration phase, buffering {} frames...", CALIBRATION_FRAMES);
+
+        loop {
+            match frame_receiver.recv() {
+                Ok(CaptureMessage::Frame(frame_data)) => {
+                    // Validate frame size
+                    if frame_data.len() != expected_size {
+                        tracing::warn!(target: "quickclip",
+                            "[WRITER] Frame size mismatch during calibration: expected {}, got {}",
+                            expected_size, frame_data.len());
+                        continue;
+                    }
+                    frame_buffer.push(frame_data);
+                    if frame_buffer.len() >= CALIBRATION_FRAMES {
+                        break;
+                    }
+                }
+                Ok(CaptureMessage::EndOfStream) => {
+                    // Very short recording - use what we have
+                    tracing::info!(target: "quickclip",
+                        "[WRITER] EndOfStream during calibration, got {} frames",
+                        frame_buffer.len());
+                    got_end_of_stream = true;
+                    break;
+                }
+                Ok(CaptureMessage::Metadata { .. }) => {
+                    tracing::warn!(target: "quickclip", "[WRITER] Duplicate metadata during calibration, ignoring");
+                }
+                Err(_) => {
+                    tracing::warn!(target: "quickclip", "[WRITER] Channel closed during calibration");
+                    got_end_of_stream = true;
+                    break;
+                }
+            }
+        }
+
+        // Phase 3: Calculate measured framerate from calibration
+        let calibration_elapsed = calibration_start.elapsed().as_secs_f64();
+        let measured_fps = if frame_buffer.len() > 1 && calibration_elapsed > 0.01 {
+            (frame_buffer.len() - 1) as f64 / calibration_elapsed
+        } else {
+            60.0 // Fallback for edge cases (very short recordings or timing issues)
+        };
+        let input_fps = (measured_fps.round() as u32).clamp(1, 240);
+
+        tracing::info!(target: "quickclip",
+            "[WRITER] Calibration complete: measured {:.2}fps from {} frames in {:.3}s (using {}fps)",
+            measured_fps, frame_buffer.len(), calibration_elapsed, input_fps);
+
+        // Handle case of no frames captured
+        if frame_buffer.is_empty() {
+            return Err(RecorderError::NoFrames);
+        }
+
+        // Phase 4: Start FFmpeg with measured framerate
+        let target_fps = quality.default_target_fps();
+
+        // Build video filter chain: fps conversion + optional scaling
+        let video_filter = {
+            let mut filters = Vec::new();
+            filters.push(format!("fps={}", target_fps));
+            if let Some(scale) = resolution_scale.scale_filter() {
+                filters.push(format!("scale={}", scale));
+            }
+            filters.join(",")
+        };
+
+        let video_size = format!("{}x{}", width, height);
+        let input_framerate = input_fps.to_string();
+        let output_str = video_path.to_string_lossy().to_string();
+
+        tracing::info!(target: "quickclip",
+            "[WRITER] Starting FFmpeg: {}x{} @ {}fps -> {}fps, preset={}, crf={}, scale={:?}",
+            width, height, input_fps, target_fps, quality.preset(), quality.crf(), resolution_scale);
+
+        let mut child = Command::new("ffmpeg")
+            .args([
+                "-f", "rawvideo",
+                "-pixel_format", "rgba",
+                "-video_size", &video_size,
+                "-framerate", &input_framerate,
+                "-i", "pipe:0",
+                "-vf", &video_filter,
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-crf", quality.crf(),
+                "-preset", quality.preset(),
+                "-movflags", "+faststart",
+                "-y",
+                &output_str,
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| RecorderError::EncodingError(format!("Failed to spawn FFmpeg: {}", e)))?;
+
+        let mut stdin = child.stdin.take()
+            .ok_or_else(|| RecorderError::EncodingError("Failed to capture FFmpeg stdin".to_string()))?;
+
+        // Phase 5: Flush buffered frames to FFmpeg
+        let mut frame_count: u32 = 0;
+        for frame_data in frame_buffer {
+            if let Err(e) = stdin.write_all(&frame_data) {
+                drop(stdin);
+                let output = child.wait_with_output()
+                    .map_err(|e2| RecorderError::EncodingError(
+                        format!("Write failed: {}, then wait failed: {}", e, e2)
+                    ))?;
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RecorderError::EncodingError(format!(
+                    "Failed to write buffered frame {}: {} - FFmpeg stderr: {}",
+                    frame_count, e, stderr
+                )));
+            }
+            frame_count += 1;
+        }
+
+        tracing::debug!(target: "quickclip", "[WRITER] Flushed {} buffered frames", frame_count);
+
+        // Phase 6: Continue streaming new frames (skip if we already got EndOfStream)
+        if !got_end_of_stream {
+            loop {
+                match frame_receiver.recv() {
+                    Ok(CaptureMessage::Frame(frame_data)) => {
+                        // Validate frame size
+                        if frame_data.len() != expected_size {
+                            tracing::warn!(target: "quickclip",
+                                "[WRITER] Frame size mismatch: expected {}, got {}",
+                                expected_size, frame_data.len());
+                            continue;
+                        }
+
+                        // Write frame to FFmpeg stdin
+                        if let Err(e) = stdin.write_all(&frame_data) {
+                            drop(stdin);
+                            let output = child.wait_with_output()
+                                .map_err(|e2| RecorderError::EncodingError(
+                                    format!("Write failed: {}, then wait failed: {}", e, e2)
+                                ))?;
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            return Err(RecorderError::EncodingError(format!(
+                                "Failed to write frame {}: {} - FFmpeg stderr: {}",
+                                frame_count, e, stderr
+                            )));
+                        }
+
+                        frame_count += 1;
+
+                        // Log progress every 60 frames
+                        if frame_count % 60 == 0 {
+                            tracing::debug!(target: "quickclip", "[WRITER] Written {} frames", frame_count);
+                        }
+                    }
+                    Ok(CaptureMessage::EndOfStream) => {
+                        tracing::info!(target: "quickclip", "[WRITER] EndOfStream received, finalizing...");
+                        break;
+                    }
+                    Ok(CaptureMessage::Metadata { .. }) => {
+                        tracing::warn!(target: "quickclip", "[WRITER] Duplicate metadata received, ignoring");
+                    }
+                    Err(_) => {
+                        tracing::warn!(target: "quickclip", "[WRITER] Channel closed, finalizing...");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Close stdin to signal EOF to FFmpeg
+        drop(stdin);
+
+        tracing::debug!(target: "quickclip", "[WRITER] Waiting for FFmpeg to finish...");
+
+        // Wait for FFmpeg to finish
+        let output = child.wait_with_output()
+            .map_err(|e| RecorderError::EncodingError(format!("FFmpeg wait failed: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!(target: "quickclip", "[WRITER] FFmpeg failed: {}", stderr);
+            return Err(RecorderError::EncodingError(stderr.to_string()));
+        }
+
+        tracing::info!(target: "quickclip", "[WRITER] FFmpeg complete, {} frames written", frame_count);
+
+        // Get video duration using ffprobe
+        let duration_output = Command::new("ffprobe")
+            .args([
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                &output_str,
+            ])
+            .output()
+            .map_err(|e| RecorderError::EncodingError(format!("ffprobe failed: {}", e)))?;
+
+        let duration_str = String::from_utf8_lossy(&duration_output.stdout);
+        let duration: f64 = duration_str.trim().parse().unwrap_or(0.0);
+
+        tracing::info!(target: "quickclip", "[WRITER] Video duration: {:.2}s", duration);
+
+        Ok(WriterResult {
+            duration,
+            width,
+            height,
+            frame_count,
+        })
+    })
 }
 
 #[tauri::command]
@@ -357,10 +546,11 @@ impl From<PipeWireCaptureMode> for CaptureSource {
 pub async fn recorder_start(
     state: tauri::State<'_, RecorderState>,
     quality: QualityMode,
-    fps: Option<u32>,
     capture_mode: Option<PipeWireCaptureMode>,
+    resolution_scale: Option<ResolutionScale>,
 ) -> Result<(), String> {
-    start_recording_internal(&state, quality, fps.unwrap_or(60), capture_mode.unwrap_or_default())
+    let scale = resolution_scale.unwrap_or_else(|| quality.default_scale());
+    start_recording_internal(&state, quality, capture_mode.unwrap_or_default(), scale)
         .await
         .map_err(|e| e.to_string())
 }
@@ -368,15 +558,17 @@ pub async fn recorder_start(
 async fn start_recording_internal(
     state: &RecorderState,
     quality: QualityMode,
-    fps: u32,
     capture_mode: PipeWireCaptureMode,
+    resolution_scale: ResolutionScale,
 ) -> Result<(), RecorderError> {
-    tracing::info!(target: "quickclip", "[CAPTURE] Starting recording - quality: {:?}, fps: {}, mode: {:?}", quality, fps, capture_mode);
+    tracing::info!(target: "quickclip",
+        "[RECORD] Starting: quality={:?}, capture_mode={:?}, resolution_scale={:?}",
+        quality, capture_mode, resolution_scale);
 
     check_ffmpeg()?;
 
     if state.is_recording.load(Ordering::SeqCst) {
-        tracing::warn!(target: "quickclip", "[CAPTURE] Recording already in progress");
+        tracing::warn!(target: "quickclip", "[RECORD] Already recording");
         return Err(RecorderError::AlreadyRecording);
     }
 
@@ -388,65 +580,54 @@ async fn start_recording_internal(
     let session_dir = get_sessions_dir()?.join(format!("session_{}", timestamp));
     std::fs::create_dir_all(&session_dir).map_err(|e| RecorderError::StorageError(e.to_string()))?;
 
+    // Generate video and thumbnail paths upfront for the writer thread
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let video_filename = format!("recording_{}.mp4", timestamp);
+    let thumbnail_filename = format!("thumb_{}.png", timestamp);
+    let video_path = get_videos_dir()?.join(&video_filename);
+    let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
+
     // Create PipeWire screencast session via XDG Desktop Portal
-    // This will show the portal UI for screen/area selection
     let capture_source: CaptureSource = capture_mode.into();
-    tracing::info!(target: "quickclip", "[CAPTURE] Creating screencast session...");
     let screencast_session = ScreencastSession::new(capture_source).await?;
-    tracing::info!(target: "quickclip", "[CAPTURE] Screencast session created, node_id={}", screencast_session.node_id);
+
+    // Capture start time before storing session (needed for duration calculation)
+    let recording_start = std::time::Instant::now();
 
     let session = RecordingSession {
         session_dir,
-        quality,
-        frame_count: 0,
-        width: 0,
-        height: 0,
-        start_time: std::time::Instant::now(),
-        fps,
-        frames: Vec::new(),
+        start_time: recording_start,
+        video_path: video_path.clone(),
+        thumbnail_path: thumbnail_path.clone(),
+        recording_id,
+        timestamp,
     };
 
     *state.session.lock().await = Some(session);
     state.is_recording.store(true, Ordering::SeqCst);
 
-    tracing::info!(target: "quickclip", "[CAPTURE] Recording session started");
+    tracing::info!(target: "quickclip", "[RECORD] Session started: node_id={}", screencast_session.node_id);
 
     let stop_signal = Arc::new(AtomicBool::new(false));
     *state.stop_signal.lock().await = Some(stop_signal.clone());
 
+    // Create bounded channel for frame streaming (30 frames = ~0.5s backpressure at 60fps)
+    let (frame_sender, frame_receiver) = std::sync::mpsc::sync_channel::<CaptureMessage>(30);
+
+    // Spawn the writer thread (receives frames and writes to FFmpeg)
+    let writer_handle = spawn_writer_thread(
+        frame_receiver,
+        video_path,
+        quality,
+        resolution_scale,
+    );
+    *state.writer_handle.lock().unwrap() = Some(writer_handle);
+
     // Spawn the PipeWire capture loop in a blocking thread
-    let is_recording = state.is_recording.clone();
-    let session_mutex = state.session.clone();
-
-    tauri::async_runtime::spawn_blocking(move || {
-        // Run the PipeWire capture loop
-        let capture_result = pipewire_capture::run_capture_loop(screencast_session, stop_signal);
-
-        match capture_result {
-            Ok(result) => {
-                tracing::info!(target: "quickclip", "[CAPTURE] Capture complete: {} frames, {}x{}",
-                    result.frame_count, result.width, result.height);
-
-                // Convert frames from BGRx to RGBA if needed
-                let mut frames = result.frames;
-                pipewire_capture::convert_bgrx_to_rgba(&mut frames);
-
-                // Store the captured frames in the session
-                let mut session_guard = session_mutex.blocking_lock();
-                if let Some(ref mut session) = *session_guard {
-                    session.frames = frames;
-                    session.frame_count = result.frame_count;
-                    session.width = result.width;
-                    session.height = result.height;
-                }
-            }
-            Err(e) => {
-                tracing::error!(target: "quickclip", "[CAPTURE] Capture error: {}", e);
-            }
-        }
-
-        is_recording.store(false, Ordering::SeqCst);
+    let capture_handle = std::thread::spawn(move || {
+        pipewire_capture::run_capture_loop(screencast_session, stop_signal, recording_start, frame_sender)
     });
+    *state.capture_handle.lock().unwrap() = Some(capture_handle);
 
     Ok(())
 }
@@ -461,21 +642,20 @@ pub async fn recorder_stop(
 }
 
 async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResult, RecorderError> {
-    tracing::info!(target: "quickclip", "Stopping recording...");
+    tracing::info!(target: "quickclip", "[RECORD] Stopping...");
 
     if !state.is_recording.load(Ordering::SeqCst) {
-        tracing::warn!(target: "quickclip", "No recording in progress");
+        tracing::warn!(target: "quickclip", "[RECORD] Not recording");
         return Err(RecorderError::NotRecording);
     }
 
-    // Signal stop
+    // Signal stop (triggers 3s drain in capture loop)
     if let Some(stop_signal) = state.stop_signal.lock().await.take() {
         stop_signal.store(true, Ordering::SeqCst);
+        tracing::debug!(target: "quickclip", "[RECORD] Stop signal sent");
     }
 
-    // Wait for capture loop to finish
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
+    // Get session metadata before joining threads
     let session = state
         .session
         .lock()
@@ -483,70 +663,68 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
         .take()
         .ok_or(RecorderError::NotRecording)?;
 
-    if session.frame_count == 0 {
-        cleanup_session_dir(&session.session_dir);
-        return Err(RecorderError::NoFrames);
-    }
+    // Take thread handles
+    let capture_handle = state
+        .capture_handle
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| RecorderError::CaptureFailure("No capture handle".to_string()))?;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis() as i64;
+    let writer_handle = state
+        .writer_handle
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| RecorderError::CaptureFailure("No writer handle".to_string()))?;
 
-    let recording_id = uuid::Uuid::new_v4().to_string();
-    let video_filename = format!("recording_{}.mp4", timestamp);
-    let thumbnail_filename = format!("thumb_{}.png", timestamp);
+    // Join capture thread with timeout (includes 3s drain period + some margin)
+    tracing::debug!(target: "quickclip", "[RECORD] Waiting for capture thread...");
+    let capture_join_result = timeout(
+        Duration::from_secs(30),
+        tauri::async_runtime::spawn_blocking(move || capture_handle.join()),
+    )
+    .await
+    .map_err(|_| {
+        tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for capture thread");
+        RecorderError::EncodingTimeout(30)
+    })?
+    .map_err(|e| RecorderError::CaptureFailure(format!("Spawn blocking failed: {}", e)))?;
 
-    let video_path = get_videos_dir()?.join(&video_filename);
-    let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
+    let capture_stats = capture_join_result
+        .map_err(|_| RecorderError::CaptureFailure("Capture thread panicked".to_string()))??;
 
-    // Calculate actual fps based on real elapsed time
-    let elapsed_secs = session.start_time.elapsed().as_secs_f64();
-    let actual_fps = if elapsed_secs > 0.0 {
-        (session.frame_count as f64 / elapsed_secs).round() as u32
-    } else {
-        session.fps
-    };
-    // Clamp fps to reasonable range (1-60)
-    let actual_fps = actual_fps.clamp(1, 60);
+    tracing::info!(target: "quickclip",
+        "[RECORD] Capture complete: frames={}, fps={:.2}",
+        capture_stats.frame_count, capture_stats.source_framerate);
 
-    // Encode frames directly via pipe (no intermediate PNG files)
-    const ENCODING_TIMEOUT_SECS: u64 = 300; // 5 minutes max
-    let video_path_clone = video_path.clone();
-    let quality = session.quality;
-    let frames = session.frames;
-    let width = session.width;
-    let height = session.height;
-    let frame_count = session.frame_count;
+    // Join writer thread with timeout
+    tracing::debug!(target: "quickclip", "[RECORD] Waiting for writer thread...");
+    let writer_join_result = timeout(
+        Duration::from_secs(300), // 5 minutes max for encoding
+        tauri::async_runtime::spawn_blocking(move || writer_handle.join()),
+    )
+    .await
+    .map_err(|_| {
+        tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for writer thread");
+        RecorderError::EncodingTimeout(300)
+    })?
+    .map_err(|e| RecorderError::EncodingError(format!("Spawn blocking failed: {}", e)))?;
 
-    tracing::info!(target: "quickclip", "Starting encoding: {} frames, {}x{}, fps: {}", frame_count, width, height, actual_fps);
+    let writer_result = writer_join_result
+        .map_err(|_| RecorderError::EncodingError("Writer thread panicked".to_string()))??;
 
-    let encode_task = tauri::async_runtime::spawn_blocking(move || {
-        let total_start = std::time::Instant::now();
+    tracing::info!(target: "quickclip",
+        "[RECORD] Writer complete: duration={:.2}s, frames={}, size={}x{}",
+        writer_result.duration, writer_result.frame_count,
+        writer_result.width, writer_result.height);
 
-        let result = encode_frames_to_video_piped(frames, width, height, actual_fps, &video_path_clone, quality);
+    // Update recording state
+    state.is_recording.store(false, Ordering::SeqCst);
 
-        let total_elapsed = total_start.elapsed();
-        tracing::info!(target: "quickclip", "[ENCODE] Total encoding time: {:.2}s", total_elapsed.as_secs_f64());
-
-        result
-    });
-
-    let duration = timeout(Duration::from_secs(ENCODING_TIMEOUT_SECS), encode_task)
-        .await
-        .map_err(|_| {
-            tracing::error!(target: "quickclip", "Encoding timeout after {} seconds", ENCODING_TIMEOUT_SECS);
-            RecorderError::EncodingTimeout(ENCODING_TIMEOUT_SECS)
-        })?
-        .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
-
-    tracing::info!(target: "quickclip", "Encoding completed, duration: {:.2}s, output: {:?}", duration, video_path);
-
-    // Phase 3: Generate thumbnail
-    tracing::info!(target: "quickclip", "[ENCODE] Phase 3: Generating thumbnail...");
-    let thumb_start = std::time::Instant::now();
-    let video_path_for_thumb = video_path.clone();
-    let thumbnail_path_clone = thumbnail_path.clone();
+    // Generate thumbnail
+    let video_path_for_thumb = session.video_path.clone();
+    let thumbnail_path_clone = session.thumbnail_path.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
         generate_thumbnail(&video_path_for_thumb, &thumbnail_path_clone)
@@ -554,22 +732,25 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
     .await
     .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
 
-    tracing::info!(target: "quickclip", "[ENCODE] Phase 3 complete: thumbnail generated in {:.2}s", thumb_start.elapsed().as_secs_f64());
+    tracing::debug!(target: "quickclip", "[RECORD] Thumbnail generated");
 
     // Cleanup session directory
     cleanup_session_dir(&session.session_dir);
 
-    tracing::info!(target: "quickclip", "Recording saved: id={}, frames={}, duration={:.2}s", recording_id, session.frame_count, duration);
+    tracing::info!(target: "quickclip",
+        "[RECORD] Complete: id={}, frames={}, duration={:.2}s, path={}",
+        session.recording_id, writer_result.frame_count, writer_result.duration,
+        session.video_path.display());
 
     Ok(RecordingResult {
-        id: recording_id,
-        video_path: video_path.to_string_lossy().to_string(),
-        thumbnail_path: thumbnail_path.to_string_lossy().to_string(),
-        duration,
-        width: session.width,
-        height: session.height,
-        frame_count: session.frame_count,
-        timestamp,
+        id: session.recording_id,
+        video_path: session.video_path.to_string_lossy().to_string(),
+        thumbnail_path: session.thumbnail_path.to_string_lossy().to_string(),
+        duration: writer_result.duration,
+        width: writer_result.width,
+        height: writer_result.height,
+        frame_count: writer_result.frame_count,
+        timestamp: session.timestamp,
     })
 }
 
@@ -580,11 +761,14 @@ pub async fn recorder_status(
     let is_recording = state.is_recording.load(Ordering::SeqCst);
 
     let session_guard = state.session.lock().await;
-    let (frame_count, elapsed) = if let Some(ref session) = *session_guard {
-        (session.frame_count, session.start_time.elapsed().as_secs_f64())
+    let elapsed = if let Some(ref session) = *session_guard {
+        session.start_time.elapsed().as_secs_f64()
     } else {
-        (0, 0.0)
+        0.0
     };
+    // Frame count is no longer tracked in session (captured frames go through channel)
+    // We estimate based on elapsed time and 60fps
+    let frame_count = if is_recording { (elapsed * 60.0) as u32 } else { 0 };
 
     Ok(RecordingStatus {
         is_recording,
@@ -736,7 +920,7 @@ pub fn read_video_file(path: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
-    tracing::info!(target: "quickclip", "Deleting recording: {}", id);
+    tracing::debug!(target: "quickclip", "[RECORD] Deleting: id={}", id);
 
     let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
 
@@ -764,8 +948,6 @@ pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
     data.recordings.retain(|r| r.id != id);
 
     save_quickclip_data(&data).map_err(|e| e.to_string())?;
-
-    tracing::info!(target: "quickclip", "Recording deleted: {}", id);
 
     Ok(())
 }
