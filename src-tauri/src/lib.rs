@@ -71,6 +71,9 @@ pub fn run() {
             recorder::recorder_stop,
             recorder::recorder_status,
             recorder::recorder_delete_video,
+            recorder::quickclip_get_recordings,
+            recorder::quickclip_save_recording,
+            recorder::quickclip_delete_recording,
         ])
         .setup(move |app| {
             // Initialize database

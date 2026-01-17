@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { QualityMode } from './types'
+import type { QualityMode, CaptureMode, AudioMode, Recording } from './types'
+import { useQuickClipStorage } from './useQuickClipStorage'
 
 interface MonitorInfo {
   id: string
@@ -52,10 +53,20 @@ interface UseQuickClipReturn {
   monitors: MonitorInfo[]
   ffmpegAvailable: boolean | null
 
-  startRecording: (monitorId?: string, quality?: QualityMode) => Promise<void>
-  stopRecording: () => Promise<RecordingResult | null>
+  recordings: Recording[]
+  isLoadingRecordings: boolean
+
+  startRecording: (monitorId?: string, quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode) => Promise<void>
+  stopRecording: () => Promise<Recording | null>
+  deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
   checkFfmpeg: () => Promise<boolean>
+}
+
+interface CurrentRecordingSettings {
+  captureMode: CaptureMode
+  audioMode: AudioMode
+  qualityMode: QualityMode
 }
 
 export function useQuickClip(): UseQuickClipReturn {
@@ -65,6 +76,14 @@ export function useQuickClip(): UseQuickClipReturn {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
+  const [currentSettings, setCurrentSettings] = useState<CurrentRecordingSettings | null>(null)
+
+  const {
+    recordings,
+    isLoading: isLoadingRecordings,
+    saveRecording,
+    deleteRecording,
+  } = useQuickClipStorage()
 
   const checkFfmpeg = useCallback(async () => {
     try {
@@ -88,7 +107,12 @@ export function useQuickClip(): UseQuickClipReturn {
     }
   }, [])
 
-  const startRecording = useCallback(async (monitorId?: string, quality: QualityMode = 'light') => {
+  const startRecording = useCallback(async (
+    monitorId?: string,
+    quality: QualityMode = 'light',
+    captureMode: CaptureMode = 'fullscreen',
+    audioMode: AudioMode = 'none'
+  ) => {
     setIsPreparing(true)
 
     try {
@@ -103,6 +127,9 @@ export function useQuickClip(): UseQuickClipReturn {
         targetMonitorId = primaryMonitor.id
       }
 
+      // Store current settings for when we save the recording
+      setCurrentSettings({ captureMode, audioMode, qualityMode: quality })
+
       await invoke('recorder_start', {
         monitorId: targetMonitorId,
         quality,
@@ -113,6 +140,7 @@ export function useQuickClip(): UseQuickClipReturn {
     } catch (error) {
       console.error('Failed to start recording:', error)
       toast.error(`Failed to start recording: ${error}`)
+      setCurrentSettings(null)
     } finally {
       setIsPreparing(false)
     }
@@ -126,15 +154,41 @@ export function useQuickClip(): UseQuickClipReturn {
     try {
       const result = await invoke<RecordingResult>('recorder_stop')
       setIsRecording(false)
-      return result
+
+      // Save to storage
+      const settings = currentSettings ?? {
+        captureMode: 'fullscreen' as CaptureMode,
+        audioMode: 'none' as AudioMode,
+        qualityMode: 'light' as QualityMode,
+      }
+
+      const recording = await saveRecording({
+        id: result.id,
+        videoPath: result.videoPath,
+        thumbnailPath: result.thumbnailPath,
+        duration: result.duration,
+        timestamp: result.timestamp,
+        captureMode: settings.captureMode,
+        audioMode: settings.audioMode,
+        qualityMode: settings.qualityMode,
+      })
+
+      setCurrentSettings(null)
+
+      if (recording) {
+        toast.success('Recording saved!')
+      }
+
+      return recording
     } catch (error) {
       console.error('Failed to stop recording:', error)
       toast.error(`Failed to stop recording: ${error}`)
+      setCurrentSettings(null)
       return null
     } finally {
       setIsEncoding(false)
     }
-  }, [isRecording])
+  }, [isRecording, currentSettings, saveRecording])
 
   // Poll recording status while recording
   useEffect(() => {
@@ -171,8 +225,13 @@ export function useQuickClip(): UseQuickClipReturn {
     recordingStatus,
     monitors,
     ffmpegAvailable,
+
+    recordings,
+    isLoadingRecordings,
+
     startRecording,
     stopRecording,
+    deleteRecording,
     refreshSources,
     checkFfmpeg,
   }

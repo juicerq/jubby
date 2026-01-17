@@ -14,10 +14,10 @@ Tasks:
 [x] Build plugin UI - empty state and onboarding
 [ ] Build plugin UI - recordings grid
 [ ] Build plugin UI - settings screen
-[ ] Implement recording metadata and persistence
+[x] Implement recording metadata and persistence
 [ ] Polish and edge cases
 
-Current: Empty state and onboarding UI complete
+Current: Recording metadata and persistence complete
 
 ---
 
@@ -319,3 +319,64 @@ Created a fully functional onboarding UI for QuickClip with a distinctive "broad
 
 ### Next Steps
 Ready for recordings grid UI (task 9) to display captured videos, or global hotkey implementation (task 6).
+
+---
+
+## 2026-01-16 - Implement recording metadata and persistence
+
+### What was implemented
+Created the recording metadata persistence layer using JSON file storage, enabling recordings to be saved, loaded, and deleted with proper file cleanup.
+
+**IPC Commands:**
+- `quickclip_get_recordings` - Returns all saved recordings, sorted newest first
+- `quickclip_save_recording(id, videoPath, thumbnailPath, duration, timestamp, captureMode, audioMode, qualityMode)` - Saves a new recording's metadata
+- `quickclip_delete_recording(id)` - Deletes a recording (both metadata and video/thumbnail files)
+
+**Features:**
+- JSON-based storage at `~/.local/share/jubby/quickclip/quickclip.json`
+- Automatic cleanup of video and thumbnail files when deleting recordings
+- Frontend hook `useQuickClipStorage` with optimistic updates
+- Integration with `useQuickClip` hook - recordings are automatically saved after encoding
+- Toast notifications for success/error feedback
+
+**Data Model:**
+```typescript
+interface Recording {
+  id: string
+  videoPath: string
+  thumbnailPath: string
+  duration: number
+  timestamp: number
+  settings: {
+    captureMode: 'fullscreen' | 'window' | 'region'
+    audioMode: 'none' | 'system' | 'microphone' | 'both'
+    qualityMode: 'light' | 'high'
+  }
+}
+```
+
+### Files changed
+- `src-tauri/src/recorder.rs` - Added persistence types (CaptureMode, AudioMode, Recording, QuickClipData) and IPC commands
+- `src-tauri/src/lib.rs` - Registered new IPC commands
+- `src/plugins/quickclip/types.ts` - Updated Recording interface to match Rust types
+- `src/plugins/quickclip/useQuickClipStorage.ts` - New hook for storage operations
+- `src/plugins/quickclip/useQuickClip.ts` - Integrated storage, auto-saves after recording
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- JSON file storage is sufficient for simple plugin data (vs SQLite used by todo plugin)
+- Rust enums with serde `rename_all = "lowercase"` serialize to lowercase strings for TypeScript compatibility
+- Spreading params object into invoke call explicitly works around TypeScript's strict index signature requirements
+
+**Gotchas encountered:**
+- QualityMode needed Serialize derive added (was only Deserialize before)
+- Tauri's invoke() TypeScript generics require explicit object literals, not interface-typed params
+
+**Useful context:**
+- Recordings are sorted newest-first by inserting at index 0
+- Delete operation cleans up both metadata and filesystem files in a single atomic operation
+- Current recording settings (captureMode, audioMode, qualityMode) are tracked in state during recording
+
+### Next Steps
+Ready for recordings grid UI (task 9) to display the persisted recordings.

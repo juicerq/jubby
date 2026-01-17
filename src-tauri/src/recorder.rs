@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,7 +36,7 @@ pub enum RecorderError {
     EncodingTimeout(u64),
 }
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum QualityMode {
     Light,
@@ -507,6 +508,152 @@ pub fn recorder_delete_video(video_path: String, thumbnail_path: String) -> Resu
         std::fs::remove_file(&thumbnail_path)
             .map_err(|e| format!("Failed to delete thumbnail: {}", e))?;
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// Recording Metadata Persistence
+// ============================================================================
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CaptureMode {
+    Fullscreen,
+    Window,
+    Region,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioMode {
+    None,
+    System,
+    Microphone,
+    Both,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingSettings {
+    pub capture_mode: CaptureMode,
+    pub audio_mode: AudioMode,
+    pub quality_mode: QualityMode,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recording {
+    pub id: String,
+    pub video_path: String,
+    pub thumbnail_path: String,
+    pub duration: f64,
+    pub timestamp: i64,
+    pub settings: RecordingSettings,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickClipData {
+    pub recordings: Vec<Recording>,
+}
+
+fn get_quickclip_data_path() -> Result<PathBuf, RecorderError> {
+    Ok(get_quickclip_dir()?.join("quickclip.json"))
+}
+
+fn load_quickclip_data() -> Result<QuickClipData, RecorderError> {
+    let path = get_quickclip_data_path()?;
+
+    if !path.exists() {
+        return Ok(QuickClipData::default());
+    }
+
+    let content = fs::read_to_string(&path)
+        .map_err(|e| RecorderError::StorageError(format!("Failed to read data file: {}", e)))?;
+
+    serde_json::from_str(&content)
+        .map_err(|e| RecorderError::StorageError(format!("Failed to parse data file: {}", e)))
+}
+
+fn save_quickclip_data(data: &QuickClipData) -> Result<(), RecorderError> {
+    let path = get_quickclip_data_path()?;
+
+    let content = serde_json::to_string_pretty(data)
+        .map_err(|e| RecorderError::StorageError(format!("Failed to serialize data: {}", e)))?;
+
+    fs::write(&path, content)
+        .map_err(|e| RecorderError::StorageError(format!("Failed to write data file: {}", e)))
+}
+
+#[tauri::command]
+pub fn quickclip_get_recordings() -> Result<Vec<Recording>, String> {
+    let data = load_quickclip_data().map_err(|e| e.to_string())?;
+    Ok(data.recordings)
+}
+
+#[tauri::command]
+pub fn quickclip_save_recording(
+    id: String,
+    video_path: String,
+    thumbnail_path: String,
+    duration: f64,
+    timestamp: i64,
+    capture_mode: CaptureMode,
+    audio_mode: AudioMode,
+    quality_mode: QualityMode,
+) -> Result<Recording, String> {
+    let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
+
+    let recording = Recording {
+        id,
+        video_path,
+        thumbnail_path,
+        duration,
+        timestamp,
+        settings: RecordingSettings {
+            capture_mode,
+            audio_mode,
+            quality_mode,
+        },
+    };
+
+    // Insert at the beginning (newest first)
+    data.recordings.insert(0, recording.clone());
+
+    save_quickclip_data(&data).map_err(|e| e.to_string())?;
+
+    Ok(recording)
+}
+
+#[tauri::command]
+pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
+    let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
+
+    // Find the recording to get file paths
+    let recording = data
+        .recordings
+        .iter()
+        .find(|r| r.id == id)
+        .cloned();
+
+    if let Some(rec) = recording {
+        // Delete video and thumbnail files
+        if std::path::Path::new(&rec.video_path).exists() {
+            fs::remove_file(&rec.video_path)
+                .map_err(|e| format!("Failed to delete video: {}", e))?;
+        }
+
+        if std::path::Path::new(&rec.thumbnail_path).exists() {
+            fs::remove_file(&rec.thumbnail_path)
+                .map_err(|e| format!("Failed to delete thumbnail: {}", e))?;
+        }
+    }
+
+    // Remove from data
+    data.recordings.retain(|r| r.id != id);
+
+    save_quickclip_data(&data).map_err(|e| e.to_string())?;
 
     Ok(())
 }

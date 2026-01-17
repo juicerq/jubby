@@ -16,16 +16,17 @@ export const DEFAULT_SETTINGS: QuickClipSettings = {
   hotkey: 'Ctrl+Shift+R',
 }
 
+export interface RecordingSettings {
+  captureMode: CaptureMode
+  audioMode: AudioMode
+  qualityMode: QualityMode
+}
+
 export interface Recording {
   id: string
-  filename: string
+  videoPath: string
   thumbnailPath: string
   duration: number
   timestamp: number
-  settings: Pick<QuickClipSettings, 'captureMode' | 'audioMode' | 'qualityMode'>
-}
-
-export interface QuickClipData {
-  recordings: Recording[]
-  settings: QuickClipSettings
+  settings: RecordingSettings
 }
