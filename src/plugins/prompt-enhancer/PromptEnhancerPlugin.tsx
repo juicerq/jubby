@@ -102,7 +102,7 @@ const PromptEnhancerInput = ({
         onKeyDown={onKeyDown}
         placeholder="Paste or write your messy prompt here..."
         autoFocus
-        className="flex-1 resize-none rounded-[10px] border border-transparent bg-white/4 px-3.5 py-3 text-[13px] font-normal leading-relaxed tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+        className="flex-1 resize-none rounded-[10px] border border-transparent bg-white/4 px-3.5 py-3 text-[13px] font-normal leading-relaxed tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       />
 
       <div className="flex shrink-0 items-center justify-between">

@@ -377,10 +377,10 @@ function TodoPluginInputArea({ value, onChange, onKeyDown, onTagsClick, tags, se
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             onClick={(e) => e.stopPropagation()}
-            className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
             autoComplete="off"
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-[180ms] ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-180ms ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">↵</span>
         </div>
         <TodoPluginTagButton onClick={onTagsClick} />
       </div>
@@ -403,11 +403,11 @@ function TodoPluginTagButton({ onClick }: { onClick: () => void }) {
         e.stopPropagation()
         onClick()
       }}
-      className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-[180ms] ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+      className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-180ms ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
       aria-label="Manage tags"
       title="Manage tags"
     >
-      <Tag className="h-4 w-4 text-white/40 transition-colors duration-[180ms] ease-out group-hover:text-white/70" />
+      <Tag className="h-4 w-4 text-white/40 transition-colors duration-180ms ease-out group-hover:text-white/70" />
     </button>
   )
 }
@@ -727,7 +727,7 @@ function TodoPluginFolderInput({ value, onChange, onKeyDown, onBlur }: TodoPlugi
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
-        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
         autoComplete="off"
       />
     </div>
@@ -1268,7 +1268,7 @@ function TodoPluginRenameFolderModal({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-[180ms] ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
+          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
           autoComplete="off"
         />
 

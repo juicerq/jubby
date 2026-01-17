@@ -154,7 +154,7 @@ function ShortcutCapture({ value, onChange, disabled = false }: ShortcutCaptureP
       disabled={disabled}
       className={cn(
         'group relative flex items-center justify-between gap-2 h-10 min-w-[140px] rounded-[10px] px-4 text-[13px] font-medium tracking-[-0.01em]',
-        'transition-all duration-[180ms] ease-out',
+        'transition-all duration-180ms ease-out',
         'outline-none',
         isCapturing
           ? 'border border-white/20 bg-white/8 text-white/60 shadow-[0_0_0_3px_rgba(255,255,255,0.06)]'
