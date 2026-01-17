@@ -1,142 +1,38 @@
-# PipeWire Screen Capture - Progress Tracker
+# QuickClip Settings UX - Progress
 
-## Current Status: In Progress
+## Current Status
+Task 1 complete
 
 ## Tasks
-
-- [x] Add PipeWire dependencies to Cargo.toml
-- [x] Add new error variants to RecorderError
-- [x] Create pipewire_capture module with portal integration
-- [x] Implement PipeWire stream frame capture
-- [x] Refactor recorder.rs to use pipewire_capture
-- [x] Update frontend with capture mode buttons
-- [ ] Manual verification of PipeWire capture
+1. [x] Create settings view component with navigation
+2. [ ] Implement Capture section (Screen + Audio settings)
+3. [ ] Implement Encoding section (Quality + Resolution settings)
+4. [ ] Implement Shortcuts section with hotkey recorder
+5. [ ] Connect settings to recording flow
+6. [ ] Set up default values and storage initialization
 
 ## Notes
+- Design document: docs/plans/2026-01-17-quickclip-settings-design.md
+- Use frontend-design skill for UI tasks
+- Reuse existing components: SettingsSection, SettingsRow, hotkey recorder
 
-Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
-
----
-
-## 2026-01-17 - Add PipeWire Dependencies
-
-- **What was implemented:** Added PipeWire dependencies to Cargo.toml for Wayland screen capture
-- **Files changed:**
-  - `src-tauri/Cargo.toml` - Added ashpd v0.11 (with tokio feature), pipewire v0.8, and libspa v0.8
+## 2026-01-17 - Task 1: Create settings view component with navigation
+- What was implemented:
+  - Created QuickClipSettings.tsx with full settings UI structure
+  - Added SettingsSection, SettingsRow, and SegmentedToggle components (following global Settings pattern)
+  - Integrated Checkbox from shadcn/ui for audio settings
+  - Reused ShortcutCapture component from core/components/Settings
+  - Added gear icon button to QuickClip header (both recordings view and onboarding view)
+  - Implemented view state toggling between 'recordings' and 'settings'
+  - Set up breadcrumb navigation with back-navigation support via onNavigate callback
+  - Updated types.ts: Added 'area' to CaptureMode, added 'resolution' field to QuickClipSettings
+  - Settings gear is disabled while recording/encoding is in progress
+- Files changed:
+  - src/plugins/quickclip/QuickClipSettings.tsx (new)
+  - src/plugins/quickclip/QuickClipPlugin.tsx (modified)
+  - src/plugins/quickclip/types.ts (modified)
 - **Learnings for future iterations:**
-  - ashpd v0.10 has compatibility issues with zbus; use v0.11+ for proper zbus 5.x support
-  - ashpd requires the `tokio` feature to work with Tauri's async runtime
-  - libspa is required alongside pipewire for SPA buffer handling
-
-## 2026-01-17 - Add Error Variants for PipeWire
-
-- **What was implemented:** Added three new error variants to RecorderError for PipeWire capture
-- **Files changed:**
-  - `src-tauri/src/recorder.rs` - Added PortalUnavailable, UserCancelled, and PipeWireError variants
-- **Learnings for future iterations:**
-  - PortalUnavailable: for when XDG Desktop Portal is not running or unavailable
-  - UserCancelled: for graceful handling when user cancels screen/area selection (should not show error toast)
-  - PipeWireError(String): for generic PipeWire stream errors with context
-
-## 2026-01-17 - Create pipewire_capture Module
-
-- **What was implemented:** Created pipewire_capture.rs module with XDG Desktop Portal integration via ashpd
-- **Files changed:**
-  - `src-tauri/src/pipewire_capture.rs` - New module with ScreencastSession struct and portal integration
-  - `src-tauri/src/lib.rs` - Added `mod pipewire_capture` declaration
-- **Key features:**
-  - `CaptureSource` enum with Fullscreen and Area variants
-  - `ScreencastSession::new()` async method that:
-    - Creates Screencast proxy via ashpd
-    - Creates portal session
-    - Selects sources (Monitor type, with cursor embedded)
-    - Starts session and retrieves stream info
-    - Opens PipeWire remote and returns file descriptor
-  - Returns `pipewire_fd`, `node_id`, and optional `size` for PipeWire stream connection
-  - Comprehensive logging at each step with `[CAPTURE]` prefix
-  - Proper error handling mapping to RecorderError variants
-- **Learnings for future iterations:**
-  - `PersistMode` is in `ashpd::desktop`, not `ashpd::desktop::screencast`
-  - `SourceType` must be converted to `BitFlags` using `.into()` when passed to `select_sources()`
-  - Session lifetime requires unsafe transmute to 'static for storage in struct
-  - Portal handles area selection UI - we just pass `multiple=true` for Area mode
-
-## 2026-01-17 - Implement PipeWire Stream Frame Capture
-
-- **What was implemented:** Added PipeWire stream capture functionality to pipewire_capture.rs
-- **Files changed:**
-  - `src-tauri/src/pipewire_capture.rs` - Added `run_capture_loop()` function and supporting types
-- **Key features:**
-  - `CaptureState` struct to hold frames, format info, and capture statistics
-  - `CaptureResult` struct returned with frames, dimensions, and frame count
-  - `run_capture_loop()` function that:
-    - Initializes PipeWire with `pw::init()`
-    - Creates MainLoop and Context
-    - Connects to PipeWire using portal-provided fd via `context.connect_fd()`
-    - Creates Stream with Video/Capture/Screen properties
-    - Registers `param_changed` callback to parse VideoInfoRaw format
-    - Registers `process` callback to dequeue buffers and store frame data
-    - Handles memory limit (1.5GB) with auto-stop
-    - Logs every 30th frame to avoid spam
-  - `convert_bgrx_to_rgba()` helper for pixel format conversion
-  - Video format negotiation with BGRx (preferred), RGBA, RGBx, RGB options
-- **Learnings for future iterations:**
-  - `Context::new()` requires `&MainLoop`, not `&LoopRef`
-  - Object must be wrapped in `Value::Object(obj)` before serializing with `PodSerializer`
-  - `data.chunk()` returns `&Chunk` directly, not `Option<&Chunk>`
-  - Stream type aliasing required: `Stream as PortalStream` to avoid conflict with `pipewire::stream::Stream`
-  - Format params built with `object!` macro then serialized via `PodSerializer::serialize()`
-  - Memory mapped buffers via `StreamFlags::MAP_BUFFERS` - no manual mmap needed
-
-## 2026-01-17 - Refactor recorder.rs to use pipewire_capture
-
-- **What was implemented:** Replaced xcap-based capture loop with PipeWire capture via pipewire_capture module
-- **Files changed:**
-  - `src-tauri/src/recorder.rs` - Major refactor:
-    - Removed xcap import
-    - Removed `monitor_id` parameter from RecordingSession and API
-    - Removed `MonitorError` and `MonitorNotFound` error variants (xcap-specific)
-    - Removed `SaveError` variant (unused)
-    - Removed `capture_frame_to_buffer()` function (used xcap)
-    - Removed `MAX_FRAME_BUFFER_BYTES` constant (now in pipewire_capture)
-    - Added `PipeWireCaptureMode` enum with Fullscreen/Area variants
-    - Added `From<PipeWireCaptureMode>` impl to convert to `CaptureSource`
-    - Updated `recorder_start` command: removed `monitor_id`, added optional `capture_mode`
-    - Updated `start_recording_internal`:
-      - Creates ScreencastSession via portal
-      - Spawns blocking thread that runs `pipewire_capture::run_capture_loop`
-      - Converts BGRx frames to RGBA after capture completes
-      - Stores captured frames in RecordingSession for later encoding
-- **Key changes:**
-  - Recording flow: User clicks record → Portal UI for screen selection → PipeWire capture at ~60fps → Stop → FFmpeg encode
-  - No longer needs to know monitor ID upfront - portal handles selection
-  - Capture runs in blocking thread, frames stored in session, encoding unchanged
-- **Learnings for future iterations:**
-  - xcap is still needed for `capture.rs` (single-frame screenshots) - keep as dependency
-  - Tauri command parameters are lenient - extra params from frontend are ignored
-  - The RecordingSession struct no longer needs capture_source stored since it's only used at start
-  - FFmpeg encoding pipeline remains unchanged - frames are RGBA buffers either way
-
-## 2026-01-17 - Update Frontend with Capture Mode Buttons
-
-- **What was implemented:** Replaced single record button with Fullscreen/Area mode selector, integrated with PipeWire capture backend
-- **Files changed:**
-  - `src/plugins/quickclip/types.ts` - Changed CaptureMode type from `'fullscreen' | 'window' | 'region'` to `'fullscreen' | 'area'` to match backend
-  - `src/plugins/quickclip/QuickClipPlugin.tsx`:
-    - Added `Scan` icon import from lucide-react for Area mode button
-    - Updated `QuickClipModeSelector` to show both Fullscreen and Area options
-    - Removed `QuickClipMonitorSelector` component (PipeWire portal handles source selection)
-    - Removed monitor-related state (`selectedMonitorId`, monitors effect)
-    - Updated `handleToggleRecording` to pass `selectedMode` to `startRecording`
-  - `src/plugins/quickclip/useQuickClip.ts`:
-    - Simplified `startRecording` signature: removed `monitorId` parameter
-    - Updated invoke call to pass `captureMode` to backend
-    - Added UserCancelled error handling (no toast when user cancels portal dialog)
-- **Key changes:**
-  - UI shows two toggle buttons: "Fullscreen" (Monitor icon) and "Area" (Scan icon)
-  - Clicking record with Area mode triggers portal's region selection UI
-  - UserCancelled errors from portal are silently handled (no error toast)
-- **Learnings for future iterations:**
-  - Backend uses serde `rename_all = "lowercase"` so frontend must use lowercase string values
-  - Portal-based capture doesn't need monitor selection upfront - portal handles it
-  - Check error string for "UserCancelled" or "user cancelled" to detect user cancellation
+  - Navigation levels should be conditionally registered based on current view - the settings view manages its own breadcrumb with onNavigate callback
+  - SettingsSection and SettingsRow are local to Settings.tsx, not shared - replicated pattern in QuickClipSettings
+  - ShortcutCapture is reusable from core/components/Settings
+  - Checkbox component needs custom border classes to match dark theme aesthetic

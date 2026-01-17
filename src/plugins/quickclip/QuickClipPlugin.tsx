@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Circle, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film } from 'lucide-react'
+import { Circle, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film, Settings } from 'lucide-react'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 import { useQuickClip } from './useQuickClip'
-import { DEFAULT_SETTINGS, type Recording } from './types'
+import { QuickClipSettings } from './QuickClipSettings'
+import { DEFAULT_SETTINGS, type Recording, type CaptureMode, type QualityMode, type ResolutionScale } from './types'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -13,8 +14,24 @@ import { toast } from 'sonner'
 
 const log = createLogger('quickclip')
 
+type ViewState = 'recordings' | 'settings'
+
 function QuickClipPlugin(_props: PluginProps) {
-  useNavigationLevels([{ id: 'quickclip', label: 'QuickClip' }])
+  const [view, setView] = useState<ViewState>('recordings')
+
+  // Settings state (will be persisted via usePluginStorage later)
+  const [captureMode, setCaptureMode] = useState<CaptureMode>(DEFAULT_SETTINGS.captureMode)
+  const [systemAudio, setSystemAudio] = useState(DEFAULT_SETTINGS.audioMode === 'system' || DEFAULT_SETTINGS.audioMode === 'both')
+  const [microphone, setMicrophone] = useState(DEFAULT_SETTINGS.audioMode === 'microphone' || DEFAULT_SETTINGS.audioMode === 'both')
+  const [qualityMode, setQualityMode] = useState<QualityMode>(DEFAULT_SETTINGS.qualityMode)
+  const [resolution, setResolution] = useState<ResolutionScale>(DEFAULT_SETTINGS.resolution)
+  const [hotkey, setHotkey] = useState(DEFAULT_SETTINGS.hotkey)
+
+  // Only register navigation levels when on recordings view
+  // Settings view manages its own navigation
+  useNavigationLevels(
+    view === 'recordings' ? [{ id: 'quickclip', label: 'QuickClip' }] : []
+  )
 
   const {
     isRecording,
@@ -35,6 +52,29 @@ function QuickClipPlugin(_props: PluginProps) {
     } else {
       await startRecording(DEFAULT_SETTINGS.qualityMode, 'fullscreen')
     }
+  }
+
+  const isBusy = isRecording || isPreparing || isEncoding
+
+  // Settings view
+  if (view === 'settings') {
+    return (
+      <QuickClipSettings
+        captureMode={captureMode}
+        onCaptureModeChange={setCaptureMode}
+        systemAudio={systemAudio}
+        onSystemAudioChange={setSystemAudio}
+        microphone={microphone}
+        onMicrophoneChange={setMicrophone}
+        qualityMode={qualityMode}
+        onQualityModeChange={setQualityMode}
+        resolution={resolution}
+        onResolutionChange={setResolution}
+        hotkey={hotkey}
+        onHotkeyChange={setHotkey}
+        onNavigateBack={() => setView('recordings')}
+      />
+    )
   }
 
   // Show FFmpeg warning if not available
@@ -74,6 +114,8 @@ function QuickClipPlugin(_props: PluginProps) {
           elapsedSeconds={recordingStatus?.elapsedSeconds ?? 0}
           onToggleRecording={handleToggleRecording}
           onDeleteRecording={deleteRecording}
+          onOpenSettings={() => setView('settings')}
+          settingsDisabled={isBusy}
         />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-5 p-4">
@@ -93,7 +135,7 @@ function QuickClipPlugin(_props: PluginProps) {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                <QuickClipHotkeyHint hotkey={DEFAULT_SETTINGS.hotkey} />
+                <QuickClipHotkeyHint hotkey={hotkey} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -111,6 +153,19 @@ function QuickClipPlugin(_props: PluginProps) {
               </motion.div>
             )}
           </AnimatePresence>
+
+          <button
+            onClick={() => setView('settings')}
+            disabled={isBusy}
+            className={cn(
+              'absolute bottom-4 right-4 rounded-lg p-2',
+              'text-white/40 transition-colors hover:bg-white/5 hover:text-white/60',
+              isBusy && 'cursor-not-allowed opacity-50'
+            )}
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
       )}
     </div>
@@ -292,6 +347,8 @@ interface QuickClipRecordingsViewProps {
   elapsedSeconds: number
   onToggleRecording: () => void
   onDeleteRecording: (id: string) => Promise<void>
+  onOpenSettings: () => void
+  settingsDisabled: boolean
 }
 
 function QuickClipRecordingsView({
@@ -302,6 +359,8 @@ function QuickClipRecordingsView({
   elapsedSeconds,
   onToggleRecording,
   onDeleteRecording,
+  onOpenSettings,
+  settingsDisabled,
 }: QuickClipRecordingsViewProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -312,6 +371,8 @@ function QuickClipRecordingsView({
         isEncoding={isEncoding}
         elapsedSeconds={elapsedSeconds}
         onToggleRecording={onToggleRecording}
+        onOpenSettings={onOpenSettings}
+        settingsDisabled={settingsDisabled}
       />
       <QuickClipRecordingsGrid
         recordings={recordings}
@@ -328,6 +389,8 @@ interface QuickClipRecordingsHeaderProps {
   isEncoding: boolean
   elapsedSeconds: number
   onToggleRecording: () => void
+  onOpenSettings: () => void
+  settingsDisabled: boolean
 }
 
 function QuickClipRecordingsHeader({
@@ -337,6 +400,8 @@ function QuickClipRecordingsHeader({
   isEncoding,
   elapsedSeconds,
   onToggleRecording,
+  onOpenSettings,
+  settingsDisabled,
 }: QuickClipRecordingsHeaderProps) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -355,48 +420,63 @@ function QuickClipRecordingsHeader({
         </span>
       </div>
 
-      <motion.button
-        onClick={onToggleRecording}
-        disabled={isDisabled}
-        whileHover={{ scale: isDisabled ? 1 : 1.02 }}
-        whileTap={{ scale: isDisabled ? 1 : 0.98 }}
-        className={cn(
-          'flex items-center gap-2 rounded-lg px-3 py-1.5',
-          'text-[12px] font-medium transition-all duration-150',
-          'border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
-          isRecording
-            ? 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'
-            : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90',
-          isDisabled && 'cursor-not-allowed opacity-50'
-        )}
-      >
-        {isPreparing ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Starting...</span>
-          </>
-        ) : isEncoding ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Encoding...</span>
-          </>
-        ) : isRecording ? (
-          <>
-            <motion.span
-              className="h-2 w-2 rounded-full bg-red-500"
-              animate={{ opacity: [1, 0.4, 1] }}
-              transition={{ duration: 0.8, repeat: Infinity }}
-            />
-            <span className="font-mono tabular-nums">{formatTime(elapsedSeconds)}</span>
-            <Square className="h-3 w-3 fill-current" />
-          </>
-        ) : (
-          <>
-            <Circle className="h-3 w-3 fill-red-500 text-red-500" />
-            <span>Record</span>
-          </>
-        )}
-      </motion.button>
+      <div className="flex items-center gap-2">
+        <motion.button
+          onClick={onToggleRecording}
+          disabled={isDisabled}
+          whileHover={{ scale: isDisabled ? 1 : 1.02 }}
+          whileTap={{ scale: isDisabled ? 1 : 0.98 }}
+          className={cn(
+            'flex items-center gap-2 rounded-lg px-3 py-1.5',
+            'text-[12px] font-medium transition-all duration-150',
+            'border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
+            isRecording
+              ? 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+              : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white/90',
+            isDisabled && 'cursor-not-allowed opacity-50'
+          )}
+        >
+          {isPreparing ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Starting...</span>
+            </>
+          ) : isEncoding ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Encoding...</span>
+            </>
+          ) : isRecording ? (
+            <>
+              <motion.span
+                className="h-2 w-2 rounded-full bg-red-500"
+                animate={{ opacity: [1, 0.4, 1] }}
+                transition={{ duration: 0.8, repeat: Infinity }}
+              />
+              <span className="font-mono tabular-nums">{formatTime(elapsedSeconds)}</span>
+              <Square className="h-3 w-3 fill-current" />
+            </>
+          ) : (
+            <>
+              <Circle className="h-3 w-3 fill-red-500 text-red-500" />
+              <span>Record</span>
+            </>
+          )}
+        </motion.button>
+
+        <button
+          onClick={onOpenSettings}
+          disabled={settingsDisabled}
+          className={cn(
+            'rounded-lg p-1.5 transition-colors',
+            'text-white/40 hover:bg-white/5 hover:text-white/60',
+            settingsDisabled && 'cursor-not-allowed opacity-50'
+          )}
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }
