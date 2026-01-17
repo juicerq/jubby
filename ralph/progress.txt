@@ -9,7 +9,7 @@
 - [x] Create pipewire_capture module with portal integration
 - [x] Implement PipeWire stream frame capture
 - [x] Refactor recorder.rs to use pipewire_capture
-- [ ] Update frontend with capture mode buttons
+- [x] Update frontend with capture mode buttons
 - [ ] Manual verification of PipeWire capture
 
 ## Notes
@@ -116,3 +116,27 @@ Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
   - Tauri command parameters are lenient - extra params from frontend are ignored
   - The RecordingSession struct no longer needs capture_source stored since it's only used at start
   - FFmpeg encoding pipeline remains unchanged - frames are RGBA buffers either way
+
+## 2026-01-17 - Update Frontend with Capture Mode Buttons
+
+- **What was implemented:** Replaced single record button with Fullscreen/Area mode selector, integrated with PipeWire capture backend
+- **Files changed:**
+  - `src/plugins/quickclip/types.ts` - Changed CaptureMode type from `'fullscreen' | 'window' | 'region'` to `'fullscreen' | 'area'` to match backend
+  - `src/plugins/quickclip/QuickClipPlugin.tsx`:
+    - Added `Scan` icon import from lucide-react for Area mode button
+    - Updated `QuickClipModeSelector` to show both Fullscreen and Area options
+    - Removed `QuickClipMonitorSelector` component (PipeWire portal handles source selection)
+    - Removed monitor-related state (`selectedMonitorId`, monitors effect)
+    - Updated `handleToggleRecording` to pass `selectedMode` to `startRecording`
+  - `src/plugins/quickclip/useQuickClip.ts`:
+    - Simplified `startRecording` signature: removed `monitorId` parameter
+    - Updated invoke call to pass `captureMode` to backend
+    - Added UserCancelled error handling (no toast when user cancels portal dialog)
+- **Key changes:**
+  - UI shows two toggle buttons: "Fullscreen" (Monitor icon) and "Area" (Scan icon)
+  - Clicking record with Area mode triggers portal's region selection UI
+  - UserCancelled errors from portal are silently handled (no error toast)
+- **Learnings for future iterations:**
+  - Backend uses serde `rename_all = "lowercase"` so frontend must use lowercase string values
+  - Portal-based capture doesn't need monitor selection upfront - portal handles it
+  - Check error string for "UserCancelled" or "user cancelled" to detect user cancellation

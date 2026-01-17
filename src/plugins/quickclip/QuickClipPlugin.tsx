@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Circle, Monitor, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film } from 'lucide-react'
+import { Circle, Monitor, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film, Scan } from 'lucide-react'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
@@ -22,7 +22,6 @@ function QuickClipPlugin(_props: PluginProps) {
     isPreparing,
     isEncoding,
     recordingStatus,
-    monitors,
     ffmpegAvailable,
     recordings,
     isLoadingRecordings,
@@ -32,21 +31,12 @@ function QuickClipPlugin(_props: PluginProps) {
   } = useQuickClip()
 
   const [selectedMode, setSelectedMode] = useState<CaptureMode>(DEFAULT_SETTINGS.captureMode)
-  const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null)
-
-  // Auto-select primary monitor
-  useEffect(() => {
-    if (monitors.length > 0 && !selectedMonitorId) {
-      const primary = monitors.find((m) => m.isPrimary) ?? monitors[0]
-      setSelectedMonitorId(primary.id)
-    }
-  }, [monitors, selectedMonitorId])
 
   const handleToggleRecording = async () => {
     if (isRecording) {
       await stopRecording()
     } else {
-      await startRecording(selectedMonitorId ?? undefined, DEFAULT_SETTINGS.qualityMode)
+      await startRecording(DEFAULT_SETTINGS.qualityMode, selectedMode)
     }
   }
 
@@ -111,14 +101,6 @@ function QuickClipPlugin(_props: PluginProps) {
                   selectedMode={selectedMode}
                   onSelectMode={setSelectedMode}
                 />
-
-                {selectedMode === 'fullscreen' && monitors.length > 1 && (
-                  <QuickClipMonitorSelector
-                    monitors={monitors}
-                    selectedMonitorId={selectedMonitorId}
-                    onSelectMonitor={setSelectedMonitorId}
-                  />
-                )}
 
                 <QuickClipHotkeyHint hotkey={DEFAULT_SETTINGS.hotkey} />
               </motion.div>
@@ -263,6 +245,7 @@ interface QuickClipModeSelectorProps {
 function QuickClipModeSelector({ selectedMode, onSelectMode }: QuickClipModeSelectorProps) {
   const modes: Array<{ id: CaptureMode; label: string; icon: typeof Monitor }> = [
     { id: 'fullscreen', label: 'Fullscreen', icon: Monitor },
+    { id: 'area', label: 'Area', icon: Scan },
   ]
 
   return (
@@ -289,50 +272,6 @@ function QuickClipModeSelector({ selectedMode, onSelectMode }: QuickClipModeSele
         )
       })}
     </div>
-  )
-}
-
-interface QuickClipMonitorSelectorProps {
-  monitors: Array<{ id: string; name: string; isPrimary: boolean; width: number; height: number }>
-  selectedMonitorId: string | null
-  onSelectMonitor: (id: string) => void
-}
-
-function QuickClipMonitorSelector({
-  monitors,
-  selectedMonitorId,
-  onSelectMonitor,
-}: QuickClipMonitorSelectorProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      className="flex flex-wrap justify-center gap-2"
-    >
-      {monitors.map((monitor) => {
-        const isSelected = selectedMonitorId === monitor.id
-        const label = monitor.isPrimary ? 'Primary' : monitor.name
-
-        return (
-          <button
-            key={monitor.id}
-            onClick={() => onSelectMonitor(monitor.id)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5',
-              'text-[11px] font-medium transition-all duration-150',
-              isSelected
-                ? 'border-white/20 bg-white/10 text-white/90'
-                : 'border-white/[0.06] bg-white/[0.02] text-white/50 hover:border-white/10 hover:text-white/70'
-            )}
-          >
-            <Monitor className="h-3 w-3" />
-            <span>{label}</span>
-            <span className="text-white/30">{monitor.width}×{monitor.height}</span>
-          </button>
-        )
-      })}
-    </motion.div>
   )
 }
 

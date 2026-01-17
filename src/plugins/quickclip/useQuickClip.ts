@@ -59,7 +59,7 @@ interface UseQuickClipReturn {
   recordings: Recording[]
   isLoadingRecordings: boolean
 
-  startRecording: (monitorId?: string, quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode) => Promise<void>
+  startRecording: (quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode) => Promise<void>
   stopRecording: () => Promise<Recording | null>
   deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
@@ -113,41 +113,32 @@ export function useQuickClip(): UseQuickClipReturn {
   }, [])
 
   const startRecording = useCallback(async (
-    monitorId?: string,
     quality: QualityMode = 'light',
     captureMode: CaptureMode = 'fullscreen',
     audioMode: AudioMode = 'none'
   ) => {
-    log.info('Starting recording', { monitorId, quality, captureMode, audioMode })
+    log.info('Starting recording', { quality, captureMode, audioMode })
     setIsPreparing(true)
 
     try {
-      // Get primary monitor if no specific one provided
-      let targetMonitorId = monitorId
-      if (!targetMonitorId) {
-        const sources = await invoke<CaptureSourcesResponse>('capture_get_sources')
-        const primaryMonitor = sources.monitors.find((m) => m.isPrimary) ?? sources.monitors[0]
-        if (!primaryMonitor) {
-          throw new Error('No monitors available')
-        }
-        targetMonitorId = primaryMonitor.id
-        log.debug('Auto-selected monitor', { monitorId: targetMonitorId })
-      }
-
       // Store current settings for when we save the recording
       setCurrentSettings({ captureMode, audioMode, qualityMode: quality })
 
       await invoke('recorder_start', {
-        monitorId: targetMonitorId,
         quality,
         fps: 30,
+        captureMode,
       })
 
       setIsRecording(true)
       log.info('Recording started successfully')
     } catch (error) {
-      log.error('Failed to start recording', { error: String(error) })
-      toast.error(`Failed to start recording: ${error}`)
+      const errorStr = String(error)
+      log.error('Failed to start recording', { error: errorStr })
+      // Don't show error toast if user cancelled the portal dialog
+      if (!errorStr.includes('UserCancelled') && !errorStr.includes('user cancelled')) {
+        toast.error(`Failed to start recording: ${error}`)
+      }
       setCurrentSettings(null)
     } finally {
       setIsPreparing(false)

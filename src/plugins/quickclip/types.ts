@@ -1,4 +1,4 @@
-export type CaptureMode = 'fullscreen' | 'window' | 'region'
+export type CaptureMode = 'fullscreen' | 'area'
 export type AudioMode = 'none' | 'system' | 'microphone' | 'both'
 export type QualityMode = 'light' | 'high'
 
