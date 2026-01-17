@@ -1,3 +1,4 @@
+use crate::pipewire_capture::{self, CaptureSource, ScreencastSession};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -9,20 +10,11 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
-use xcap::Monitor;
-
-const MAX_FRAME_BUFFER_BYTES: usize = 1_500_000_000;
 
 #[derive(Error, Debug)]
 pub enum RecorderError {
-    #[error("Failed to get monitors: {0}")]
-    MonitorError(String),
-    #[error("Monitor not found: {0}")]
-    MonitorNotFound(String),
     #[error("Failed to capture frame: {0}")]
     CaptureFailure(String),
-    #[error("Failed to save frame: {0}")]
-    SaveError(String),
     #[error("Failed to create directory: {0}")]
     StorageError(String),
     #[error("FFmpeg not found. Please install ffmpeg.")]
@@ -93,7 +85,6 @@ pub struct RecordingStatus {
 
 struct RecordingSession {
     session_dir: PathBuf,
-    monitor_id: String,
     quality: QualityMode,
     frame_count: u32,
     width: u32,
@@ -184,18 +175,6 @@ fn check_ffmpeg() -> Result<(), RecorderError> {
         .status()
         .map_err(|_| RecorderError::FfmpegNotFound)?;
     Ok(())
-}
-
-fn capture_frame_to_buffer(monitor: &Monitor) -> Result<(Vec<u8>, u32, u32), RecorderError> {
-    let image = monitor
-        .capture_image()
-        .map_err(|e| RecorderError::CaptureFailure(e.to_string()))?;
-
-    let width = image.width();
-    let height = image.height();
-    let buffer = image.into_raw();
-
-    Ok((buffer, width, height))
 }
 
 fn encode_frames_to_video_piped(
@@ -356,30 +335,48 @@ pub fn recorder_check_ffmpeg() -> Result<bool, String> {
     }
 }
 
+/// Capture mode for the recorder (maps to PipeWire CaptureSource)
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PipeWireCaptureMode {
+    #[default]
+    Fullscreen,
+    Area,
+}
+
+impl From<PipeWireCaptureMode> for CaptureSource {
+    fn from(mode: PipeWireCaptureMode) -> Self {
+        match mode {
+            PipeWireCaptureMode::Fullscreen => CaptureSource::Fullscreen,
+            PipeWireCaptureMode::Area => CaptureSource::Area,
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn recorder_start(
     state: tauri::State<'_, RecorderState>,
-    monitor_id: String,
     quality: QualityMode,
     fps: Option<u32>,
+    capture_mode: Option<PipeWireCaptureMode>,
 ) -> Result<(), String> {
-    start_recording_internal(&state, monitor_id, quality, fps.unwrap_or(60))
+    start_recording_internal(&state, quality, fps.unwrap_or(60), capture_mode.unwrap_or_default())
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn start_recording_internal(
     state: &RecorderState,
-    monitor_id: String,
     quality: QualityMode,
     fps: u32,
+    capture_mode: PipeWireCaptureMode,
 ) -> Result<(), RecorderError> {
-    tracing::info!(target: "quickclip", "Starting recording - monitor: {}, quality: {:?}, fps: {}", monitor_id, quality, fps);
+    tracing::info!(target: "quickclip", "[CAPTURE] Starting recording - quality: {:?}, fps: {}, mode: {:?}", quality, fps, capture_mode);
 
     check_ffmpeg()?;
 
     if state.is_recording.load(Ordering::SeqCst) {
-        tracing::warn!(target: "quickclip", "Recording already in progress");
+        tracing::warn!(target: "quickclip", "[CAPTURE] Recording already in progress");
         return Err(RecorderError::AlreadyRecording);
     }
 
@@ -391,16 +388,15 @@ async fn start_recording_internal(
     let session_dir = get_sessions_dir()?.join(format!("session_{}", timestamp));
     std::fs::create_dir_all(&session_dir).map_err(|e| RecorderError::StorageError(e.to_string()))?;
 
-    // Find and cache monitor before creating session
-    let monitors = Monitor::all().map_err(|e| RecorderError::MonitorError(e.to_string()))?;
-    let monitor = monitors
-        .into_iter()
-        .find(|m| m.id().to_string() == monitor_id)
-        .ok_or_else(|| RecorderError::MonitorNotFound(monitor_id.clone()))?;
+    // Create PipeWire screencast session via XDG Desktop Portal
+    // This will show the portal UI for screen/area selection
+    let capture_source: CaptureSource = capture_mode.into();
+    tracing::info!(target: "quickclip", "[CAPTURE] Creating screencast session...");
+    let screencast_session = ScreencastSession::new(capture_source).await?;
+    tracing::info!(target: "quickclip", "[CAPTURE] Screencast session created, node_id={}", screencast_session.node_id);
 
     let session = RecordingSession {
         session_dir,
-        monitor_id,
         quality,
         frame_count: 0,
         width: 0,
@@ -413,54 +409,39 @@ async fn start_recording_internal(
     *state.session.lock().await = Some(session);
     state.is_recording.store(true, Ordering::SeqCst);
 
-    tracing::info!(target: "quickclip", "Recording session started");
+    tracing::info!(target: "quickclip", "[CAPTURE] Recording session started");
 
     let stop_signal = Arc::new(AtomicBool::new(false));
     *state.stop_signal.lock().await = Some(stop_signal.clone());
 
-    // Spawn the capture loop
+    // Spawn the PipeWire capture loop in a blocking thread
     let is_recording = state.is_recording.clone();
     let session_mutex = state.session.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let frame_interval = Duration::from_millis(1000 / fps as u64);
-        let mut total_buffer_size: usize = 0;
+        // Run the PipeWire capture loop
+        let capture_result = pipewire_capture::run_capture_loop(screencast_session, stop_signal);
 
-        loop {
-            if stop_signal.load(Ordering::SeqCst) {
-                break;
-            }
+        match capture_result {
+            Ok(result) => {
+                tracing::info!(target: "quickclip", "[CAPTURE] Capture complete: {} frames, {}x{}",
+                    result.frame_count, result.width, result.height);
 
-            let capture_start = std::time::Instant::now();
+                // Convert frames from BGRx to RGBA if needed
+                let mut frames = result.frames;
+                pipewire_capture::convert_bgrx_to_rgba(&mut frames);
 
-            // Capture frame as raw RGBA buffer (fast: ~5ms vs ~100ms for PNG)
-            if let Ok((buffer, width, height)) = capture_frame_to_buffer(&monitor) {
-                total_buffer_size += buffer.len();
-
-                // Memory safeguard: auto-stop if buffer exceeds ~1.5GB
-                if total_buffer_size > MAX_FRAME_BUFFER_BYTES {
-                    tracing::warn!(target: "quickclip", "Memory limit exceeded ({} MB), auto-stopping recording", total_buffer_size / 1_000_000);
-                    stop_signal.store(true, Ordering::SeqCst);
-                    break;
-                }
-
-                // Store frame in session
+                // Store the captured frames in the session
                 let mut session_guard = session_mutex.blocking_lock();
                 if let Some(ref mut session) = *session_guard {
-                    if session.frame_count == 0 {
-                        session.width = width;
-                        session.height = height;
-                    }
-                    session.frames.push(buffer);
-                    session.frame_count += 1;
+                    session.frames = frames;
+                    session.frame_count = result.frame_count;
+                    session.width = result.width;
+                    session.height = result.height;
                 }
-                drop(session_guard);
             }
-
-            // Sleep for the remaining time in the frame interval
-            let elapsed = capture_start.elapsed();
-            if elapsed < frame_interval {
-                std::thread::sleep(frame_interval - elapsed);
+            Err(e) => {
+                tracing::error!(target: "quickclip", "[CAPTURE] Capture error: {}", e);
             }
         }
 

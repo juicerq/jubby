@@ -8,7 +8,7 @@
 - [x] Add new error variants to RecorderError
 - [x] Create pipewire_capture module with portal integration
 - [x] Implement PipeWire stream frame capture
-- [ ] Refactor recorder.rs to use pipewire_capture
+- [x] Refactor recorder.rs to use pipewire_capture
 - [ ] Update frontend with capture mode buttons
 - [ ] Manual verification of PipeWire capture
 
@@ -87,3 +87,32 @@ Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
   - Stream type aliasing required: `Stream as PortalStream` to avoid conflict with `pipewire::stream::Stream`
   - Format params built with `object!` macro then serialized via `PodSerializer::serialize()`
   - Memory mapped buffers via `StreamFlags::MAP_BUFFERS` - no manual mmap needed
+
+## 2026-01-17 - Refactor recorder.rs to use pipewire_capture
+
+- **What was implemented:** Replaced xcap-based capture loop with PipeWire capture via pipewire_capture module
+- **Files changed:**
+  - `src-tauri/src/recorder.rs` - Major refactor:
+    - Removed xcap import
+    - Removed `monitor_id` parameter from RecordingSession and API
+    - Removed `MonitorError` and `MonitorNotFound` error variants (xcap-specific)
+    - Removed `SaveError` variant (unused)
+    - Removed `capture_frame_to_buffer()` function (used xcap)
+    - Removed `MAX_FRAME_BUFFER_BYTES` constant (now in pipewire_capture)
+    - Added `PipeWireCaptureMode` enum with Fullscreen/Area variants
+    - Added `From<PipeWireCaptureMode>` impl to convert to `CaptureSource`
+    - Updated `recorder_start` command: removed `monitor_id`, added optional `capture_mode`
+    - Updated `start_recording_internal`:
+      - Creates ScreencastSession via portal
+      - Spawns blocking thread that runs `pipewire_capture::run_capture_loop`
+      - Converts BGRx frames to RGBA after capture completes
+      - Stores captured frames in RecordingSession for later encoding
+- **Key changes:**
+  - Recording flow: User clicks record → Portal UI for screen selection → PipeWire capture at ~60fps → Stop → FFmpeg encode
+  - No longer needs to know monitor ID upfront - portal handles selection
+  - Capture runs in blocking thread, frames stored in session, encoding unchanged
+- **Learnings for future iterations:**
+  - xcap is still needed for `capture.rs` (single-frame screenshots) - keep as dependency
+  - Tauri command parameters are lenient - extra params from frontend are ignored
+  - The RecordingSession struct no longer needs capture_source stored since it's only used at start
+  - FFmpeg encoding pipeline remains unchanged - frames are RGBA buffers either way

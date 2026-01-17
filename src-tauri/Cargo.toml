@@ -26,7 +26,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 global-hotkey = "0.7"
-xcap = "0.0.14"
+xcap = "0.0.14"  # Still used for single-frame screenshots in capture.rs
 image = "0.25"
 clipboard-rs = "0.2"
 
