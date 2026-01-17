@@ -1,0 +1,512 @@
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use thiserror::Error;
+use tokio::sync::Mutex;
+use tokio::time::timeout;
+use xcap::Monitor;
+
+#[derive(Error, Debug)]
+pub enum RecorderError {
+    #[error("Failed to get monitors: {0}")]
+    MonitorError(String),
+    #[error("Monitor not found: {0}")]
+    MonitorNotFound(String),
+    #[error("Failed to capture frame: {0}")]
+    CaptureFailure(String),
+    #[error("Failed to save frame: {0}")]
+    SaveError(String),
+    #[error("Failed to create directory: {0}")]
+    StorageError(String),
+    #[error("FFmpeg not found. Please install ffmpeg.")]
+    FfmpegNotFound,
+    #[error("FFmpeg encoding failed: {0}")]
+    EncodingError(String),
+    #[error("No frames captured")]
+    NoFrames,
+    #[error("Recording already in progress")]
+    AlreadyRecording,
+    #[error("No recording in progress")]
+    NotRecording,
+    #[error("Encoding timeout after {0} seconds")]
+    EncodingTimeout(u64),
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QualityMode {
+    Light,
+    High,
+}
+
+impl QualityMode {
+    fn crf(&self) -> &str {
+        match self {
+            QualityMode::Light => "28",
+            QualityMode::High => "18",
+        }
+    }
+
+    fn preset(&self) -> &str {
+        match self {
+            QualityMode::Light => "fast",
+            QualityMode::High => "slower",
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingResult {
+    pub id: String,
+    pub video_path: String,
+    pub thumbnail_path: String,
+    pub duration: f64,
+    pub width: u32,
+    pub height: u32,
+    pub frame_count: u32,
+    pub timestamp: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingStatus {
+    pub is_recording: bool,
+    pub frame_count: u32,
+    pub elapsed_seconds: f64,
+}
+
+struct RecordingSession {
+    session_dir: PathBuf,
+    monitor_id: String,
+    quality: QualityMode,
+    frame_count: u32,
+    width: u32,
+    height: u32,
+    start_time: std::time::Instant,
+    fps: u32,
+}
+
+pub struct RecorderState {
+    is_recording: Arc<AtomicBool>,
+    session: Arc<Mutex<Option<RecordingSession>>>,
+    stop_signal: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+impl RecorderState {
+    pub fn new() -> Self {
+        Self {
+            is_recording: Arc::new(AtomicBool::new(false)),
+            session: Arc::new(Mutex::new(None)),
+            stop_signal: Mutex::new(None),
+        }
+    }
+}
+
+impl Default for RecorderState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn get_quickclip_dir() -> Result<PathBuf, RecorderError> {
+    let base_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+        PathBuf::from(xdg_data)
+    } else {
+        let home = std::env::var("HOME").expect("HOME environment variable must be set");
+        PathBuf::from(home).join(".local").join("share")
+    };
+
+    let quickclip_dir = base_dir.join("jubby").join("quickclip");
+
+    if !quickclip_dir.exists() {
+        std::fs::create_dir_all(&quickclip_dir)
+            .map_err(|e| RecorderError::StorageError(e.to_string()))?;
+    }
+
+    Ok(quickclip_dir)
+}
+
+fn get_videos_dir() -> Result<PathBuf, RecorderError> {
+    let videos_dir = get_quickclip_dir()?.join("videos");
+
+    if !videos_dir.exists() {
+        std::fs::create_dir_all(&videos_dir)
+            .map_err(|e| RecorderError::StorageError(e.to_string()))?;
+    }
+
+    Ok(videos_dir)
+}
+
+fn get_thumbnails_dir() -> Result<PathBuf, RecorderError> {
+    let thumbnails_dir = get_quickclip_dir()?.join("thumbnails");
+
+    if !thumbnails_dir.exists() {
+        std::fs::create_dir_all(&thumbnails_dir)
+            .map_err(|e| RecorderError::StorageError(e.to_string()))?;
+    }
+
+    Ok(thumbnails_dir)
+}
+
+fn get_sessions_dir() -> Result<PathBuf, RecorderError> {
+    let sessions_dir = get_quickclip_dir()?.join("sessions");
+
+    if !sessions_dir.exists() {
+        std::fs::create_dir_all(&sessions_dir)
+            .map_err(|e| RecorderError::StorageError(e.to_string()))?;
+    }
+
+    Ok(sessions_dir)
+}
+
+fn check_ffmpeg() -> Result<(), RecorderError> {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|_| RecorderError::FfmpegNotFound)?;
+    Ok(())
+}
+
+fn capture_frame_to_file(monitor: &Monitor, path: &PathBuf) -> Result<(u32, u32), RecorderError> {
+    let image = monitor
+        .capture_image()
+        .map_err(|e| RecorderError::CaptureFailure(e.to_string()))?;
+
+    let width = image.width();
+    let height = image.height();
+
+    image
+        .save(path)
+        .map_err(|e| RecorderError::SaveError(e.to_string()))?;
+
+    Ok((width, height))
+}
+
+fn encode_frames_to_video(
+    session_dir: &PathBuf,
+    output_path: &PathBuf,
+    fps: u32,
+    quality: QualityMode,
+) -> Result<f64, RecorderError> {
+    let frame_pattern = session_dir.join("frame_%06d.png");
+
+    let output = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-framerate",
+            &fps.to_string(),
+            "-i",
+            &frame_pattern.to_string_lossy(),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-crf",
+            quality.crf(),
+            "-preset",
+            quality.preset(),
+            &output_path.to_string_lossy(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| RecorderError::EncodingError(e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(RecorderError::EncodingError(stderr.to_string()));
+    }
+
+    // Get video duration using ffprobe
+    let duration_output = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            &output_path.to_string_lossy(),
+        ])
+        .output()
+        .map_err(|e| RecorderError::EncodingError(format!("ffprobe failed: {}", e)))?;
+
+    let duration_str = String::from_utf8_lossy(&duration_output.stdout);
+    let duration: f64 = duration_str.trim().parse().unwrap_or(0.0);
+
+    Ok(duration)
+}
+
+fn generate_thumbnail(video_path: &PathBuf, thumbnail_path: &PathBuf) -> Result<(), RecorderError> {
+    let output = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            &video_path.to_string_lossy(),
+            "-ss",
+            "00:00:00",
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=320:-1",
+            &thumbnail_path.to_string_lossy(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| RecorderError::EncodingError(format!("Thumbnail generation failed: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(RecorderError::EncodingError(format!(
+            "Thumbnail generation failed: {}",
+            stderr
+        )));
+    }
+
+    Ok(())
+}
+
+fn cleanup_session_dir(session_dir: &PathBuf) {
+    if session_dir.exists() {
+        let _ = std::fs::remove_dir_all(session_dir);
+    }
+}
+
+#[tauri::command]
+pub fn recorder_check_ffmpeg() -> Result<bool, String> {
+    match check_ffmpeg() {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
+pub async fn recorder_start(
+    state: tauri::State<'_, RecorderState>,
+    monitor_id: String,
+    quality: QualityMode,
+    fps: Option<u32>,
+) -> Result<(), String> {
+    start_recording_internal(&state, monitor_id, quality, fps.unwrap_or(30))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn start_recording_internal(
+    state: &RecorderState,
+    monitor_id: String,
+    quality: QualityMode,
+    fps: u32,
+) -> Result<(), RecorderError> {
+    check_ffmpeg()?;
+
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Err(RecorderError::AlreadyRecording);
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as i64;
+
+    let session_dir = get_sessions_dir()?.join(format!("session_{}", timestamp));
+    std::fs::create_dir_all(&session_dir).map_err(|e| RecorderError::StorageError(e.to_string()))?;
+
+    let session = RecordingSession {
+        session_dir,
+        monitor_id,
+        quality,
+        frame_count: 0,
+        width: 0,
+        height: 0,
+        start_time: std::time::Instant::now(),
+        fps,
+    };
+
+    *state.session.lock().await = Some(session);
+    state.is_recording.store(true, Ordering::SeqCst);
+
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    *state.stop_signal.lock().await = Some(stop_signal.clone());
+
+    // Spawn the capture loop
+    let is_recording = state.is_recording.clone();
+    let session_mutex = state.session.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let frame_interval = Duration::from_millis(1000 / fps as u64);
+
+        loop {
+            if stop_signal.load(Ordering::SeqCst) {
+                break;
+            }
+
+            let capture_start = std::time::Instant::now();
+
+            // Capture a frame
+            let mut session_guard = session_mutex.lock().await;
+            if let Some(ref mut session) = *session_guard {
+                let monitors =
+                    Monitor::all().map_err(|e| RecorderError::MonitorError(e.to_string()));
+
+                if let Ok(monitors) = monitors {
+                    if let Some(monitor) = monitors
+                        .iter()
+                        .find(|m| m.id().to_string() == session.monitor_id)
+                    {
+                        let frame_path = session
+                            .session_dir
+                            .join(format!("frame_{:06}.png", session.frame_count));
+
+                        if let Ok((width, height)) = capture_frame_to_file(monitor, &frame_path) {
+                            if session.frame_count == 0 {
+                                session.width = width;
+                                session.height = height;
+                            }
+                            session.frame_count += 1;
+                        }
+                    }
+                }
+            }
+            drop(session_guard);
+
+            // Sleep for the remaining time in the frame interval
+            let elapsed = capture_start.elapsed();
+            if elapsed < frame_interval {
+                tokio::time::sleep(frame_interval - elapsed).await;
+            }
+        }
+
+        is_recording.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn recorder_stop(
+    state: tauri::State<'_, RecorderState>,
+) -> Result<RecordingResult, String> {
+    stop_recording_internal(&state)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResult, RecorderError> {
+    if !state.is_recording.load(Ordering::SeqCst) {
+        return Err(RecorderError::NotRecording);
+    }
+
+    // Signal stop
+    if let Some(stop_signal) = state.stop_signal.lock().await.take() {
+        stop_signal.store(true, Ordering::SeqCst);
+    }
+
+    // Wait for capture loop to finish
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let session = state
+        .session
+        .lock()
+        .await
+        .take()
+        .ok_or(RecorderError::NotRecording)?;
+
+    if session.frame_count == 0 {
+        cleanup_session_dir(&session.session_dir);
+        return Err(RecorderError::NoFrames);
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as i64;
+
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let video_filename = format!("recording_{}.mp4", timestamp);
+    let thumbnail_filename = format!("thumb_{}.png", timestamp);
+
+    let video_path = get_videos_dir()?.join(&video_filename);
+    let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
+
+    // Encode video with timeout
+    const ENCODING_TIMEOUT_SECS: u64 = 300; // 5 minutes max
+    let session_dir = session.session_dir.clone();
+    let video_path_clone = video_path.clone();
+    let quality = session.quality;
+    let fps = session.fps;
+
+    let encode_task = tauri::async_runtime::spawn_blocking(move || {
+        encode_frames_to_video(&session_dir, &video_path_clone, fps, quality)
+    });
+
+    let duration = timeout(Duration::from_secs(ENCODING_TIMEOUT_SECS), encode_task)
+        .await
+        .map_err(|_| RecorderError::EncodingTimeout(ENCODING_TIMEOUT_SECS))?
+        .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
+
+    // Generate thumbnail
+    let video_path_for_thumb = video_path.clone();
+    let thumbnail_path_clone = thumbnail_path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        generate_thumbnail(&video_path_for_thumb, &thumbnail_path_clone)
+    })
+    .await
+    .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
+
+    // Cleanup session directory
+    cleanup_session_dir(&session.session_dir);
+
+    Ok(RecordingResult {
+        id: recording_id,
+        video_path: video_path.to_string_lossy().to_string(),
+        thumbnail_path: thumbnail_path.to_string_lossy().to_string(),
+        duration,
+        width: session.width,
+        height: session.height,
+        frame_count: session.frame_count,
+        timestamp,
+    })
+}
+
+#[tauri::command]
+pub async fn recorder_status(
+    state: tauri::State<'_, RecorderState>,
+) -> Result<RecordingStatus, String> {
+    let is_recording = state.is_recording.load(Ordering::SeqCst);
+
+    let session_guard = state.session.lock().await;
+    let (frame_count, elapsed) = if let Some(ref session) = *session_guard {
+        (session.frame_count, session.start_time.elapsed().as_secs_f64())
+    } else {
+        (0, 0.0)
+    };
+
+    Ok(RecordingStatus {
+        is_recording,
+        frame_count,
+        elapsed_seconds: elapsed,
+    })
+}
+
+#[tauri::command]
+pub fn recorder_delete_video(video_path: String, thumbnail_path: String) -> Result<(), String> {
+    if std::path::Path::new(&video_path).exists() {
+        std::fs::remove_file(&video_path).map_err(|e| format!("Failed to delete video: {}", e))?;
+    }
+
+    if std::path::Path::new(&thumbnail_path).exists() {
+        std::fs::remove_file(&thumbnail_path)
+            .map_err(|e| format!("Failed to delete thumbnail: {}", e))?;
+    }
+
+    Ok(())
+}

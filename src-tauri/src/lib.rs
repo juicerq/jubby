@@ -1,5 +1,6 @@
 mod capture;
 mod enhancer;
+mod recorder;
 mod settings;
 mod storage;
 mod tray;
@@ -65,12 +66,20 @@ pub fn run() {
             capture::capture_monitor,
             capture::capture_window,
             capture::capture_primary,
+            recorder::recorder_check_ffmpeg,
+            recorder::recorder_start,
+            recorder::recorder_stop,
+            recorder::recorder_status,
+            recorder::recorder_delete_video,
         ])
         .setup(move |app| {
             // Initialize database
             let db = storage::init_database(app)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
             app.manage(db);
+
+            // Initialize recorder state
+            app.manage(recorder::RecorderState::new());
 
             // Initialize current shortcut state (tracks what's registered)
             // Note: shortcut_str is captured from outer scope where settings were loaded

@@ -7,7 +7,7 @@ Tasks:
 [x] Research screen capture and video encoding on Linux/Tauri
 [x] Create QuickClip plugin scaffold and manifest
 [x] Implement Rust backend for screen capture
-[ ] Implement video encoding and storage
+[x] Implement video encoding and storage
 [ ] Implement clipboard integration for video
 [ ] Implement global hotkey for recording toggle
 [ ] Implement recording overlay window
@@ -17,7 +17,7 @@ Tasks:
 [ ] Implement recording metadata and persistence
 [ ] Polish and edge cases
 
-Current: Rust screen capture backend complete
+Current: Video encoding and storage complete
 
 ---
 
@@ -214,3 +214,58 @@ Created the Rust capture module providing IPC commands for screen capture functi
 
 ### Next Steps
 Ready for video encoding (task 4) or frontend integration to test capture commands.
+
+---
+
+## 2026-01-16 - Implement video encoding and storage
+
+### What was implemented
+Created the Rust recorder module providing continuous frame capture and FFmpeg-based video encoding.
+
+**IPC Commands:**
+- `recorder_check_ffmpeg` - Verifies FFmpeg is installed on the system
+- `recorder_start(monitor_id, quality, fps?)` - Starts recording a monitor, continuously capturing frames
+- `recorder_stop` - Stops recording, encodes captured frames to MP4, generates thumbnail
+- `recorder_status` - Returns current recording state (is_recording, frame_count, elapsed_seconds)
+- `recorder_delete_video(video_path, thumbnail_path)` - Deletes a recording and its thumbnail
+
+**Features:**
+- Continuous frame capture at configurable FPS (default 30)
+- Quality profiles: light (CRF 28, fast preset) and high (CRF 18, slower preset)
+- FFmpeg CLI integration for encoding PNG sequences to H.264 MP4
+- Automatic thumbnail generation from first frame (320px width)
+- Session-based frame storage with automatic cleanup after encoding
+- Proper async handling with spawn_blocking for encoding operations
+- 5-minute encoding timeout to prevent hangs on long recordings
+
+**Storage Structure:**
+```
+~/.local/share/jubby/quickclip/
+├── sessions/     # Temporary frame storage during recording
+├── videos/       # Final encoded MP4 files
+└── thumbnails/   # Video thumbnails (PNG)
+```
+
+### Files changed
+- `src-tauri/src/recorder.rs` - New module with recording, encoding, and thumbnail generation
+- `src-tauri/src/lib.rs` - Registered recorder module, commands, and RecorderState
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- Tauri state management requires Arc wrapping for fields that need cloning in async tasks
+- FFmpeg CLI approach avoids Rust binding complexity while providing full codec support
+- spawn_blocking + timeout pattern works well for CPU-intensive operations
+
+**Gotchas encountered:**
+- AtomicBool and Mutex don't implement Clone; need Arc wrappers for async task sharing
+- FFmpeg frame input requires sequential numbering (frame_%06d.png pattern)
+- ffprobe needed alongside ffmpeg for duration extraction
+
+**Useful context:**
+- CRF 28 produces ~25MB files suitable for Discord's 25MB limit
+- CRF 18 produces higher quality but larger files (~2-3x size)
+- Encoding timeout of 5 minutes should handle most reasonable recording lengths
+
+### Next Steps
+Ready for clipboard integration (task 5) or global hotkey (task 6).
