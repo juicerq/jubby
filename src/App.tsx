@@ -25,7 +25,7 @@ function App() {
   const goToSettings = useCallback(() => setView({ type: 'settings' }), [])
 
   const rootLevel = useMemo(
-    () => ({ id: 'home', label: 'Jubby', onClick: goToGrid }),
+    () => ({ id: 'home', label: 'Jubby', onNavigate: goToGrid }),
     [goToGrid]
   )
 

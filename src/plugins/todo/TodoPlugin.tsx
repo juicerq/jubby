@@ -4,7 +4,7 @@ import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical,
 import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
-import { useNavigation } from '@/core/context/NavigationContext'
+import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 import type { Tag as TagType, Todo, TodoStatus, Folder, RecentTodo } from './types'
 
@@ -22,9 +22,6 @@ const TAG_COLORS = [
 type TodoView = 'folders' | 'list'
 
 function TodoPlugin(_props: PluginProps) {
-  // Navigation
-  const { pushLevel, popLevel, resetToRoot } = useNavigation()
-
   // Folder management
   const {
     folders,
@@ -40,22 +37,27 @@ function TodoPlugin(_props: PluginProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
   const [view, setView] = useState<TodoView>('folders')
 
-  // Push 'Todo' level on mount
-  useEffect(() => {
-    pushLevel({ id: 'todo', label: 'Todo', onClick: () => {
-      setCurrentFolderId(null)
-      setView('folders')
-      loadFolders()
-    }})
-    return () => {
-      resetToRoot()
-    }
-  }, [pushLevel, resetToRoot, loadFolders])
-
   // Get current folder details
   const currentFolder = currentFolderId
     ? folders.find((f) => f.id === currentFolderId) ?? null
     : null
+
+  // Declarative navigation: levels derived from state
+  useNavigationLevels([
+    {
+      id: 'todo',
+      label: 'Todo',
+      onNavigate: () => {
+        setCurrentFolderId(null)
+        setView('folders')
+        loadFolders()
+      },
+    },
+    currentFolder && {
+      id: `folder-${currentFolderId}`,
+      label: currentFolder.name,
+    },
+  ])
 
   // Todo storage - only loads when we have a folder selected
   const {
@@ -102,22 +104,15 @@ function TodoPlugin(_props: PluginProps) {
 
   // Navigation handlers
   const handleNavigateToFolder = (folderId: string) => {
-    const folder = folders.find((f) => f.id === folderId)
     setCurrentFolderId(folderId)
     setView('list')
-    setSelectedTagIds([]) // Reset tag filter when entering folder
-
-    // Push folder level to breadcrumb
-    if (folder) {
-      pushLevel({ id: `folder-${folderId}`, label: folder.name })
-    }
+    setSelectedTagIds([])
   }
 
   const handleNavigateToFolders = () => {
     setCurrentFolderId(null)
     setView('folders')
-    loadFolders() // Refresh folder data when returning
-    popLevel() // Pop folder level from breadcrumb
+    loadFolders()
   }
 
   const handleCreateFolder = async () => {
