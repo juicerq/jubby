@@ -39,6 +39,12 @@ pub enum RecorderError {
     EncodingTimeout(u64),
     #[error("Memory limit exceeded ({0} MB). Recording auto-stopped.")]
     MemoryLimitExceeded(u64),
+    #[error("XDG Desktop Portal is not available")]
+    PortalUnavailable,
+    #[error("User cancelled the capture selection")]
+    UserCancelled,
+    #[error("PipeWire error: {0}")]
+    PipeWireError(String),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

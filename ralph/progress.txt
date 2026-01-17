@@ -5,7 +5,7 @@
 ## Tasks
 
 - [x] Add PipeWire dependencies to Cargo.toml
-- [ ] Add new error variants to RecorderError
+- [x] Add new error variants to RecorderError
 - [ ] Create pipewire_capture module with portal integration
 - [ ] Implement PipeWire stream frame capture
 - [ ] Refactor recorder.rs to use pipewire_capture
@@ -27,3 +27,13 @@ Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
   - ashpd v0.10 has compatibility issues with zbus; use v0.11+ for proper zbus 5.x support
   - ashpd requires the `tokio` feature to work with Tauri's async runtime
   - libspa is required alongside pipewire for SPA buffer handling
+
+## 2026-01-17 - Add Error Variants for PipeWire
+
+- **What was implemented:** Added three new error variants to RecorderError for PipeWire capture
+- **Files changed:**
+  - `src-tauri/src/recorder.rs` - Added PortalUnavailable, UserCancelled, and PipeWireError variants
+- **Learnings for future iterations:**
+  - PortalUnavailable: for when XDG Desktop Portal is not running or unavailable
+  - UserCancelled: for graceful handling when user cancels screen/area selection (should not show error toast)
+  - PipeWireError(String): for generic PipeWire stream errors with context
