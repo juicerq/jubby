@@ -62,6 +62,15 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [editingTagsTodoId, setEditingTagsTodoId] = useState<string | null>(null)
 
+  // Clean up selectedTagIds when tags are deleted
+  useEffect(() => {
+    const validTagIds = new Set(tags.map(t => t.id))
+    setSelectedTagIds(prev => {
+      const filtered = prev.filter(id => validTagIds.has(id))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [tags])
+
   // Folder creation state
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -1459,7 +1468,6 @@ function TodoPluginCreateTagRow({ onCreateTag }: TodoPluginCreateTagRowProps) {
   const [name, setName] = useState('')
   const [selectedColor, setSelectedColor] = useState<string>(TAG_COLORS[0].hex)
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async () => {
     if (!name.trim()) return
@@ -1505,12 +1513,12 @@ function TodoPluginCreateTagRow({ onCreateTag }: TodoPluginCreateTagRowProps) {
       </div>
 
       <input
-        ref={inputRef}
         type="text"
         placeholder="New tag..."
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={handleKeyDown}
+        maxLength={20}
         className="h-8 flex-1 rounded-md border border-transparent bg-white/4 px-2.5 text-[13px] text-white/90 outline-none transition-all duration-150 ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6"
         autoComplete="off"
       />
@@ -1640,6 +1648,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               onKeyDown={handleKeyDown}
+              maxLength={20}
               className={cn(
                 'h-6 w-full rounded border bg-white/6 px-2 text-[12px] text-white/90 outline-none transition-all duration-150',
                 hasError

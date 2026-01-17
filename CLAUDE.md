@@ -207,6 +207,14 @@ export { MyComponent }
 
 ### Regras Concretas
 
+**Comentários**
+- Código deve ser auto-explicativo através de nomes claros de variáveis e funções
+- NUNCA usar comentários para explicar o que o código faz - se precisa explicar, refatore
+- Comentários apenas para:
+  - Explicar o **porquê** de algo não-óbvio (ex: workaround para bug, limitação de API)
+  - Documentar comportamentos importantes que seriam fáceis de esquecer
+  - TODOs com contexto relevante
+
 **Ícones**
 - Sempre usar `lucide-react`
 - SVGs customizados apenas quando explicitamente pedido pelo usuário
