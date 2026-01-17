@@ -12,12 +12,12 @@ Tasks:
 [ ] Implement global hotkey for recording toggle
 [ ] Implement recording overlay window
 [x] Build plugin UI - empty state and onboarding
-[ ] Build plugin UI - recordings grid
+[x] Build plugin UI - recordings grid
 [ ] Build plugin UI - settings screen
 [x] Implement recording metadata and persistence
 [ ] Polish and edge cases
 
-Current: Recording metadata and persistence complete
+Current: Recordings grid UI complete
 
 ---
 
@@ -380,3 +380,57 @@ interface Recording {
 
 ### Next Steps
 Ready for recordings grid UI (task 9) to display the persisted recordings.
+
+---
+
+## 2026-01-16 - Build plugin UI - recordings grid
+
+### What was implemented
+Created a professional recordings grid UI with video preview cards, hover-to-play functionality, and action buttons. The design follows a "media library" aesthetic consistent with video editing software.
+
+**Features:**
+- 2-column responsive grid layout for recording thumbnails
+- Hover-to-play video preview using native `<video>` element with autoplay
+- Duration badge overlay on each card (e.g., "0:15", "1:30")
+- Relative timestamp display ("Just now", "5m ago", "2h ago", "Jan 15")
+- Quality mode badge (light/high) on each card
+- Copy file path button with checkmark feedback and toast notification
+- Reveal in file manager button (uses `@tauri-apps/plugin-opener`)
+- Two-click delete pattern (first click shows confirmation, second deletes)
+- Compact record button in header bar showing recording state
+- Smooth animations using Motion library (fade, scale, layout transitions)
+
+**UI States:**
+1. Empty state - Shows onboarding with large record button
+2. Grid view - Shows recordings with header bar containing clip count and record button
+3. Recording state - Header shows elapsed time and stop button
+4. Encoding state - Header shows "Encoding..." with spinner
+
+### Files changed
+- `src/plugins/quickclip/QuickClipPlugin.tsx` - Major additions:
+  - `QuickClipRecordingsView` - Container for recordings UI
+  - `QuickClipRecordingsHeader` - Compact header with clip count and record button
+  - `QuickClipRecordingsGrid` - Animated grid container
+  - `QuickClipRecordingCard` - Individual recording card with video preview and actions
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- `convertFileSrc()` from `@tauri-apps/api/core` converts filesystem paths to URLs loadable by webview
+- `revealItemInDir()` from `@tauri-apps/plugin-opener` opens file manager and selects the file
+- Video autoplay works with `muted` attribute (browser autoplay policy)
+- Motion's `AnimatePresence mode="popLayout"` handles grid item removal smoothly
+
+**Gotchas encountered:**
+- `@tauri-apps/plugin-shell` not available, use `@tauri-apps/plugin-opener` instead
+- Video element needs `playsInline` attribute for mobile-like rendering
+- Need to catch and ignore play() promise rejection (can happen if element removed quickly)
+
+**Useful context:**
+- Recording cards use aspect-video (16:9) for consistent layout
+- Timestamp formatting uses relative time for recent recordings, absolute for older ones
+- Two-click delete state resets when mouse leaves the card (pendingDelete cleared)
+- Video preview loops while hovering and resets to start on mouse leave
+
+### Next Steps
+Ready for clipboard integration (task 5), global hotkey (task 6), or settings screen (task 10).

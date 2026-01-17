@@ -117,8 +117,8 @@
       "Secondary actions menu (open file, delete)"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Use frontend-design skill. Hover preview can use video tag with autoplay on mouseenter."
+    "passes": true,
+    "notes": "COMPLETE. Created 2-column grid with video preview cards. Features: hover-to-play video, duration badges, relative timestamps, copy path, reveal in file manager, two-click delete. Uses convertFileSrc() for video URLs, revealItemInDir() from plugin-opener."
   },
   {
     "category": "functional",
