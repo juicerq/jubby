@@ -3,10 +3,17 @@ import { Sparkles } from 'lucide-react'
 import { useEnhancer } from './useEnhancer'
 import { useTextHistory } from './useTextHistory'
 import { WaveAnimation } from './WaveAnimation'
-import { PluginHeader } from '@/core/components/PluginHeader'
+import { Breadcrumb } from '@/core/components/Breadcrumb'
+import { useNavigation } from '@/core/context/NavigationContext'
 import type { PluginProps } from '@/core/types'
 
-function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
+function PromptEnhancerPlugin(_props: PluginProps) {
+  const { pushLevel, resetToRoot } = useNavigation()
+
+  useEffect(() => {
+    pushLevel({ id: 'prompt-enhancer', label: 'Prompt Enhancer' })
+    return () => resetToRoot()
+  }, [pushLevel, resetToRoot])
   const { text, setText, handleKeyDown: historyKeyDown, pushState } = useTextHistory('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { enhance, result, isLoading, reset } = useEnhancer()
@@ -49,7 +56,7 @@ function PromptEnhancerPlugin({ onExitPlugin }: PluginProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <PluginHeader title="Prompt Enhancer" icon={Sparkles} onBack={onExitPlugin} />
+      <Breadcrumb />
 
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
         {isLoading ? (

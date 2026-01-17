@@ -46,7 +46,7 @@ function App() {
               <view.plugin.component onExitPlugin={goToGrid} />
             </PluginErrorBoundary>
           ) : view.type === 'settings' ? (
-            <Settings onBack={goToGrid} />
+            <Settings />
           ) : (
             <PluginGrid
               plugins={plugins}
