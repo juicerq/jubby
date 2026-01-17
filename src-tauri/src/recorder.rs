@@ -200,6 +200,9 @@ fn encode_frames_to_video(
 ) -> Result<f64, RecorderError> {
     let frame_pattern = session_dir.join("frame_%06d.png");
 
+    tracing::debug!(target: "quickclip", "[FFMPEG] Starting encode: preset={}, crf={}", quality.preset(), quality.crf());
+    let ffmpeg_encode_start = std::time::Instant::now();
+
     let output = Command::new("ffmpeg")
         .args([
             "-y",
@@ -224,6 +227,8 @@ fn encode_frames_to_video(
         .output()
         .map_err(|e| RecorderError::EncodingError(e.to_string()))?;
 
+    tracing::debug!(target: "quickclip", "[FFMPEG] Encode finished in {:.2}s", ffmpeg_encode_start.elapsed().as_secs_f64());
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         tracing::error!(target: "quickclip", "FFmpeg encoding failed: {}", stderr);
@@ -231,6 +236,9 @@ fn encode_frames_to_video(
     }
 
     // Get video duration using ffprobe
+    tracing::debug!(target: "quickclip", "[FFMPEG] Getting duration with ffprobe...");
+    let probe_start = std::time::Instant::now();
+
     let duration_output = Command::new("ffprobe")
         .args([
             "-v",
@@ -243,6 +251,8 @@ fn encode_frames_to_video(
         ])
         .output()
         .map_err(|e| RecorderError::EncodingError(format!("ffprobe failed: {}", e)))?;
+
+    tracing::debug!(target: "quickclip", "[FFMPEG] ffprobe finished in {:.2}s", probe_start.elapsed().as_secs_f64());
 
     let duration_str = String::from_utf8_lossy(&duration_output.stdout);
     let duration: f64 = duration_str.trim().parse().unwrap_or(0.0);
@@ -483,17 +493,47 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
     tracing::info!(target: "quickclip", "Starting encoding: {} frames, {}x{}, fps: {}", frame_count, width, height, actual_fps);
 
     let encode_task = tauri::async_runtime::spawn_blocking(move || {
-        // Write all frames to PNG files
+        let total_start = std::time::Instant::now();
+
+        // Phase 1: Write all frames to PNG files
+        tracing::info!(target: "quickclip", "[ENCODE] Phase 1: Writing {} frames to PNG files...", frames.len());
+        let png_start = std::time::Instant::now();
+
         for (i, frame_buffer) in frames.into_iter().enumerate() {
+            let frame_start = std::time::Instant::now();
             let frame_path = session_dir.join(format!("frame_{:06}.png", i));
+
             if let Some(img) = RgbaImage::from_raw(width, height, frame_buffer) {
                 img.save(&frame_path)
                     .map_err(|e| RecorderError::SaveError(e.to_string()))?;
             }
+
+            // Log every 30 frames (roughly 1 second of video at 30fps)
+            if (i + 1) % 30 == 0 || i == 0 {
+                tracing::debug!(target: "quickclip", "[ENCODE] Written frame {}/{} ({:.1}ms)",
+                    i + 1, frame_count, frame_start.elapsed().as_secs_f64() * 1000.0);
+            }
         }
 
-        // Encode frames to video
-        encode_frames_to_video(&session_dir, &video_path_clone, actual_fps, quality)
+        let png_elapsed = png_start.elapsed();
+        tracing::info!(target: "quickclip", "[ENCODE] Phase 1 complete: wrote {} PNGs in {:.2}s ({:.1}ms/frame avg)",
+            frame_count, png_elapsed.as_secs_f64(),
+            png_elapsed.as_secs_f64() * 1000.0 / frame_count as f64);
+
+        // Phase 2: Encode frames to video
+        tracing::info!(target: "quickclip", "[ENCODE] Phase 2: Running FFmpeg encoding...");
+        let ffmpeg_start = std::time::Instant::now();
+
+        let result = encode_frames_to_video(&session_dir, &video_path_clone, actual_fps, quality);
+
+        let ffmpeg_elapsed = ffmpeg_start.elapsed();
+        tracing::info!(target: "quickclip", "[ENCODE] Phase 2 complete: FFmpeg finished in {:.2}s", ffmpeg_elapsed.as_secs_f64());
+
+        let total_elapsed = total_start.elapsed();
+        tracing::info!(target: "quickclip", "[ENCODE] Total encoding time: {:.2}s (PNG: {:.2}s, FFmpeg: {:.2}s)",
+            total_elapsed.as_secs_f64(), png_elapsed.as_secs_f64(), ffmpeg_elapsed.as_secs_f64());
+
+        result
     });
 
     let duration = timeout(Duration::from_secs(ENCODING_TIMEOUT_SECS), encode_task)
@@ -506,8 +546,9 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
 
     tracing::info!(target: "quickclip", "Encoding completed, duration: {:.2}s, output: {:?}", duration, video_path);
 
-    // Generate thumbnail
-    tracing::debug!(target: "quickclip", "Generating thumbnail...");
+    // Phase 3: Generate thumbnail
+    tracing::info!(target: "quickclip", "[ENCODE] Phase 3: Generating thumbnail...");
+    let thumb_start = std::time::Instant::now();
     let video_path_for_thumb = video_path.clone();
     let thumbnail_path_clone = thumbnail_path.clone();
 
@@ -516,6 +557,8 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
     })
     .await
     .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
+
+    tracing::info!(target: "quickclip", "[ENCODE] Phase 3 complete: thumbnail generated in {:.2}s", thumb_start.elapsed().as_secs_f64());
 
     // Cleanup session directory
     cleanup_session_dir(&session.session_dir);
