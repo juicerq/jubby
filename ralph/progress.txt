@@ -11,13 +11,13 @@ Tasks:
 [ ] Implement clipboard integration for video
 [ ] Implement global hotkey for recording toggle
 [ ] Implement recording overlay window
-[ ] Build plugin UI - empty state and onboarding
+[x] Build plugin UI - empty state and onboarding
 [ ] Build plugin UI - recordings grid
 [ ] Build plugin UI - settings screen
 [ ] Implement recording metadata and persistence
 [ ] Polish and edge cases
 
-Current: Video encoding and storage complete
+Current: Empty state and onboarding UI complete
 
 ---
 
@@ -269,3 +269,53 @@ Created the Rust recorder module providing continuous frame capture and FFmpeg-b
 
 ### Next Steps
 Ready for clipboard integration (task 5) or global hotkey (task 6).
+
+---
+
+## 2026-01-16 - Build plugin UI - empty state and onboarding
+
+### What was implemented
+Created a fully functional onboarding UI for QuickClip with a distinctive "broadcast studio" aesthetic featuring a large circular record button with animated states.
+
+**Features:**
+- Large circular record button with animated pulse effect when recording
+- Real-time elapsed time display during recording (MM:SS format)
+- Capture mode selector (currently fullscreen only, ready for window/region)
+- Multi-monitor selector when more than one display is connected
+- Hotkey hint displaying Ctrl+Shift+R shortcut with styled kbd elements
+- FFmpeg availability check with helpful installation instructions if missing
+- Loading states for preparation and encoding phases
+- Smooth Motion animations for state transitions
+
+**UI States:**
+1. Loading - while checking FFmpeg availability
+2. FFmpeg Warning - helpful installation guide with package manager command
+3. Idle - record button with mode selector and hotkey hint
+4. Preparing - spinner in button while initializing capture
+5. Recording - pulsing button with live timer and stop icon
+6. Encoding - "Encoding video..." message with spinner
+
+### Files changed
+- `src/plugins/quickclip/useQuickClip.ts` - New hook for recorder IPC commands (start/stop, status polling, FFmpeg check, source discovery)
+- `src/plugins/quickclip/QuickClipPlugin.tsx` - Complete rewrite with new onboarding UI components
+
+### Learnings for future iterations
+
+**Patterns discovered:**
+- Use `invoke` from `@tauri-apps/api/core` for IPC commands
+- Poll status with `setInterval` during recording for live updates
+- Use `motion/react` for smooth state transitions and animations
+- Tailwind `tabular-nums` class for fixed-width number displays in timers
+
+**Gotchas encountered:**
+- Monitor `isPrimary` field uses camelCase in frontend due to Rust serde config
+- Must check FFmpeg availability on mount before showing recording UI
+- AnimatePresence requires `mode="wait"` for sequential exit/enter animations
+
+**Useful context:**
+- The record button uses a circular design (h-24 w-24) matching broadcast studio aesthetic
+- Red color (#ef4444 / red-500) is consistently used for recording-related elements
+- Hotkey hint uses styled kbd elements matching existing codebase patterns
+
+### Next Steps
+Ready for recordings grid UI (task 9) to display captured videos, or global hotkey implementation (task 6).
