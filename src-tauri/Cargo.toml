@@ -29,3 +29,8 @@ global-hotkey = "0.7"
 xcap = "0.0.14"
 image = "0.25"
 clipboard-rs = "0.2"
+
+# PipeWire screen capture (for Wayland)
+ashpd = { version = "0.11", features = ["tokio"] }
+pipewire = "0.8"
+libspa = "0.8"

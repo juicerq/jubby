@@ -1,164 +1,92 @@
 [
   {
-    "category": "research",
-    "description": "Research screen capture and video encoding on Linux/Tauri",
+    "category": "functional",
+    "description": "Add PipeWire dependencies to Cargo.toml",
     "steps": [
-      "Investigate screen capture libraries for Rust (scrap, xcap, pipewire)",
-      "Research ffmpeg integration options (CLI vs bindings)",
-      "Test clipboard video support on Linux (wl-copy, xclip)",
-      "Validate overlay window exclusion from capture"
+      "Add ashpd crate with pipewire feature",
+      "Add pipewire crate",
+      "Run cargo check to verify dependencies resolve"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Check ashpd docs for correct version and feature flags."
+  },
+  {
+    "category": "functional",
+    "description": "Add new error variants to RecorderError",
+    "steps": [
+      "Add PortalUnavailable variant",
+      "Add UserCancelled variant",
+      "Add PipeWireError variant"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Keep existing error variants, just add new ones."
+  },
+  {
+    "category": "functional",
+    "description": "Create pipewire_capture module with portal integration",
+    "steps": [
+      "Create src-tauri/src/pipewire_capture.rs",
+      "Implement portal session creation with ashpd",
+      "Implement source selection (monitor vs area mode)",
+      "Add comprehensive logging at each step"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use tracing with target 'quickclip' and [CAPTURE] prefix for logs."
+  },
+  {
+    "category": "functional",
+    "description": "Implement PipeWire stream frame capture",
+    "steps": [
+      "Connect to PipeWire using fd from portal",
+      "Set up stream with frame callback",
+      "Convert frames to RGBA format",
+      "Store frames in Vec<Vec<u8>> buffer",
+      "Log frame timing for debugging"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Handle DMA-BUF and SHM buffer types. Log every 30th frame to avoid spam."
+  },
+  {
+    "category": "functional",
+    "description": "Refactor recorder.rs to use pipewire_capture",
+    "steps": [
+      "Remove xcap import and usage",
+      "Update start_recording_internal to use pipewire_capture",
+      "Update stop_recording_internal to get frames from pipewire_capture",
+      "Keep FFmpeg encoding unchanged"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "RecordingSession struct may need updates. Keep existing encode flow."
+  },
+  {
+    "category": "functional",
+    "description": "Update frontend with capture mode buttons",
+    "steps": [
+      "Replace single record button with Fullscreen/Area options",
+      "Pass captureMode to recorder_start command",
+      "Handle UserCancelled gracefully (no error toast)"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Use frontend-design skill if UI changes are significant."
+  },
+  {
+    "category": "test",
+    "description": "Manual verification of PipeWire capture",
+    "steps": [
+      "Run bun tauri dev",
+      "Test Fullscreen capture - verify 60fps in logs",
+      "Test Area capture - verify region selection works",
+      "Check output video plays smoothly",
+      "Verify all log points appear correctly"
     ],
     "shouldCommit": false,
-    "passes": true,
-    "notes": "COMPLETE. Recommended: xcap for capture, ffmpeg-sidecar for encoding. Clipboard video paste to Discord not supported on Linux - use drag-drop workflow. Overlay content protection is compositor-dependent."
-  },
-  {
-    "category": "functional",
-    "description": "Create QuickClip plugin scaffold and manifest",
-    "steps": [
-      "Create plugins/quickclip/ folder structure",
-      "Create index.tsx with PluginManifest",
-      "Create QuickClipPlugin.tsx with basic component",
-      "Register plugin in registry.ts",
-      "Define types.ts with Recording, Settings interfaces"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Followed existing plugin patterns. Scaffold includes manifest with capabilities, basic empty state UI, and typed interfaces for Recording/Settings."
-  },
-  {
-    "category": "functional",
-    "description": "Implement Rust backend for screen capture",
-    "steps": [
-      "Add screen capture dependencies to Cargo.toml",
-      "Create capture.rs module with capture logic",
-      "Implement region/window/fullscreen selection",
-      "Create IPC commands: start_capture, stop_capture, get_sources"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Used xcap for capture, thiserror for error handling. IPC commands: capture_get_sources, capture_monitor, capture_window, capture_primary. Frames saved to ~/.local/share/jubby/quickclip/frames/"
-  },
-  {
-    "category": "functional",
-    "description": "Implement video encoding and storage",
-    "steps": [
-      "Integrate ffmpeg for video encoding",
-      "Implement quality profiles (light/high)",
-      "Implement audio capture (system/mic/both/none)",
-      "Save videos to ~/.local/share/jubby/quickclip/videos/",
-      "Generate thumbnails for recordings"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Used FFmpeg CLI for encoding PNG sequences to H.264 MP4. Quality profiles: light (CRF 28) and high (CRF 18). Audio capture deferred to future iteration. Videos saved to videos/, thumbnails to thumbnails/. 5-minute encoding timeout implemented."
-  },
-  {
-    "category": "functional",
-    "description": "Implement clipboard integration for video",
-    "steps": [
-      "Research Linux clipboard video support (Wayland/X11)",
-      "Implement copy_video_to_clipboard IPC command",
-      "Auto-copy to clipboard when recording stops",
-      "Test with Discord paste"
-    ],
-    "shouldCommit": true,
     "passes": false,
-    "notes": "May need different implementations for Wayland vs X11. wl-copy supports file:// URIs."
-  },
-  {
-    "category": "functional",
-    "description": "Implement global hotkey for recording toggle",
-    "steps": [
-      "Use Tauri global shortcut API",
-      "Register configurable hotkey (default: Ctrl+Shift+R)",
-      "Toggle recording on/off with same hotkey",
-      "Persist hotkey preference in settings"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Check for conflicts with existing system shortcuts."
-  },
-  {
-    "category": "functional",
-    "description": "Implement recording overlay window",
-    "steps": [
-      "Create separate Tauri window for overlay",
-      "Style as small red pulsing circle (~32px)",
-      "Position in top-right corner, always on top",
-      "Set content protection to exclude from capture",
-      "Show on recording start, hide on stop"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Test content protection on both Wayland and X11. Implement fallback positioning if exclusion fails."
-  },
-  {
-    "category": "functional",
-    "description": "Build plugin UI - empty state and onboarding",
-    "steps": [
-      "Create empty state with onboarding message",
-      "Add large 'Start Recording' button",
-      "Show configured hotkey hint",
-      "Implement first-time capture mode selector"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Created broadcast studio aesthetic with large circular record button, animated states, FFmpeg check, monitor selector, and hotkey hint. Uses useQuickClip hook for IPC."
-  },
-  {
-    "category": "functional",
-    "description": "Build plugin UI - recordings grid",
-    "steps": [
-      "Create grid layout for thumbnails (2x3 or 3x3)",
-      "Display thumbnail with duration badge",
-      "Implement hover preview (animated)",
-      "Click to copy to clipboard with feedback",
-      "Secondary actions menu (open file, delete)"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Created 2-column grid with video preview cards. Features: hover-to-play video, duration badges, relative timestamps, copy path, reveal in file manager, two-click delete. Uses convertFileSrc() for video URLs, revealItemInDir() from plugin-opener."
-  },
-  {
-    "category": "functional",
-    "description": "Build plugin UI - settings screen",
-    "steps": [
-      "Create settings view with navigation",
-      "Capture mode selector (Fullscreen/Window/Region)",
-      "Audio toggles (System Audio, Microphone)",
-      "Quality toggle (Light/High)",
-      "Hotkey configuration input"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Use frontend-design skill. Settings should persist via usePluginStorage."
-  },
-  {
-    "category": "functional",
-    "description": "Implement recording metadata and persistence",
-    "steps": [
-      "Define Recording interface (id, path, thumbnail, duration, timestamp, settings)",
-      "Save metadata to quickclip.json via usePluginStorage",
-      "Load and display recordings on plugin open",
-      "Implement delete recording (file + metadata)"
-    ],
-    "shouldCommit": true,
-    "passes": true,
-    "notes": "COMPLETE. Used JSON file storage at ~/.local/share/jubby/quickclip/quickclip.json. Created useQuickClipStorage hook with IPC commands. Recordings auto-saved after encoding with full cleanup on delete."
-  },
-  {
-    "category": "polish",
-    "description": "Polish and edge cases",
-    "steps": [
-      "Handle recording errors gracefully",
-      "Add loading states during encoding",
-      "Implement disk space warning",
-      "Test with long recordings",
-      "Test all capture modes thoroughly"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Focus on reliability over features. Users should trust the tool to work every time."
+    "notes": "Compare frame timing logs with xcap version (~3fps vs ~60fps)."
   }
 ]
