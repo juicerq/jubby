@@ -1,4 +1,5 @@
 mod capture;
+mod clipboard;
 mod enhancer;
 mod logging;
 mod recorder;
@@ -77,6 +78,7 @@ pub fn run() {
             recorder::quickclip_delete_recording,
             recorder::read_video_file,
             logging::log_from_frontend,
+            clipboard::copy_file_to_clipboard,
         ])
         .setup(move |app| {
             // Initialize logging first (before any other initialization)

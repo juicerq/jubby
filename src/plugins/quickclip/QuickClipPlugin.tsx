@@ -704,15 +704,16 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
     // Keep videoSrc so replay doesn't need to reload
   }
 
-  const handleCopyPath = async (e: React.MouseEvent) => {
+  const handleCopyFile = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await navigator.clipboard.writeText(recording.videoPath)
+      await invoke('copy_file_to_clipboard', { path: recording.videoPath })
       setIsCopied(true)
-      toast.success('Path copied to clipboard')
+      toast.success('Video copied to clipboard')
       setTimeout(() => setIsCopied(false), 2000)
-    } catch {
-      toast.error('Failed to copy path')
+    } catch (error) {
+      log.error('Failed to copy video to clipboard', { error: String(error) })
+      toast.error('Failed to copy video')
     }
   }
 
@@ -834,7 +835,7 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
               className="absolute right-1.5 top-1.5 flex items-center gap-1"
             >
               <button
-                onClick={handleCopyPath}
+                onClick={handleCopyFile}
                 className={cn(
                   'flex h-6 w-6 items-center justify-center rounded',
                   'bg-black/60 backdrop-blur-sm',
@@ -842,7 +843,7 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
                   'hover:bg-black/80 hover:text-white',
                   isCopied && 'bg-green-500/60 text-white'
                 )}
-                title="Copy file path"
+                title="Copy video"
               >
                 {isCopied ? (
                   <Check className="h-3 w-3" />
