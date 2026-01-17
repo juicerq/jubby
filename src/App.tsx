@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { LauncherShell } from '@/core/components/LauncherShell'
 import { useDragWindow } from '@/core/hooks/useDragWindow'
 import { PluginGrid } from '@/core/components/PluginGrid'
@@ -6,6 +6,7 @@ import { ViewTransition } from '@/core/components/ViewTransition'
 import { PluginErrorBoundary } from '@/core/components/PluginErrorBoundary'
 import { Settings } from '@/core/components/Settings/Settings'
 import { Toaster } from '@/components/ui/sonner'
+import { NavigationProvider } from '@/core/context/NavigationContext'
 import type { PluginManifest } from '@/core/types'
 import { plugins } from '@/plugins/registry'
 
@@ -19,9 +20,14 @@ function App() {
 
   useDragWindow()
 
-  const goToGrid = () => setView({ type: 'grid' })
-  const goToPlugin = (plugin: PluginManifest) => setView({ type: 'plugin', plugin })
-  const goToSettings = () => setView({ type: 'settings' })
+  const goToGrid = useCallback(() => setView({ type: 'grid' }), [])
+  const goToPlugin = useCallback((plugin: PluginManifest) => setView({ type: 'plugin', plugin }), [])
+  const goToSettings = useCallback(() => setView({ type: 'settings' }), [])
+
+  const rootLevel = useMemo(
+    () => ({ id: 'home', label: 'Jubby', onClick: goToGrid }),
+    [goToGrid]
+  )
 
   // View key changes when switching between views
   const viewKey =
@@ -32,24 +38,26 @@ function App() {
         : 'grid'
 
   return (
-    <LauncherShell>
-      <ViewTransition viewKey={viewKey}>
-        {view.type === 'plugin' ? (
-          <PluginErrorBoundary pluginName={view.plugin.name} onError={goToGrid}>
-            <view.plugin.component onExitPlugin={goToGrid} />
-          </PluginErrorBoundary>
-        ) : view.type === 'settings' ? (
-          <Settings onBack={goToGrid} />
-        ) : (
-          <PluginGrid
-            plugins={plugins}
-            onPluginClick={goToPlugin}
-            onSettingsClick={goToSettings}
-          />
-        )}
-      </ViewTransition>
-      <Toaster />
-    </LauncherShell>
+    <NavigationProvider rootLevel={rootLevel}>
+      <LauncherShell>
+        <ViewTransition viewKey={viewKey}>
+          {view.type === 'plugin' ? (
+            <PluginErrorBoundary pluginName={view.plugin.name} onError={goToGrid}>
+              <view.plugin.component onExitPlugin={goToGrid} />
+            </PluginErrorBoundary>
+          ) : view.type === 'settings' ? (
+            <Settings onBack={goToGrid} />
+          ) : (
+            <PluginGrid
+              plugins={plugins}
+              onPluginClick={goToPlugin}
+              onSettingsClick={goToSettings}
+            />
+          )}
+        </ViewTransition>
+        <Toaster />
+      </LauncherShell>
+    </NavigationProvider>
   )
 }
 
