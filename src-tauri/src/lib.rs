@@ -2,6 +2,7 @@ mod capture;
 mod clipboard;
 mod enhancer;
 mod logging;
+mod pipewire_capture;
 mod recorder;
 mod settings;
 mod storage;

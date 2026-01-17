@@ -6,7 +6,7 @@
 
 - [x] Add PipeWire dependencies to Cargo.toml
 - [x] Add new error variants to RecorderError
-- [ ] Create pipewire_capture module with portal integration
+- [x] Create pipewire_capture module with portal integration
 - [ ] Implement PipeWire stream frame capture
 - [ ] Refactor recorder.rs to use pipewire_capture
 - [ ] Update frontend with capture mode buttons
@@ -37,3 +37,26 @@ Target: Replace xcap (~3fps) with PipeWire (~60fps) on Wayland.
   - PortalUnavailable: for when XDG Desktop Portal is not running or unavailable
   - UserCancelled: for graceful handling when user cancels screen/area selection (should not show error toast)
   - PipeWireError(String): for generic PipeWire stream errors with context
+
+## 2026-01-17 - Create pipewire_capture Module
+
+- **What was implemented:** Created pipewire_capture.rs module with XDG Desktop Portal integration via ashpd
+- **Files changed:**
+  - `src-tauri/src/pipewire_capture.rs` - New module with ScreencastSession struct and portal integration
+  - `src-tauri/src/lib.rs` - Added `mod pipewire_capture` declaration
+- **Key features:**
+  - `CaptureSource` enum with Fullscreen and Area variants
+  - `ScreencastSession::new()` async method that:
+    - Creates Screencast proxy via ashpd
+    - Creates portal session
+    - Selects sources (Monitor type, with cursor embedded)
+    - Starts session and retrieves stream info
+    - Opens PipeWire remote and returns file descriptor
+  - Returns `pipewire_fd`, `node_id`, and optional `size` for PipeWire stream connection
+  - Comprehensive logging at each step with `[CAPTURE]` prefix
+  - Proper error handling mapping to RecorderError variants
+- **Learnings for future iterations:**
+  - `PersistMode` is in `ashpd::desktop`, not `ashpd::desktop::screencast`
+  - `SourceType` must be converted to `BitFlags` using `.into()` when passed to `select_sources()`
+  - Session lifetime requires unsafe transmute to 'static for storage in struct
+  - Portal handles area selection UI - we just pass `multiple=true` for Area mode
