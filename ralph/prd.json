@@ -1,92 +1,79 @@
 [
   {
     "category": "functional",
-    "description": "Add PipeWire dependencies to Cargo.toml",
+    "description": "Create settings view component with navigation",
     "steps": [
-      "Add ashpd crate with pipewire feature",
-      "Add pipewire crate",
-      "Run cargo check to verify dependencies resolve"
+      "Create QuickClipSettings.tsx component",
+      "Add gear icon button to QuickClip header",
+      "Implement breadcrumb navigation (Jubby / QuickClips / Settings)",
+      "Wire up navigation state to toggle between recording list and settings"
     ],
     "shouldCommit": true,
     "passes": true,
-    "notes": "Check ashpd docs for correct version and feature flags."
+    "notes": "Use frontend-design skill. Follow existing global settings navigation pattern. Reuse SettingsSection and SettingsRow components."
   },
   {
     "category": "functional",
-    "description": "Add new error variants to RecorderError",
+    "description": "Implement Capture section (Screen + Audio settings)",
     "steps": [
-      "Add PortalUnavailable variant",
-      "Add UserCancelled variant",
-      "Add PipeWireError variant"
+      "Add Screen setting with segmented toggle (Fullscreen | Area)",
+      "Add Audio setting with two checkboxes (System audio, Microphone)",
+      "Wire controls to settings state",
+      "Persist changes via usePluginStorage"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Keep existing error variants, just add new ones."
+    "passes": true,
+    "notes": "Use frontend-design skill. Checkboxes are independent - both unchecked = no audio, both checked = both sources."
   },
   {
     "category": "functional",
-    "description": "Create pipewire_capture module with portal integration",
+    "description": "Implement Encoding section (Quality + Resolution settings)",
     "steps": [
-      "Create src-tauri/src/pipewire_capture.rs",
-      "Implement portal session creation with ashpd",
-      "Implement source selection (monitor vs area mode)",
-      "Add comprehensive logging at each step"
+      "Add Quality setting with segmented toggle (Light | High)",
+      "Add Resolution setting with segmented toggle (Native | 720p | 480p)",
+      "Wire controls to settings state",
+      "Decouple resolution from quality mode in recording logic"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Use tracing with target 'quickclip' and [CAPTURE] prefix for logs."
+    "passes": true,
+    "notes": "Use frontend-design skill. Resolution is now independent from quality - user can pick any combination."
   },
   {
     "category": "functional",
-    "description": "Implement PipeWire stream frame capture",
+    "description": "Implement Shortcuts section with hotkey recorder",
     "steps": [
-      "Connect to PipeWire using fd from portal",
-      "Set up stream with frame callback",
-      "Convert frames to RGBA format",
-      "Store frames in Vec<Vec<u8>> buffer",
-      "Log frame timing for debugging"
+      "Extract/reuse hotkey recorder component from global settings",
+      "Add Record hotkey setting to Shortcuts section",
+      "Wire hotkey changes to global shortcut registration",
+      "Handle hotkey conflicts with existing shortcuts"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Handle DMA-BUF and SHM buffer types. Log every 30th frame to avoid spam."
+    "passes": true,
+    "notes": "DRY: Reuse existing hotkey recorder from global settings. May need to extract to shared component if not already."
   },
   {
     "category": "functional",
-    "description": "Refactor recorder.rs to use pipewire_capture",
+    "description": "Connect settings to recording flow",
     "steps": [
-      "Remove xcap import and usage",
-      "Update start_recording_internal to use pipewire_capture",
-      "Update stop_recording_internal to get frames from pipewire_capture",
-      "Keep FFmpeg encoding unchanged"
+      "Update useQuickClip hook to read settings from storage",
+      "Pass capture mode, audio mode, quality, and resolution to recorder_start",
+      "Update Rust backend to accept resolution_scale parameter independently",
+      "Disable settings gear icon while recording is in progress"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "RecordingSession struct may need updates. Keep existing encode flow."
+    "passes": true,
+    "notes": "Ensure settings are read at recording start time, not cached. Check pipewire_capture.rs and recorder.rs for backend changes."
   },
   {
     "category": "functional",
-    "description": "Update frontend with capture mode buttons",
+    "description": "Set up default values and storage initialization",
     "steps": [
-      "Replace single record button with Fullscreen/Area options",
-      "Pass captureMode to recorder_start command",
-      "Handle UserCancelled gracefully (no error toast)"
+      "Define default settings: Fullscreen, no audio, Light, 720p, Ctrl+Shift+R",
+      "Initialize settings on first plugin load if not present",
+      "Migrate existing recordings to work with new settings structure"
     ],
     "shouldCommit": true,
-    "passes": false,
-    "notes": "Use frontend-design skill if UI changes are significant."
-  },
-  {
-    "category": "test",
-    "description": "Manual verification of PipeWire capture",
-    "steps": [
-      "Run bun tauri dev",
-      "Test Fullscreen capture - verify 60fps in logs",
-      "Test Area capture - verify region selection works",
-      "Check output video plays smoothly",
-      "Verify all log points appear correctly"
-    ],
-    "shouldCommit": false,
-    "passes": false,
-    "notes": "Compare frame timing logs with xcap version (~3fps vs ~60fps)."
+    "passes": true,
+    "notes": "Ensure backwards compatibility with existing quickclip.json data."
   }
 ]

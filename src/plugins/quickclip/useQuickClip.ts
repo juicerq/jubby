@@ -59,7 +59,7 @@ interface UseQuickClipReturn {
   recordings: Recording[]
   isLoadingRecordings: boolean
 
-  startRecording: (quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode) => Promise<void>
+  startRecording: (quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode, resolution?: ResolutionScale) => Promise<void>
   stopRecording: () => Promise<Recording | null>
   deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
@@ -118,11 +118,10 @@ export function useQuickClip(): UseQuickClipReturn {
   const startRecording = useCallback(async (
     quality: QualityMode = 'light',
     captureMode: CaptureMode = 'fullscreen',
-    audioMode: AudioMode = 'none'
+    audioMode: AudioMode = 'none',
+    resolution: ResolutionScale = 'p720'
   ) => {
-    // Determine resolution scale based on quality mode
-    const resolutionScale: ResolutionScale = quality === 'light' ? 'p720' : 'native'
-    log.info('Starting recording', { quality, captureMode, audioMode, resolutionScale })
+    log.info('Starting recording', { quality, captureMode, audioMode, resolution })
     setIsPreparing(true)
 
     try {
@@ -132,7 +131,7 @@ export function useQuickClip(): UseQuickClipReturn {
       await invoke('recorder_start', {
         quality,
         captureMode,
-        resolutionScale,
+        resolutionScale: resolution,
       })
 
       setIsRecording(true)

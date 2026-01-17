@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils'
 import type { CaptureMode, QualityMode, ResolutionScale } from './types'
 
 interface QuickClipSettingsProps {
-  captureMode: CaptureMode | 'area'
-  onCaptureModeChange: (mode: CaptureMode | 'area') => void
+  captureMode: CaptureMode
+  onCaptureModeChange: (mode: CaptureMode) => void
   systemAudio: boolean
   onSystemAudioChange: (enabled: boolean) => void
   microphone: boolean

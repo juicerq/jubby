@@ -117,6 +117,8 @@ pub fn run() {
             recorder::quickclip_get_recordings,
             recorder::quickclip_save_recording,
             recorder::quickclip_delete_recording,
+            recorder::quickclip_get_settings,
+            recorder::quickclip_update_settings,
             recorder::read_video_file,
             logging::log_from_frontend,
             clipboard::copy_file_to_clipboard,

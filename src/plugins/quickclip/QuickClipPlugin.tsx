@@ -5,8 +5,9 @@ import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 import { useQuickClip } from './useQuickClip'
+import { useQuickClipSettings } from './useQuickClipSettings'
 import { QuickClipSettings } from './QuickClipSettings'
-import { DEFAULT_SETTINGS, type Recording, type CaptureMode, type QualityMode, type ResolutionScale } from './types'
+import { type Recording } from './types'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -19,13 +20,7 @@ type ViewState = 'recordings' | 'settings'
 function QuickClipPlugin(_props: PluginProps) {
   const [view, setView] = useState<ViewState>('recordings')
 
-  // Settings state (will be persisted via usePluginStorage later)
-  const [captureMode, setCaptureMode] = useState<CaptureMode>(DEFAULT_SETTINGS.captureMode)
-  const [systemAudio, setSystemAudio] = useState(DEFAULT_SETTINGS.audioMode === 'system' || DEFAULT_SETTINGS.audioMode === 'both')
-  const [microphone, setMicrophone] = useState(DEFAULT_SETTINGS.audioMode === 'microphone' || DEFAULT_SETTINGS.audioMode === 'both')
-  const [qualityMode, setQualityMode] = useState<QualityMode>(DEFAULT_SETTINGS.qualityMode)
-  const [resolution, setResolution] = useState<ResolutionScale>(DEFAULT_SETTINGS.resolution)
-  const [hotkey, setHotkey] = useState(DEFAULT_SETTINGS.hotkey)
+  const { settings, isLoading: isLoadingSettings, updateSettings } = useQuickClipSettings()
 
   // Only register navigation levels when on recordings view
   // Settings view manages its own navigation
@@ -50,7 +45,15 @@ function QuickClipPlugin(_props: PluginProps) {
     if (isRecording) {
       await stopRecording()
     } else {
-      await startRecording(DEFAULT_SETTINGS.qualityMode, 'fullscreen')
+      // Derive audioMode from checkbox states
+      const audioMode = settings.systemAudio && settings.microphone
+        ? 'both'
+        : settings.systemAudio
+          ? 'system'
+          : settings.microphone
+            ? 'microphone'
+            : 'none'
+      await startRecording(settings.qualityMode, settings.captureMode, audioMode, settings.resolution)
     }
   }
 
@@ -60,18 +63,18 @@ function QuickClipPlugin(_props: PluginProps) {
   if (view === 'settings') {
     return (
       <QuickClipSettings
-        captureMode={captureMode}
-        onCaptureModeChange={setCaptureMode}
-        systemAudio={systemAudio}
-        onSystemAudioChange={setSystemAudio}
-        microphone={microphone}
-        onMicrophoneChange={setMicrophone}
-        qualityMode={qualityMode}
-        onQualityModeChange={setQualityMode}
-        resolution={resolution}
-        onResolutionChange={setResolution}
-        hotkey={hotkey}
-        onHotkeyChange={setHotkey}
+        captureMode={settings.captureMode}
+        onCaptureModeChange={(mode) => updateSettings({ captureMode: mode })}
+        systemAudio={settings.systemAudio}
+        onSystemAudioChange={(enabled) => updateSettings({ systemAudio: enabled })}
+        microphone={settings.microphone}
+        onMicrophoneChange={(enabled) => updateSettings({ microphone: enabled })}
+        qualityMode={settings.qualityMode}
+        onQualityModeChange={(mode) => updateSettings({ qualityMode: mode })}
+        resolution={settings.resolution}
+        onResolutionChange={(res) => updateSettings({ resolution: res })}
+        hotkey={settings.hotkey}
+        onHotkeyChange={(key) => updateSettings({ hotkey: key })}
         onNavigateBack={() => setView('recordings')}
       />
     )
@@ -87,8 +90,8 @@ function QuickClipPlugin(_props: PluginProps) {
     )
   }
 
-  // Loading state while checking FFmpeg
-  if (ffmpegAvailable === null || isLoadingRecordings) {
+  // Loading state while checking FFmpeg or settings
+  if (ffmpegAvailable === null || isLoadingRecordings || isLoadingSettings) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <Breadcrumb />
@@ -135,7 +138,7 @@ function QuickClipPlugin(_props: PluginProps) {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.2 }}
               >
-                <QuickClipHotkeyHint hotkey={hotkey} />
+                <QuickClipHotkeyHint hotkey={settings.hotkey} />
               </motion.div>
             )}
           </AnimatePresence>

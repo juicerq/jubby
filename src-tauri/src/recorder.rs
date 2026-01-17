@@ -41,9 +41,10 @@ pub enum RecorderError {
     PipeWireError(String),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum QualityMode {
+    #[default]
     Light,
     High,
 }
@@ -831,10 +832,73 @@ pub struct Recording {
     pub settings: RecordingSettings,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PersistedCaptureMode {
+    Fullscreen,
+    Area,
+}
+
+impl Default for PersistedCaptureMode {
+    fn default() -> Self {
+        Self::Fullscreen
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PersistedResolution {
+    Native,
+    P720,
+    P480,
+}
+
+impl Default for PersistedResolution {
+    fn default() -> Self {
+        Self::P720
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickClipUserSettings {
+    #[serde(default)]
+    pub capture_mode: PersistedCaptureMode,
+    #[serde(default)]
+    pub system_audio: bool,
+    #[serde(default)]
+    pub microphone: bool,
+    #[serde(default)]
+    pub quality_mode: QualityMode,
+    #[serde(default)]
+    pub resolution: PersistedResolution,
+    #[serde(default = "default_hotkey")]
+    pub hotkey: String,
+}
+
+fn default_hotkey() -> String {
+    "Ctrl+Shift+R".to_string()
+}
+
+impl Default for QuickClipUserSettings {
+    fn default() -> Self {
+        Self {
+            capture_mode: PersistedCaptureMode::Fullscreen,
+            system_audio: false,
+            microphone: false,
+            quality_mode: QualityMode::Light,
+            resolution: PersistedResolution::P720,
+            hotkey: default_hotkey(),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickClipData {
     pub recordings: Vec<Recording>,
+    #[serde(default)]
+    pub settings: QuickClipUserSettings,
 }
 
 fn get_quickclip_data_path() -> Result<PathBuf, RecorderError> {
@@ -949,5 +1013,19 @@ pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
 
     save_quickclip_data(&data).map_err(|e| e.to_string())?;
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn quickclip_get_settings() -> Result<QuickClipUserSettings, String> {
+    let data = load_quickclip_data().map_err(|e| e.to_string())?;
+    Ok(data.settings)
+}
+
+#[tauri::command]
+pub fn quickclip_update_settings(settings: QuickClipUserSettings) -> Result<(), String> {
+    let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
+    data.settings = settings;
+    save_quickclip_data(&data).map_err(|e| e.to_string())?;
     Ok(())
 }
