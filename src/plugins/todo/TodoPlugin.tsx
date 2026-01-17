@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical } from 'lucide-react'
+import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical, Trash2 } from 'lucide-react'
 import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
 import { PluginHeader } from '@/core/components/PluginHeader'
@@ -18,7 +18,7 @@ const TAG_COLORS = [
   { name: 'Gray', hex: '#6b7280', contrastText: 'white' },
 ] as const
 
-type TodoView = 'folders' | 'list' | 'tags'
+type TodoView = 'folders' | 'list'
 
 function TodoPlugin({ onExitPlugin }: PluginProps) {
   // Folder management
@@ -62,6 +62,15 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [editingTagsTodoId, setEditingTagsTodoId] = useState<string | null>(null)
 
+  // Clean up selectedTagIds when tags are deleted
+  useEffect(() => {
+    const validTagIds = new Set(tags.map(t => t.id))
+    setSelectedTagIds(prev => {
+      const filtered = prev.filter(id => validTagIds.has(id))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [tags])
+
   // Folder creation state
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -71,6 +80,9 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   const [isRenamingFolder, setIsRenamingFolder] = useState(false)
   const [renameFolderValue, setRenameFolderValue] = useState('')
   const [isDeletingFolder, setIsDeletingFolder] = useState(false)
+
+  // Manage tags modal state
+  const [isManageTagsOpen, setIsManageTagsOpen] = useState(false)
 
   // Navigation handlers
   const handleNavigateToFolder = (folderId: string) => {
@@ -186,30 +198,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
         selectedTagIds.every((tagId) => todo.tagIds?.includes(tagId))
       )
 
-  const handleCreateTag = async (name: string, color: string) => {
-    const trimmedName = name.trim()
-    if (!trimmedName) return false
-    return await createTag(trimmedName, color)
-  }
-
-  const handleEditTag = async (id: string, name: string, color: string): Promise<boolean | string> => {
-    const trimmedName = name.trim()
-    if (!trimmedName) return 'Name cannot be empty'
-
-    const isDuplicate = tags.some(
-      (t) => t.name.toLowerCase() === trimmedName.toLowerCase() && t.id !== id
-    )
-    if (isDuplicate) return 'Tag name already exists'
-
-    const success = await updateTag(id, trimmedName, color)
-    return success ? true : 'Failed to update tag'
-  }
-
-  const handleDeleteTag = (id: string) => {
-    setSelectedTagIds((prev) => prev.filter((tagId) => tagId !== id))
-    deleteTag(id)
-  }
-
   const handleToggleTagOnTodo = (todoId: string, tagId: string) => {
     const todo = todos.find((t) => t.id === todoId)
     if (!todo) return
@@ -221,13 +209,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
     setTodoTags(todoId, newTagIds)
   }
-
-  // Build the header right content for tags view (tag count badge)
-  const tagCountBadge = view === 'tags' && tags.length > 0 ? (
-    <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] font-medium text-white/50">
-      {tags.length}
-    </span>
-  ) : undefined
 
   // Build the header right content for folders view (+ button)
   const folderAddButton = view === 'folders' ? (
@@ -268,9 +249,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   ) : undefined
 
   // Determine header props based on current view
-  const headerProps = view === 'tags'
-    ? { title: 'Manage Tags', icon: Tag, onBack: () => setView('list'), right: tagCountBadge }
-    : view === 'folders'
+  const headerProps = view === 'folders'
     ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
     : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders, right: folderSettingsButton }
 
@@ -306,22 +285,6 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     )
   }
 
-  if (view === 'tags') {
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <PluginHeader {...headerProps} />
-        <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
-          <TodoPluginTagManager
-            tags={tags}
-            onCreateTag={handleCreateTag}
-            onEditTag={handleEditTag}
-            onDeleteTag={handleDeleteTag}
-          />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <PluginHeader {...headerProps} />
@@ -334,7 +297,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           value={newTodoText}
           onChange={setNewTodoText}
           onKeyDown={handleKeyDown}
-          onTagsClick={() => setView('tags')}
+          onTagsClick={() => setIsManageTagsOpen(true)}
           tags={tags}
           selectedTagIds={selectedTagIds}
           onToggleTag={handleToggleTagSelection}
@@ -376,6 +339,16 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
           tagCount={tags.length}
           onConfirm={handleConfirmDeleteFolder}
           onClose={() => setIsDeletingFolder(false)}
+        />
+      )}
+
+      {isManageTagsOpen && (
+        <TodoPluginManageTagsModal
+          tags={tags}
+          onCreateTag={createTag}
+          onUpdateTag={updateTag}
+          onDeleteTag={deleteTag}
+          onClose={() => setIsManageTagsOpen(false)}
         />
       )}
     </div>
@@ -470,446 +443,6 @@ function TodoPluginTagSelector({ tags, selectedTagIds, onToggleTag }: TodoPlugin
           </button>
         )
       })}
-    </div>
-  )
-}
-
-function TodoPluginInlineColorPicker({
-  selectedColor,
-  onSelect,
-}: {
-  selectedColor: string
-  onSelect: (hex: string) => void
-}) {
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  return (
-    <div
-      className="relative flex items-center"
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
-    >
-      <button
-        type="button"
-        className={cn(
-          'flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full',
-          'transition-all duration-150 ease-out',
-          'hover:scale-110 active:scale-95',
-          'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]'
-        )}
-        style={{ backgroundColor: selectedColor }}
-        aria-label="Select color"
-        aria-expanded={isExpanded}
-      />
-
-      <div
-        className={cn(
-          'absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-1',
-          'rounded-full border border-white/10 bg-[#0a0a0a] px-1 py-1',
-          'transition-all duration-150 ease-out origin-left',
-          isExpanded
-            ? 'opacity-100 scale-100 pointer-events-auto'
-            : 'opacity-0 scale-95 pointer-events-none'
-        )}
-      >
-        {TAG_COLORS.map((color) => {
-          const isSelected = selectedColor === color.hex
-          return (
-            <button
-              key={color.name}
-              type="button"
-              onClick={() => {
-                onSelect(color.hex)
-                setIsExpanded(false)
-              }}
-              className={cn(
-                'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full',
-                'transition-all duration-100 ease-out',
-                'hover:scale-110 active:scale-95',
-                'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
-                isSelected && 'ring-1.5 ring-white/50 ring-offset-1 ring-offset-[#0a0a0a]'
-              )}
-              style={{ backgroundColor: color.hex }}
-              aria-label={color.name}
-              title={color.name}
-            >
-              {isSelected && (
-                <Check className="h-3 w-3" style={{ color: color.contrastText }} />
-              )}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function TodoPluginCreateTagRow({
-  onCreateTag,
-}: {
-  onCreateTag: (name: string, color: string) => Promise<boolean>
-}) {
-  const [name, setName] = useState('')
-  const [color, setColor] = useState<string>(TAG_COLORS[0].hex)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSubmit = async () => {
-    if (!name.trim()) return
-
-    const success = await onCreateTag(name.trim(), color)
-    if (success) {
-      setName('')
-      setColor(TAG_COLORS[0].hex)
-      setError(null)
-    } else {
-      setError('Tag already exists')
-    }
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSubmit()
-    }
-  }
-
-  const hasText = name.trim().length > 0
-
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <TodoPluginInlineColorPicker selectedColor={color} onSelect={setColor} />
-        <input
-          type="text"
-          placeholder="New tag name..."
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value)
-            setError(null)
-          }}
-          onKeyDown={handleKeyDown}
-          maxLength={20}
-          className={cn(
-            'h-8 min-w-0 flex-1 rounded-lg px-3 text-[13px] tracking-[-0.01em] outline-none',
-            'transition-all duration-150 ease-out',
-            hasText
-              ? 'font-semibold'
-              : 'border border-transparent bg-white/4 font-normal text-white/95 placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6'
-          )}
-          style={hasText ? {
-            backgroundColor: `${color}20`,
-            color: color,
-            boxShadow: `0 0 0 1px ${color}30`,
-          } : undefined}
-          autoComplete="off"
-        />
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!hasText}
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-white/4 transition-all duration-150 ease-out hover:border-white/10 hover:bg-white/8 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-transparent disabled:hover:bg-white/4 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-          aria-label="Create tag"
-        >
-          <Plus className="h-4 w-4 text-white/50" />
-        </button>
-      </div>
-      {error && (
-        <p className="pl-8 text-[11px] text-red-400">{error}</p>
-      )}
-    </div>
-  )
-}
-
-function TodoPluginColorPicker({
-  selectedColor,
-  onSelect,
-}: {
-  selectedColor: string
-  onSelect: (hex: string) => void
-}) {
-  return (
-    <div className="mt-3 flex items-center justify-center gap-1.5" role="radiogroup" aria-label="Tag color">
-      {TAG_COLORS.map((color) => {
-        const isSelected = selectedColor === color.hex
-        return (
-          <button
-            key={color.name}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            aria-label={color.name}
-            title={color.name}
-            onClick={() => onSelect(color.hex)}
-            className={cn(
-              'flex h-6 w-6 cursor-pointer items-center justify-center rounded-full',
-              'transition-all duration-150 ease-out',
-              'hover:scale-110 active:scale-95',
-              'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
-              isSelected && 'ring-2 ring-offset-2 ring-offset-[#0a0a0a]'
-            )}
-            style={{
-              backgroundColor: color.hex,
-              ...(isSelected && { ['--tw-ring-color' as string]: color.hex }),
-            }}
-          >
-            {isSelected && (
-              <Check className="h-3.5 w-3.5" style={{ color: color.contrastText }} />
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-interface TodoPluginTagManagerProps {
-  tags: TagType[]
-  onCreateTag: (name: string, color: string) => Promise<boolean>
-  onEditTag: (id: string, name: string, color: string) => Promise<boolean | string>
-  onDeleteTag: (id: string) => void
-}
-
-function TodoPluginTagManager({ tags, onCreateTag, onEditTag, onDeleteTag }: TodoPluginTagManagerProps) {
-  const [editingTag, setEditingTag] = useState<TagType | null>(null)
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="-mx-2 flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2">
-        <TodoPluginCreateTagRow onCreateTag={onCreateTag} />
-
-        {tags.length > 0 && (
-          <div className="my-1 border-t border-white/[0.06]" />
-        )}
-
-        {tags.length === 0 ? (
-          <TodoPluginTagManagerEmptyHint />
-        ) : (
-          <TodoPluginTagManagerList
-            tags={tags}
-            onEditTag={(tag) => setEditingTag(tag)}
-            onDeleteTag={onDeleteTag}
-          />
-        )}
-      </div>
-
-      <TodoPluginTagEditModal
-        tag={editingTag}
-        isOpen={editingTag !== null}
-        onClose={() => setEditingTag(null)}
-        onSave={async (name, color) => {
-          if (!editingTag) return false
-          return await onEditTag(editingTag.id, name, color)
-        }}
-      />
-    </div>
-  )
-}
-
-function TodoPluginTagManagerEmptyHint() {
-  return (
-    <div className="flex flex-1 items-center justify-center">
-      <p className="text-[12px] text-white/30">
-        No tags yet. Create one above.
-      </p>
-    </div>
-  )
-}
-
-interface TodoPluginTagManagerListProps {
-  tags: TagType[]
-  onEditTag: (tag: TagType) => void
-  onDeleteTag: (id: string) => void
-}
-
-function TodoPluginTagManagerList({ tags, onEditTag, onDeleteTag }: TodoPluginTagManagerListProps) {
-  const { pendingId: pendingDeleteId, handleDeleteClick } = usePendingDelete(onDeleteTag)
-
-  return (
-    <div className="flex flex-col gap-1">
-      {tags.map((tag) => (
-        <TodoPluginTagCard
-          key={tag.id}
-          tag={tag}
-          isPendingDelete={pendingDeleteId === tag.id}
-          onEdit={() => onEditTag(tag)}
-          onDeleteClick={() => handleDeleteClick(tag.id)}
-        />
-      ))}
-    </div>
-  )
-}
-
-interface TodoPluginTagCardProps {
-  tag: TagType
-  isPendingDelete: boolean
-  onEdit: () => void
-  onDeleteClick: () => void
-}
-
-function TodoPluginTagCard({ tag, isPendingDelete, onEdit, onDeleteClick }: TodoPluginTagCardProps) {
-  return (
-    <div
-      className={cn(
-        'group relative flex shrink-0 items-center gap-3 rounded-lg overflow-x-hidden',
-        'border border-white/[0.04] bg-white/[0.02]',
-        'px-3 py-2.5 transition-all duration-150 ease-out',
-        'hover:border-white/[0.08] hover:bg-white/[0.04]',
-        'hover:shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
-      )}
-    >
-      <span
-        className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full"
-        style={{ backgroundColor: tag.color }}
-      />
-
-      <span
-        className="inline-flex min-w-0 max-w-[180px] items-center truncate rounded-md px-2.5 py-1 text-[12px] font-semibold tracking-[-0.01em]"
-        style={{
-          backgroundColor: `${tag.color}20`,
-          color: tag.color,
-        }}
-      >
-        {tag.name}
-      </span>
-
-      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:scale-90 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-          aria-label={`Edit ${tag.name}`}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDeleteClick()
-          }}
-          className={cn(
-            'flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 ease-out active:scale-90',
-            'border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]',
-            isPendingDelete
-              ? 'animate-pulse bg-red-500/25 text-red-500'
-              : 'text-white/40 hover:bg-red-500/15 hover:text-red-500'
-          )}
-          aria-label={isPendingDelete ? 'Confirm delete' : `Delete ${tag.name}`}
-        >
-          {isPendingDelete ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-interface TodoPluginTagEditModalProps {
-  tag: TagType | null
-  isOpen: boolean
-  onClose: () => void
-  onSave: (name: string, color: string) => Promise<boolean | string>
-}
-
-function TodoPluginTagEditModal({ tag, isOpen, onClose, onSave }: TodoPluginTagEditModalProps) {
-  const [editName, setEditName] = useState('')
-  const [editColor, setEditColor] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (tag && isOpen) {
-      setEditName(tag.name)
-      setEditColor(tag.color)
-      setError(null)
-    }
-  }, [tag, isOpen])
-
-  const handleSave = async () => {
-    const result = await onSave(editName, editColor)
-    if (result === true) {
-      onClose()
-    } else {
-      setError(result as string)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
-    if (e.key === 'Enter') handleSave()
-  }
-
-  if (!isOpen || !tag) return null
-
-  return (
-    <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-      onKeyDown={handleKeyDown}
-    >
-      <div
-        className="w-[280px] rounded-xl border border-white/10 bg-[#0a0a0a] p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-tag-title"
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 id="edit-tag-title" className="text-[14px] font-medium text-white/90">
-            Edit Tag
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <input
-          type="text"
-          value={editName}
-          onChange={(e) => {
-            setEditName(e.target.value)
-            setError(null)
-          }}
-          maxLength={20}
-          autoFocus
-          className={cn(
-            'h-10 w-full rounded-[10px] px-3.5 text-[13px] tracking-[-0.01em] outline-none transition-all duration-[180ms] ease-out',
-            editName.trim()
-              ? 'font-semibold'
-              : 'border border-white/10 bg-white/6 font-normal text-white/95 placeholder:text-white/35 focus:border-white/20 focus:bg-white/8'
-          )}
-          style={editName.trim() ? {
-            backgroundColor: `${editColor}20`,
-            color: editColor,
-            boxShadow: `0 0 0 1px ${editColor}30`,
-          } : undefined}
-        />
-
-        <TodoPluginColorPicker selectedColor={editColor} onSelect={setEditColor} />
-
-        {error && <p className="mt-3 text-[11px] tracking-[-0.01em] text-red-400">{error}</p>}
-
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-lg bg-white/6 px-4 py-2 text-[13px] font-medium text-white/70 transition-all duration-150 ease-out hover:bg-white/10 active:scale-[0.98] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!editName.trim()}
-            className="flex-1 rounded-lg bg-white/90 px-4 py-2 text-[13px] font-medium text-[#0a0a0a] transition-all duration-150 ease-out hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-          >
-            Save
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1850,4 +1383,391 @@ function TodoPluginDeleteFolderModal({
   )
 }
 
-export { TodoPlugin }
+// --- Manage Tags Modal ---
+
+interface TodoPluginManageTagsModalProps {
+  tags: TagType[]
+  onCreateTag: (name: string, color: string) => Promise<boolean>
+  onUpdateTag: (id: string, name: string, color: string) => Promise<boolean>
+  onDeleteTag: (id: string) => Promise<void>
+  onClose: () => void
+}
+
+function TodoPluginManageTagsModal({
+  tags,
+  onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
+  onClose,
+}: TodoPluginManageTagsModalProps) {
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[300px] rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manage-tags-title"
+      >
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+          <h2 id="manage-tags-title" className="text-[14px] font-medium text-white/90">
+            Manage Tags
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-3">
+          <TodoPluginCreateTagRow onCreateTag={onCreateTag} />
+
+          <div className="mt-3">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
+              Tags
+            </span>
+          </div>
+
+          <div className="mt-2 max-h-[250px] overflow-y-auto">
+            {tags.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="text-[13px] text-white/35">No tags yet</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1">
+                {tags.map((tag) => (
+                  <TodoPluginManageTagRow
+                    key={tag.id}
+                    tag={tag}
+                    allTags={tags}
+                    onUpdateTag={onUpdateTag}
+                    onDeleteTag={onDeleteTag}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface TodoPluginCreateTagRowProps {
+  onCreateTag: (name: string, color: string) => Promise<boolean>
+}
+
+function TodoPluginCreateTagRow({ onCreateTag }: TodoPluginCreateTagRowProps) {
+  const [name, setName] = useState('')
+  const [selectedColor, setSelectedColor] = useState<string>(TAG_COLORS[0].hex)
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return
+
+    const success = await onCreateTag(name.trim(), selectedColor)
+    if (success) {
+      setName('')
+      setSelectedColor(TAG_COLORS[0].hex)
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSubmit()
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-white/4 transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          aria-label="Select color"
+        >
+          <span
+            className="h-4 w-4 rounded-full"
+            style={{ backgroundColor: selectedColor }}
+          />
+        </button>
+
+        {isColorPickerOpen && (
+          <TodoPluginColorPickerDropdown
+            selectedColor={selectedColor}
+            onSelectColor={(color) => {
+              setSelectedColor(color)
+              setIsColorPickerOpen(false)
+            }}
+            onClose={() => setIsColorPickerOpen(false)}
+          />
+        )}
+      </div>
+
+      <input
+        type="text"
+        placeholder="New tag..."
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={handleKeyDown}
+        maxLength={20}
+        className="h-8 flex-1 rounded-md border border-transparent bg-white/4 px-2.5 text-[13px] text-white/90 outline-none transition-all duration-150 ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6"
+        autoComplete="off"
+      />
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!name.trim()}
+        className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-white/4 text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-40 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+        aria-label="Create tag"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+interface TodoPluginManageTagRowProps {
+  tag: TagType
+  allTags: TagType[]
+  onUpdateTag: (id: string, name: string, color: string) => Promise<boolean>
+  onDeleteTag: (id: string) => Promise<void>
+}
+
+function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: TodoPluginManageTagRowProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(tag.name)
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false)
+  const { pendingId, handleDeleteClick, cancelDelete } = usePendingDelete(onDeleteTag)
+  const isPendingDelete = pendingId === tag.id
+  const inputRef = useRef<HTMLInputElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  const isDuplicate = allTags.some(
+    (t) => t.id !== tag.id && t.name.toLowerCase() === editName.trim().toLowerCase()
+  )
+  const isEmpty = !editName.trim()
+  const hasError = isDuplicate || isEmpty
+
+  const startEditing = () => {
+    setIsEditing(true)
+    setEditName(tag.name)
+    cancelDelete()
+  }
+
+  const saveEdit = async () => {
+    if (hasError) return
+    if (editName.trim() !== tag.name) {
+      await onUpdateTag(tag.id, editName.trim(), tag.color)
+    }
+    setIsEditing(false)
+  }
+
+  const cancelEdit = () => {
+    setIsEditing(false)
+    setEditName(tag.name)
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveEdit()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  useEffect(() => {
+    if (!isEditing) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rowRef.current && !rowRef.current.contains(event.target as Node)) {
+        saveEdit()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isEditing, editName, hasError])
+
+  const handleColorSelect = async (color: string) => {
+    setIsColorPickerOpen(false)
+    await onUpdateTag(tag.id, tag.name, color)
+  }
+
+  return (
+    <div
+      ref={rowRef}
+      className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4"
+    >
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15"
+          aria-label="Change color"
+        >
+          <span
+            className="h-3 w-3 rounded-full"
+            style={{ backgroundColor: tag.color }}
+          />
+        </button>
+
+        {isColorPickerOpen && (
+          <TodoPluginColorPickerDropdown
+            selectedColor={tag.color}
+            onSelectColor={handleColorSelect}
+            onClose={() => setIsColorPickerOpen(false)}
+          />
+        )}
+      </div>
+
+      {isEditing ? (
+        <>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <input
+              ref={inputRef}
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={handleKeyDown}
+              maxLength={20}
+              className={cn(
+                'h-6 w-full rounded border bg-white/6 px-2 text-[12px] text-white/90 outline-none transition-all duration-150',
+                hasError
+                  ? 'border-red-500/50 focus:border-red-500'
+                  : 'border-transparent focus:border-white/20'
+              )}
+              autoComplete="off"
+            />
+            {isDuplicate && (
+              <span className="mt-0.5 text-[10px] text-red-400">Name already exists</span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={saveEdit}
+            disabled={hasError}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-40 active:border-white/15"
+            aria-label="Save"
+          >
+            <Check className="h-3 w-3" />
+          </button>
+
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent text-white/50 transition-all duration-150 ease-out hover:bg-white/8 hover:text-white/70 active:border-white/15"
+            aria-label="Cancel"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={startEditing}
+            className="min-w-0 flex-1 truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
+          >
+            {tag.name}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDeleteClick(tag.id)}
+            className={cn(
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded border border-transparent transition-all duration-150 ease-out active:border-white/15',
+              isPendingDelete
+                ? 'bg-red-500/20 text-red-500'
+                : 'text-white/30 opacity-0 hover:bg-white/8 hover:text-red-400 group-hover:opacity-100'
+            )}
+            aria-label={isPendingDelete ? 'Confirm delete' : 'Delete tag'}
+          >
+            {isPendingDelete ? (
+              <Check className="h-3 w-3" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+interface TodoPluginColorPickerDropdownProps {
+  selectedColor: string
+  onSelectColor: (color: string) => void
+  onClose: () => void
+}
+
+function TodoPluginColorPickerDropdown({
+  selectedColor,
+  onSelectColor,
+  onClose,
+}: TodoPluginColorPickerDropdownProps) {
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        onClose()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  return (
+    <div
+      ref={dropdownRef}
+      className="absolute left-0 top-full z-50 mt-1 w-max rounded-lg border border-white/10 bg-[#0a0a0a] p-2 shadow-lg"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="grid grid-cols-4 gap-1">
+        {TAG_COLORS.map((color) => (
+          <button
+            key={color.hex}
+            type="button"
+            onClick={() => onSelectColor(color.hex)}
+            className={cn(
+              'flex h-6 w-6 items-center justify-center rounded-md border transition-all duration-150 ease-out hover:scale-110',
+              selectedColor === color.hex
+                ? 'border-white/40'
+                : 'border-transparent hover:border-white/20'
+            )}
+            aria-label={color.name}
+            title={color.name}
+          >
+            <span
+              className="h-3.5 w-3.5 rounded-full"
+              style={{ backgroundColor: color.hex }}
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export { TodoPlugin, TAG_COLORS }
