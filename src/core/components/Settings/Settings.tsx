@@ -1,16 +1,10 @@
-import { useEffect } from 'react'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
-import { useNavigation } from '@/core/context/NavigationContext'
 import { ShortcutCapture } from './ShortcutCapture'
-import { useSettings } from '@/core/hooks/useSettings'
+import { useSettings, useNavigationLevels } from '@/core/hooks'
 
 function Settings() {
-  const { pushLevel, resetToRoot } = useNavigation()
+  useNavigationLevels([{ id: 'settings', label: 'Settings' }])
 
-  useEffect(() => {
-    pushLevel({ id: 'settings', label: 'Settings' })
-    return () => resetToRoot()
-  }, [pushLevel, resetToRoot])
   const { settings, isLoading, updateShortcut } = useSettings()
 
   if (isLoading) {

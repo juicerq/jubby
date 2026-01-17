@@ -4,16 +4,12 @@ import { useEnhancer } from './useEnhancer'
 import { useTextHistory } from './useTextHistory'
 import { WaveAnimation } from './WaveAnimation'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
-import { useNavigation } from '@/core/context/NavigationContext'
+import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 
 function PromptEnhancerPlugin(_props: PluginProps) {
-  const { pushLevel, resetToRoot } = useNavigation()
+  useNavigationLevels([{ id: 'prompt-enhancer', label: 'Prompt Enhancer' }])
 
-  useEffect(() => {
-    pushLevel({ id: 'prompt-enhancer', label: 'Prompt Enhancer' })
-    return () => resetToRoot()
-  }, [pushLevel, resetToRoot])
   const { text, setText, handleKeyDown: historyKeyDown, pushState } = useTextHistory('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { enhance, result, isLoading, reset } = useEnhancer()

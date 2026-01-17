@@ -9,15 +9,13 @@ import {
 export interface NavigationLevel {
   id: string
   label: string
-  onClick?: () => void
+  onNavigate?: () => void
 }
 
 interface NavigationContextValue {
   levels: NavigationLevel[]
-  pushLevel: (level: NavigationLevel) => void
-  popLevel: () => void
-  resetToRoot: () => void
-  replaceLevel: (level: NavigationLevel) => void
+  setLevels: (levels: NavigationLevel[]) => void
+  navigateToLevel: (levelId: string) => void
 }
 
 const NavigationContext = createContext<NavigationContextValue | null>(null)
@@ -28,28 +26,33 @@ interface NavigationProviderProps {
 }
 
 function NavigationProvider({ children, rootLevel }: NavigationProviderProps) {
-  const [levels, setLevels] = useState<NavigationLevel[]>([rootLevel])
+  const [levels, setLevelsState] = useState<NavigationLevel[]>([rootLevel])
 
-  const pushLevel = useCallback((level: NavigationLevel) => {
-    setLevels((prev) => [...prev, level])
-  }, [])
+  const setLevels = useCallback(
+    (newLevels: NavigationLevel[]) => {
+      if (newLevels.length === 0) {
+        setLevelsState([rootLevel])
+      } else {
+        setLevelsState([rootLevel, ...newLevels])
+      }
+    },
+    [rootLevel]
+  )
 
-  const popLevel = useCallback(() => {
-    setLevels((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev))
-  }, [])
+  const navigateToLevel = useCallback((levelId: string) => {
+    setLevelsState((prev) => {
+      const index = prev.findIndex((l) => l.id === levelId)
+      if (index === -1) return prev
 
-  const resetToRoot = useCallback(() => {
-    setLevels([rootLevel])
-  }, [rootLevel])
+      const targetLevel = prev[index]
+      targetLevel.onNavigate?.()
 
-  const replaceLevel = useCallback((level: NavigationLevel) => {
-    setLevels((prev) => [...prev.slice(0, -1), level])
+      return prev.slice(0, index + 1)
+    })
   }, [])
 
   return (
-    <NavigationContext.Provider
-      value={{ levels, pushLevel, popLevel, resetToRoot, replaceLevel }}
-    >
+    <NavigationContext.Provider value={{ levels, setLevels, navigateToLevel }}>
       {children}
     </NavigationContext.Provider>
   )
