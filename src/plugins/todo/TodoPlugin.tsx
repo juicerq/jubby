@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react'
 import { Check, X, Tag, Plus, Pencil, Minus, FolderOpen, Settings, GripVertical, Trash2 } from 'lucide-react'
 import { useTodoStorage, useFolderStorage, usePendingDelete } from './useTodoStorage'
 import { cn } from '@/lib/utils'
-import { PluginHeader } from '@/core/components/PluginHeader'
+import { Breadcrumb } from '@/core/components/Breadcrumb'
+import { useNavigation } from '@/core/context/NavigationContext'
 import type { PluginProps } from '@/core/types'
 import type { Tag as TagType, Todo, TodoStatus, Folder, RecentTodo } from './types'
 
@@ -20,7 +21,10 @@ const TAG_COLORS = [
 
 type TodoView = 'folders' | 'list'
 
-function TodoPlugin({ onExitPlugin }: PluginProps) {
+function TodoPlugin(_props: PluginProps) {
+  // Navigation
+  const { pushLevel, popLevel, resetToRoot } = useNavigation()
+
   // Folder management
   const {
     folders,
@@ -35,6 +39,18 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
   // Current folder state (null means we're on the folder list view)
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
   const [view, setView] = useState<TodoView>('folders')
+
+  // Push 'Todo' level on mount
+  useEffect(() => {
+    pushLevel({ id: 'todo', label: 'Todo', onClick: () => {
+      setCurrentFolderId(null)
+      setView('folders')
+      loadFolders()
+    }})
+    return () => {
+      resetToRoot()
+    }
+  }, [pushLevel, resetToRoot, loadFolders])
 
   // Get current folder details
   const currentFolder = currentFolderId
@@ -86,15 +102,22 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
   // Navigation handlers
   const handleNavigateToFolder = (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId)
     setCurrentFolderId(folderId)
     setView('list')
     setSelectedTagIds([]) // Reset tag filter when entering folder
+
+    // Push folder level to breadcrumb
+    if (folder) {
+      pushLevel({ id: `folder-${folderId}`, label: folder.name })
+    }
   }
 
   const handleNavigateToFolders = () => {
     setCurrentFolderId(null)
     setView('folders')
     loadFolders() // Refresh folder data when returning
+    popLevel() // Pop folder level from breadcrumb
   }
 
   const handleCreateFolder = async () => {
@@ -248,16 +271,11 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
     </div>
   ) : undefined
 
-  // Determine header props based on current view
-  const headerProps = view === 'folders'
-    ? { title: 'Todo', icon: FolderOpen, onBack: onExitPlugin, right: folderAddButton }
-    : { title: currentFolder?.name ?? 'Tasks', icon: Check, onBack: handleNavigateToFolders, right: folderSettingsButton }
-
   // Folders view
   if (view === 'folders') {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <PluginHeader {...headerProps} />
+        <Breadcrumb right={folderAddButton} />
         <div className="flex flex-1 flex-col overflow-hidden p-4">
           {isCreatingFolder && (
             <TodoPluginFolderInput
@@ -287,7 +305,7 @@ function TodoPlugin({ onExitPlugin }: PluginProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <PluginHeader {...headerProps} />
+      <Breadcrumb right={folderSettingsButton} />
       <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4" onClick={() => {
         handleCancelDelete()
         setEditingTagsTodoId(null)
@@ -710,8 +728,12 @@ interface TodoPluginFolderInputProps {
   onBlur: () => void
 }
 
+const FOLDER_NAME_MAX_LENGTH = 25
+
 function TodoPluginFolderInput({ value, onChange, onKeyDown, onBlur }: TodoPluginFolderInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const isNearLimit = value.length >= FOLDER_NAME_MAX_LENGTH - 5
+  const isAtLimit = value.length >= FOLDER_NAME_MAX_LENGTH
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -719,17 +741,28 @@ function TodoPluginFolderInput({ value, onChange, onKeyDown, onBlur }: TodoPlugi
 
   return (
     <div className="mb-3">
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Folder name..."
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        onBlur={onBlur}
-        className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-        autoComplete="off"
-      />
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Folder name..."
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={onBlur}
+          maxLength={FOLDER_NAME_MAX_LENGTH}
+          className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-12 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+          autoComplete="off"
+        />
+        {isNearLimit && (
+          <span className={cn(
+            'absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium transition-colors',
+            isAtLimit ? 'text-amber-500' : 'text-white/30'
+          )}>
+            {value.length}/{FOLDER_NAME_MAX_LENGTH}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -1230,6 +1263,8 @@ function TodoPluginRenameFolderModal({
   onClose,
 }: TodoPluginRenameFolderModalProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const isNearLimit = value.length >= FOLDER_NAME_MAX_LENGTH - 5
+  const isAtLimit = value.length >= FOLDER_NAME_MAX_LENGTH
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -1262,15 +1297,26 @@ function TodoPluginRenameFolderModal({
           </button>
         </div>
 
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
-          autoComplete="off"
-        />
+        <div className="relative">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            maxLength={FOLDER_NAME_MAX_LENGTH}
+            className="h-10 w-full rounded-[10px] border border-white/10 bg-white/6 px-3.5 pr-12 text-[13px] tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 focus:border-white/20 focus:bg-white/8"
+            autoComplete="off"
+          />
+          {isNearLimit && (
+            <span className={cn(
+              'absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium transition-colors',
+              isAtLimit ? 'text-amber-500' : 'text-white/30'
+            )}>
+              {value.length}/{FOLDER_NAME_MAX_LENGTH}
+            </span>
+          )}
+        </div>
 
         <div className="mt-4 flex gap-2">
           <button
@@ -1406,7 +1452,7 @@ function TodoPluginManageTagsModal({
       onClick={onClose}
     >
       <div
-        className="w-[300px] rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
+        className="w-[360px] rounded-xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -1686,7 +1732,7 @@ function TodoPluginManageTagRow({ tag, allTags, onUpdateTag, onDeleteTag }: Todo
           <button
             type="button"
             onClick={startEditing}
-            className="min-w-0 flex-1 truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
+            className="min-w-0 flex-1 cursor-text truncate text-left text-[12px] text-white/80 transition-colors hover:text-white/95"
           >
             {tag.name}
           </button>

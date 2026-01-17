@@ -1,13 +1,16 @@
-import { Settings as SettingsIcon } from 'lucide-react'
-import { PluginHeader } from '@/core/components/PluginHeader'
+import { useEffect } from 'react'
+import { Breadcrumb } from '@/core/components/Breadcrumb'
+import { useNavigation } from '@/core/context/NavigationContext'
 import { ShortcutCapture } from './ShortcutCapture'
 import { useSettings } from '@/core/hooks/useSettings'
 
-interface SettingsProps {
-  onBack: () => void
-}
+function Settings() {
+  const { pushLevel, resetToRoot } = useNavigation()
 
-function Settings({ onBack }: SettingsProps) {
+  useEffect(() => {
+    pushLevel({ id: 'settings', label: 'Settings' })
+    return () => resetToRoot()
+  }, [pushLevel, resetToRoot])
   const { settings, isLoading, updateShortcut } = useSettings()
 
   if (isLoading) {
@@ -20,11 +23,7 @@ function Settings({ onBack }: SettingsProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <PluginHeader
-        title="Settings"
-        icon={SettingsIcon}
-        onBack={onBack}
-      />
+      <Breadcrumb />
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
         <SettingsSection title="Global Shortcut">
           <SettingsRow
