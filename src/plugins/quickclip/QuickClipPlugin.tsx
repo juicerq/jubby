@@ -604,17 +604,6 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
     setIsHovering(false)
     setShowActions(false)
     setPendingDelete(false)
-    // Stop and unload video on mouse leave
-    if (videoRef.current) {
-      videoRef.current.pause()
-    }
-    setIsPlaying(false)
-    setIsLoading(false)
-    // Clean up blob URL before clearing
-    if (videoSrc?.startsWith('blob:')) {
-      URL.revokeObjectURL(videoSrc)
-    }
-    setVideoSrc(undefined)
   }
 
   const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement>) => {
