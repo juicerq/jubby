@@ -1,3 +1,4 @@
+use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -9,6 +10,8 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use xcap::Monitor;
+
+const MAX_FRAME_BUFFER_BYTES: usize = 1_500_000_000;
 
 #[derive(Error, Debug)]
 pub enum RecorderError {
@@ -34,9 +37,11 @@ pub enum RecorderError {
     NotRecording,
     #[error("Encoding timeout after {0} seconds")]
     EncodingTimeout(u64),
+    #[error("Memory limit exceeded ({0} MB). Recording auto-stopped.")]
+    MemoryLimitExceeded(u64),
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum QualityMode {
     Light,
@@ -89,6 +94,7 @@ struct RecordingSession {
     height: u32,
     start_time: std::time::Instant,
     fps: u32,
+    frames: Vec<Vec<u8>>,
 }
 
 pub struct RecorderState {
@@ -174,19 +180,16 @@ fn check_ffmpeg() -> Result<(), RecorderError> {
     Ok(())
 }
 
-fn capture_frame_to_file(monitor: &Monitor, path: &PathBuf) -> Result<(u32, u32), RecorderError> {
+fn capture_frame_to_buffer(monitor: &Monitor) -> Result<(Vec<u8>, u32, u32), RecorderError> {
     let image = monitor
         .capture_image()
         .map_err(|e| RecorderError::CaptureFailure(e.to_string()))?;
 
     let width = image.width();
     let height = image.height();
+    let buffer = image.into_raw();
 
-    image
-        .save(path)
-        .map_err(|e| RecorderError::SaveError(e.to_string()))?;
-
-    Ok((width, height))
+    Ok((buffer, width, height))
 }
 
 fn encode_frames_to_video(
@@ -212,6 +215,8 @@ fn encode_frames_to_video(
             quality.crf(),
             "-preset",
             quality.preset(),
+            "-movflags",
+            "+faststart",
             &output_path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
@@ -221,6 +226,7 @@ fn encode_frames_to_video(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(target: "quickclip", "FFmpeg encoding failed: {}", stderr);
         return Err(RecorderError::EncodingError(stderr.to_string()));
     }
 
@@ -265,11 +271,14 @@ fn generate_thumbnail(video_path: &PathBuf, thumbnail_path: &PathBuf) -> Result<
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(target: "quickclip", "Thumbnail generation failed: {}", stderr);
         return Err(RecorderError::EncodingError(format!(
             "Thumbnail generation failed: {}",
             stderr
         )));
     }
+
+    tracing::debug!(target: "quickclip", "Thumbnail generated: {:?}", thumbnail_path);
 
     Ok(())
 }
@@ -306,9 +315,12 @@ async fn start_recording_internal(
     quality: QualityMode,
     fps: u32,
 ) -> Result<(), RecorderError> {
+    tracing::info!(target: "quickclip", "Starting recording - monitor: {}, quality: {:?}, fps: {}", monitor_id, quality, fps);
+
     check_ffmpeg()?;
 
     if state.is_recording.load(Ordering::SeqCst) {
+        tracing::warn!(target: "quickclip", "Recording already in progress");
         return Err(RecorderError::AlreadyRecording);
     }
 
@@ -320,6 +332,13 @@ async fn start_recording_internal(
     let session_dir = get_sessions_dir()?.join(format!("session_{}", timestamp));
     std::fs::create_dir_all(&session_dir).map_err(|e| RecorderError::StorageError(e.to_string()))?;
 
+    // Find and cache monitor before creating session
+    let monitors = Monitor::all().map_err(|e| RecorderError::MonitorError(e.to_string()))?;
+    let monitor = monitors
+        .into_iter()
+        .find(|m| m.id().to_string() == monitor_id)
+        .ok_or_else(|| RecorderError::MonitorNotFound(monitor_id.clone()))?;
+
     let session = RecordingSession {
         session_dir,
         monitor_id,
@@ -329,10 +348,13 @@ async fn start_recording_internal(
         height: 0,
         start_time: std::time::Instant::now(),
         fps,
+        frames: Vec::new(),
     };
 
     *state.session.lock().await = Some(session);
     state.is_recording.store(true, Ordering::SeqCst);
+
+    tracing::info!(target: "quickclip", "Recording session started");
 
     let stop_signal = Arc::new(AtomicBool::new(false));
     *state.stop_signal.lock().await = Some(stop_signal.clone());
@@ -341,8 +363,9 @@ async fn start_recording_internal(
     let is_recording = state.is_recording.clone();
     let session_mutex = state.session.clone();
 
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::spawn_blocking(move || {
         let frame_interval = Duration::from_millis(1000 / fps as u64);
+        let mut total_buffer_size: usize = 0;
 
         loop {
             if stop_signal.load(Ordering::SeqCst) {
@@ -351,37 +374,34 @@ async fn start_recording_internal(
 
             let capture_start = std::time::Instant::now();
 
-            // Capture a frame
-            let mut session_guard = session_mutex.lock().await;
-            if let Some(ref mut session) = *session_guard {
-                let monitors =
-                    Monitor::all().map_err(|e| RecorderError::MonitorError(e.to_string()));
+            // Capture frame as raw RGBA buffer (fast: ~5ms vs ~100ms for PNG)
+            if let Ok((buffer, width, height)) = capture_frame_to_buffer(&monitor) {
+                total_buffer_size += buffer.len();
 
-                if let Ok(monitors) = monitors {
-                    if let Some(monitor) = monitors
-                        .iter()
-                        .find(|m| m.id().to_string() == session.monitor_id)
-                    {
-                        let frame_path = session
-                            .session_dir
-                            .join(format!("frame_{:06}.png", session.frame_count));
-
-                        if let Ok((width, height)) = capture_frame_to_file(monitor, &frame_path) {
-                            if session.frame_count == 0 {
-                                session.width = width;
-                                session.height = height;
-                            }
-                            session.frame_count += 1;
-                        }
-                    }
+                // Memory safeguard: auto-stop if buffer exceeds ~1.5GB
+                if total_buffer_size > MAX_FRAME_BUFFER_BYTES {
+                    tracing::warn!(target: "quickclip", "Memory limit exceeded ({} MB), auto-stopping recording", total_buffer_size / 1_000_000);
+                    stop_signal.store(true, Ordering::SeqCst);
+                    break;
                 }
+
+                // Store frame in session
+                let mut session_guard = session_mutex.blocking_lock();
+                if let Some(ref mut session) = *session_guard {
+                    if session.frame_count == 0 {
+                        session.width = width;
+                        session.height = height;
+                    }
+                    session.frames.push(buffer);
+                    session.frame_count += 1;
+                }
+                drop(session_guard);
             }
-            drop(session_guard);
 
             // Sleep for the remaining time in the frame interval
             let elapsed = capture_start.elapsed();
             if elapsed < frame_interval {
-                tokio::time::sleep(frame_interval - elapsed).await;
+                std::thread::sleep(frame_interval - elapsed);
             }
         }
 
@@ -401,7 +421,10 @@ pub async fn recorder_stop(
 }
 
 async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResult, RecorderError> {
+    tracing::info!(target: "quickclip", "Stopping recording...");
+
     if !state.is_recording.load(Ordering::SeqCst) {
+        tracing::warn!(target: "quickclip", "No recording in progress");
         return Err(RecorderError::NotRecording);
     }
 
@@ -437,23 +460,54 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
     let video_path = get_videos_dir()?.join(&video_filename);
     let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
 
-    // Encode video with timeout
+    // Calculate actual fps based on real elapsed time
+    let elapsed_secs = session.start_time.elapsed().as_secs_f64();
+    let actual_fps = if elapsed_secs > 0.0 {
+        (session.frame_count as f64 / elapsed_secs).round() as u32
+    } else {
+        session.fps
+    };
+    // Clamp fps to reasonable range (1-60)
+    let actual_fps = actual_fps.clamp(1, 60);
+
+    // Write in-memory frames to PNG files, then encode to video
     const ENCODING_TIMEOUT_SECS: u64 = 300; // 5 minutes max
     let session_dir = session.session_dir.clone();
     let video_path_clone = video_path.clone();
     let quality = session.quality;
-    let fps = session.fps;
+    let frames = session.frames;
+    let width = session.width;
+    let height = session.height;
+    let frame_count = session.frame_count;
+
+    tracing::info!(target: "quickclip", "Starting encoding: {} frames, {}x{}, fps: {}", frame_count, width, height, actual_fps);
 
     let encode_task = tauri::async_runtime::spawn_blocking(move || {
-        encode_frames_to_video(&session_dir, &video_path_clone, fps, quality)
+        // Write all frames to PNG files
+        for (i, frame_buffer) in frames.into_iter().enumerate() {
+            let frame_path = session_dir.join(format!("frame_{:06}.png", i));
+            if let Some(img) = RgbaImage::from_raw(width, height, frame_buffer) {
+                img.save(&frame_path)
+                    .map_err(|e| RecorderError::SaveError(e.to_string()))?;
+            }
+        }
+
+        // Encode frames to video
+        encode_frames_to_video(&session_dir, &video_path_clone, actual_fps, quality)
     });
 
     let duration = timeout(Duration::from_secs(ENCODING_TIMEOUT_SECS), encode_task)
         .await
-        .map_err(|_| RecorderError::EncodingTimeout(ENCODING_TIMEOUT_SECS))?
+        .map_err(|_| {
+            tracing::error!(target: "quickclip", "Encoding timeout after {} seconds", ENCODING_TIMEOUT_SECS);
+            RecorderError::EncodingTimeout(ENCODING_TIMEOUT_SECS)
+        })?
         .map_err(|e| RecorderError::EncodingError(e.to_string()))??;
 
+    tracing::info!(target: "quickclip", "Encoding completed, duration: {:.2}s, output: {:?}", duration, video_path);
+
     // Generate thumbnail
+    tracing::debug!(target: "quickclip", "Generating thumbnail...");
     let video_path_for_thumb = video_path.clone();
     let thumbnail_path_clone = thumbnail_path.clone();
 
@@ -465,6 +519,8 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
 
     // Cleanup session directory
     cleanup_session_dir(&session.session_dir);
+
+    tracing::info!(target: "quickclip", "Recording saved: id={}, frames={}, duration={:.2}s", recording_id, session.frame_count, duration);
 
     Ok(RecordingResult {
         id: recording_id,
@@ -589,7 +645,15 @@ fn save_quickclip_data(data: &QuickClipData) -> Result<(), RecorderError> {
 #[tauri::command]
 pub fn quickclip_get_recordings() -> Result<Vec<Recording>, String> {
     let data = load_quickclip_data().map_err(|e| e.to_string())?;
-    Ok(data.recordings)
+
+    // Filter out stale recordings where video files were deleted
+    let valid: Vec<Recording> = data
+        .recordings
+        .into_iter()
+        .filter(|r| std::path::Path::new(&r.video_path).exists())
+        .collect();
+
+    Ok(valid)
 }
 
 #[tauri::command]
@@ -627,7 +691,14 @@ pub fn quickclip_save_recording(
 }
 
 #[tauri::command]
+pub fn read_video_file(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path).map_err(|e| format!("Failed to read video: {}", e))
+}
+
+#[tauri::command]
 pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
+    tracing::info!(target: "quickclip", "Deleting recording: {}", id);
+
     let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
 
     // Find the recording to get file paths
@@ -654,6 +725,8 @@ pub fn quickclip_delete_recording(id: String) -> Result<(), String> {
     data.recordings.retain(|r| r.id != id);
 
     save_quickclip_data(&data).map_err(|e| e.to_string())?;
+
+    tracing::info!(target: "quickclip", "Recording deleted: {}", id);
 
     Ok(())
 }

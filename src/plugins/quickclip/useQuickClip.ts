@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import type { QualityMode, CaptureMode, AudioMode, Recording } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('quickclip')
 
 interface MonitorInfo {
   id: string
@@ -89,9 +92,10 @@ export function useQuickClip(): UseQuickClipReturn {
     try {
       const available = await invoke<boolean>('recorder_check_ffmpeg')
       setFfmpegAvailable(available)
+      log.info('FFmpeg availability checked', { available })
       return available
     } catch (error) {
-      console.error('Failed to check FFmpeg:', error)
+      log.error('Failed to check FFmpeg', { error: String(error) })
       setFfmpegAvailable(false)
       return false
     }
@@ -101,8 +105,9 @@ export function useQuickClip(): UseQuickClipReturn {
     try {
       const sources = await invoke<CaptureSourcesResponse>('capture_get_sources')
       setMonitors(sources.monitors)
+      log.debug('Capture sources refreshed', { monitorCount: sources.monitors.length })
     } catch (error) {
-      console.error('Failed to get capture sources:', error)
+      log.error('Failed to get capture sources', { error: String(error) })
       toast.error('Failed to get capture sources')
     }
   }, [])
@@ -113,6 +118,7 @@ export function useQuickClip(): UseQuickClipReturn {
     captureMode: CaptureMode = 'fullscreen',
     audioMode: AudioMode = 'none'
   ) => {
+    log.info('Starting recording', { monitorId, quality, captureMode, audioMode })
     setIsPreparing(true)
 
     try {
@@ -125,6 +131,7 @@ export function useQuickClip(): UseQuickClipReturn {
           throw new Error('No monitors available')
         }
         targetMonitorId = primaryMonitor.id
+        log.debug('Auto-selected monitor', { monitorId: targetMonitorId })
       }
 
       // Store current settings for when we save the recording
@@ -137,8 +144,9 @@ export function useQuickClip(): UseQuickClipReturn {
       })
 
       setIsRecording(true)
+      log.info('Recording started successfully')
     } catch (error) {
-      console.error('Failed to start recording:', error)
+      log.error('Failed to start recording', { error: String(error) })
       toast.error(`Failed to start recording: ${error}`)
       setCurrentSettings(null)
     } finally {
@@ -149,11 +157,17 @@ export function useQuickClip(): UseQuickClipReturn {
   const stopRecording = useCallback(async () => {
     if (!isRecording) return null
 
+    log.info('Stopping recording...')
     setIsEncoding(true)
 
     try {
       const result = await invoke<RecordingResult>('recorder_stop')
       setIsRecording(false)
+      log.info('Recording stopped, encoding completed', {
+        id: result.id,
+        duration: result.duration,
+        frameCount: result.frameCount,
+      })
 
       // Save to storage
       const settings = currentSettings ?? {
@@ -176,12 +190,13 @@ export function useQuickClip(): UseQuickClipReturn {
       setCurrentSettings(null)
 
       if (recording) {
+        log.info('Recording saved to storage', { id: recording.id })
         toast.success('Recording saved!')
       }
 
       return recording
     } catch (error) {
-      console.error('Failed to stop recording:', error)
+      log.error('Failed to stop recording', { error: String(error) })
       toast.error(`Failed to stop recording: ${error}`)
       setCurrentSettings(null)
       return null
@@ -202,7 +217,7 @@ export function useQuickClip(): UseQuickClipReturn {
         const status = await invoke<RecordingStatus>('recorder_status')
         setRecordingStatus(status)
       } catch (error) {
-        console.error('Failed to get recording status:', error)
+        log.warn('Failed to get recording status', { error: String(error) })
       }
     }
 

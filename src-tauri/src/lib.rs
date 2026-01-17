@@ -1,5 +1,6 @@
 mod capture;
 mod enhancer;
+mod logging;
 mod recorder;
 mod settings;
 mod storage;
@@ -74,8 +75,14 @@ pub fn run() {
             recorder::quickclip_get_recordings,
             recorder::quickclip_save_recording,
             recorder::quickclip_delete_recording,
+            recorder::read_video_file,
+            logging::log_from_frontend,
         ])
         .setup(move |app| {
+            // Initialize logging first (before any other initialization)
+            let logging_guards = logging::init_logging();
+            app.manage(logging::LoggingState::new(logging_guards));
+
             // Initialize database
             let db = storage::init_database(app)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
@@ -92,7 +99,7 @@ pub fn run() {
             // If shortcut is already registered, another instance is running - exit silently
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 if e.to_string().contains("already registered") {
-                    eprintln!("[JUBBY] Another instance is already running");
+                    tracing::warn!(target: "system", "Another instance is already running");
                     std::process::exit(0);
                 }
             }

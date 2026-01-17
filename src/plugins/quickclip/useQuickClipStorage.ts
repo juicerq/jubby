@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import type { Recording, CaptureMode, AudioMode, QualityMode } from './types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('quickclip')
 
 interface UseQuickClipStorageReturn {
   recordings: Recording[]
@@ -31,8 +34,9 @@ export function useQuickClipStorage(): UseQuickClipStorageReturn {
     try {
       const data = await invoke<Recording[]>('quickclip_get_recordings')
       setRecordings(data)
+      log.debug('Recordings loaded', { count: data.length })
     } catch (error) {
-      console.error('Failed to load recordings:', error)
+      log.error('Failed to load recordings', { error: String(error) })
       toast.error('Failed to load recordings')
     } finally {
       setIsLoading(false)
@@ -45,6 +49,7 @@ export function useQuickClipStorage(): UseQuickClipStorageReturn {
 
   const saveRecording = useCallback(async (params: SaveRecordingParams) => {
     try {
+      log.debug('Saving recording metadata', { id: params.id })
       const recording = await invoke<Recording>('quickclip_save_recording', {
         id: params.id,
         videoPath: params.videoPath,
@@ -59,15 +64,17 @@ export function useQuickClipStorage(): UseQuickClipStorageReturn {
       // Add to state (already sorted newest first from backend)
       setRecordings((prev) => [recording, ...prev])
 
+      log.info('Recording metadata saved', { id: recording.id })
       return recording
     } catch (error) {
-      console.error('Failed to save recording:', error)
+      log.error('Failed to save recording', { error: String(error) })
       toast.error('Failed to save recording')
       return null
     }
   }, [])
 
   const deleteRecording = useCallback(async (id: string) => {
+    log.info('Deleting recording', { id })
     // Optimistic update
     let previousRecordings: Recording[] = []
 
@@ -78,11 +85,12 @@ export function useQuickClipStorage(): UseQuickClipStorageReturn {
 
     try {
       await invoke('quickclip_delete_recording', { id })
+      log.info('Recording deleted', { id })
       toast.success('Recording deleted')
     } catch (error) {
       // Rollback on error
       setRecordings(previousRecordings)
-      console.error('Failed to delete recording:', error)
+      log.error('Failed to delete recording', { id, error: String(error) })
       toast.error('Failed to delete recording')
     }
   }, [])

@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Circle, Monitor, Square, AlertTriangle, Loader2, Play, Copy, Check, Trash2, FolderOpen, Film } from 'lucide-react'
+import { Circle, Monitor, Square, AlertTriangle, Loader2, Play, Pause, Copy, Check, Trash2, FolderOpen, Film } from 'lucide-react'
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import type { PluginProps } from '@/core/types'
 import { useQuickClip } from './useQuickClip'
 import { DEFAULT_SETTINGS, type CaptureMode, type Recording } from './types'
 import { cn } from '@/lib/utils'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { createLogger } from '@/lib/logger'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
+
+const log = createLogger('quickclip')
 
 function QuickClipPlugin(_props: PluginProps) {
   useNavigationLevels([{ id: 'quickclip', label: 'QuickClip' }])
@@ -552,9 +555,22 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
   const [isCopied, setIsCopied] = useState(false)
   const [showActions, setShowActions] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined)
+  const [videoError, setVideoError] = useState(false)
+  const [thumbnailError, setThumbnailError] = useState(false)
 
   const thumbnailSrc = convertFileSrc(recording.thumbnailPath)
-  const videoSrc = convertFileSrc(recording.videoPath)
+
+  // Log asset paths for debugging
+  useEffect(() => {
+    log.debug('Recording card mounted', {
+      id: recording.id,
+      thumbnailPath: recording.thumbnailPath,
+      thumbnailSrc,
+    })
+  }, [recording.id, recording.thumbnailPath, thumbnailSrc])
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -582,20 +598,110 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
 
   const handleMouseEnter = () => {
     setIsHovering(true)
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0
-      videoRef.current.play().catch(() => {})
-    }
   }
 
   const handleMouseLeave = () => {
     setIsHovering(false)
     setShowActions(false)
     setPendingDelete(false)
+    // Stop and unload video on mouse leave
     if (videoRef.current) {
       videoRef.current.pause()
-      videoRef.current.currentTime = 0
     }
+    setIsPlaying(false)
+    setIsLoading(false)
+    // Clean up blob URL before clearing
+    if (videoSrc?.startsWith('blob:')) {
+      URL.revokeObjectURL(videoSrc)
+    }
+    setVideoSrc(undefined)
+  }
+
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = e.currentTarget
+    const error = video.error
+    const errorMsg = error ? `${error.code}: ${error.message}` : 'unknown'
+    log.error('Video playback failed', {
+      id: recording.id,
+      error: errorMsg,
+      videoSrc,
+    })
+    setVideoError(true)
+    setIsPlaying(false)
+    setVideoSrc(undefined)
+  }
+
+  // Clean up blob URL on unmount to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (videoSrc?.startsWith('blob:')) {
+        URL.revokeObjectURL(videoSrc)
+      }
+    }
+  }, [videoSrc])
+
+  // Force video to load when src is set (required because preload="none")
+  useEffect(() => {
+    if (videoSrc && videoRef.current) {
+      videoRef.current.load()
+    }
+  }, [videoSrc])
+
+  // Click to play - safer than auto-play on hover
+  const handlePlayClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (videoError || isLoading) return
+
+    if (!videoSrc) {
+      try {
+        setIsLoading(true)
+        log.debug('Loading video via blob', { id: recording.id, path: recording.videoPath })
+        // Read video bytes from Tauri backend
+        const bytes = await invoke<number[]>('read_video_file', { path: recording.videoPath })
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'video/mp4' })
+        const url = URL.createObjectURL(blob)
+        setVideoSrc(url)
+        // Don't set isPlaying here - wait for canplay event
+      } catch (err) {
+        log.error('Failed to load video', { id: recording.id, error: String(err) })
+        setIsLoading(false)
+        setVideoError(true)
+      }
+    } else if (videoRef.current) {
+      // Toggle play/pause (video already loaded)
+      if (videoRef.current.paused) {
+        videoRef.current.play().then(() => {
+          setIsPlaying(true)
+        }).catch((err) => {
+          log.error('Video play failed', { id: recording.id, error: String(err) })
+          setVideoError(true)
+          setIsPlaying(false)
+        })
+      } else {
+        videoRef.current.pause()
+        setIsPlaying(false)
+      }
+    }
+  }
+
+  // Play video when it's loaded and ready
+  const handleVideoCanPlay = () => {
+    setIsLoading(false)
+    if (videoRef.current) {
+      videoRef.current.play().then(() => {
+        setIsPlaying(true)
+      }).catch((err) => {
+        log.error('Video play failed on canplay', { id: recording.id, error: String(err) })
+        setVideoError(true)
+        setIsPlaying(false)
+      })
+    }
+  }
+
+  // Reset to thumbnail when video ends
+  const handleVideoEnded = () => {
+    setIsPlaying(false)
+    // Keep videoSrc so replay doesn't need to reload
   }
 
   const handleCopyPath = async (e: React.MouseEvent) => {
@@ -642,28 +748,46 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
       onMouseLeave={handleMouseLeave}
     >
       <div className="relative aspect-video overflow-hidden bg-black/40">
-        <img
-          src={thumbnailSrc}
-          alt=""
-          className={cn(
-            'absolute inset-0 h-full w-full object-cover',
-            'transition-opacity duration-200',
-            isHovering ? 'opacity-0' : 'opacity-100'
-          )}
-        />
+        {thumbnailError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-red-950/50 p-2">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <span className="text-[9px] text-red-300 text-center break-all">
+              Failed to load thumbnail
+            </span>
+          </div>
+        ) : (
+          <img
+            src={thumbnailSrc}
+            alt=""
+            className={cn(
+              'absolute inset-0 h-full w-full object-cover',
+              'transition-opacity duration-200',
+              isPlaying ? 'opacity-0' : 'opacity-100'
+            )}
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement
+              log.error('Thumbnail load failed', { id: recording.id, src: img.src })
+              setThumbnailError(true)
+            }}
+            onLoad={() => {
+              log.debug('Thumbnail loaded', { id: recording.id })
+            }}
+          />
+        )}
 
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          muted
-          loop
-          playsInline
-          className={cn(
-            'absolute inset-0 h-full w-full object-cover',
-            'transition-opacity duration-200',
-            isHovering ? 'opacity-100' : 'opacity-0'
-          )}
-        />
+        {videoSrc && (
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            muted
+            playsInline
+            preload="none"
+            onError={handleVideoError}
+            onCanPlay={handleVideoCanPlay}
+            onEnded={handleVideoEnded}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
 
         <div
           className={cn(
@@ -680,16 +804,23 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
         </div>
 
         <AnimatePresence>
-          {isHovering && !showActions && (
-            <motion.div
+          {isHovering && !showActions && !videoError && (
+            <motion.button
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="absolute inset-0 flex items-center justify-center"
+              onClick={handlePlayClick}
+              className="absolute inset-0 flex items-center justify-center cursor-pointer"
             >
-              <Play className="h-8 w-8 text-white/80 drop-shadow-lg" />
-            </motion.div>
+              {isLoading ? (
+                <Loader2 className="h-8 w-8 animate-spin text-white/80 drop-shadow-lg" />
+              ) : isPlaying ? (
+                <Pause className="h-8 w-8 text-white/80 drop-shadow-lg" />
+              ) : (
+                <Play className="h-8 w-8 text-white/80 drop-shadow-lg" />
+              )}
+            </motion.button>
           )}
         </AnimatePresence>
 
