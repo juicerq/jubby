@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { QualityMode, CaptureMode, AudioMode, Recording, ResolutionScale } from './types'
+import type { BitrateMode, AudioMode, Recording, ResolutionScale } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
 import { createLogger } from '@/lib/logger'
 
@@ -59,7 +59,7 @@ interface UseQuickClipReturn {
   recordings: Recording[]
   isLoadingRecordings: boolean
 
-  startRecording: (quality?: QualityMode, captureMode?: CaptureMode, audioMode?: AudioMode, resolution?: ResolutionScale) => Promise<void>
+  startRecording: (bitrateMode?: BitrateMode, audioMode?: AudioMode, resolution?: ResolutionScale) => Promise<void>
   stopRecording: () => Promise<Recording | null>
   deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
@@ -67,9 +67,8 @@ interface UseQuickClipReturn {
 }
 
 interface CurrentRecordingSettings {
-  captureMode: CaptureMode
   audioMode: AudioMode
-  qualityMode: QualityMode
+  bitrateMode: BitrateMode
 }
 
 export function useQuickClip(): UseQuickClipReturn {
@@ -116,21 +115,19 @@ export function useQuickClip(): UseQuickClipReturn {
   }, [])
 
   const startRecording = useCallback(async (
-    quality: QualityMode = 'light',
-    captureMode: CaptureMode = 'fullscreen',
+    bitrateMode: BitrateMode = 'light',
     audioMode: AudioMode = 'none',
-    resolution: ResolutionScale = 'p720'
+    resolution: ResolutionScale = '720p'
   ) => {
-    log.info('Starting recording', { quality, captureMode, audioMode, resolution })
+    log.info('Starting recording', { bitrateMode, audioMode, resolution })
     setIsPreparing(true)
 
     try {
       // Store current settings for when we save the recording
-      setCurrentSettings({ captureMode, audioMode, qualityMode: quality })
+      setCurrentSettings({ audioMode, bitrateMode })
 
       await invoke('recorder_start', {
-        quality,
-        captureMode,
+        bitrateMode,
         resolutionScale: resolution,
       })
 
@@ -167,9 +164,8 @@ export function useQuickClip(): UseQuickClipReturn {
 
       // Save to storage
       const settings = currentSettings ?? {
-        captureMode: 'fullscreen' as CaptureMode,
         audioMode: 'none' as AudioMode,
-        qualityMode: 'light' as QualityMode,
+        bitrateMode: 'light' as BitrateMode,
       }
 
       const recording = await saveRecording({
@@ -178,9 +174,8 @@ export function useQuickClip(): UseQuickClipReturn {
         thumbnailPath: result.thumbnailPath,
         duration: result.duration,
         timestamp: result.timestamp,
-        captureMode: settings.captureMode,
         audioMode: settings.audioMode,
-        qualityMode: settings.qualityMode,
+        bitrateMode: settings.bitrateMode,
       })
 
       setCurrentSettings(null)

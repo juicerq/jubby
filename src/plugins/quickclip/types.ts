@@ -1,28 +1,24 @@
-export type CaptureMode = 'fullscreen' | 'area'
-export type AudioMode = 'none' | 'system' | 'microphone' | 'both'
-export type QualityMode = 'light' | 'high'
-export type ResolutionScale = 'native' | 'p720' | 'p480'
+export type BitrateMode = 'light' | 'high'
+export type ResolutionScale = '1080p' | '720p' | '480p' | 'native'
+export type AudioMode = 'none' | 'system' | 'mic' | 'both'
 
 export interface QuickClipSettings {
-  captureMode: CaptureMode
-  audioMode: AudioMode
-  qualityMode: QualityMode
+  bitrateMode: BitrateMode
   resolution: ResolutionScale
+  audioMode: AudioMode
   hotkey: string
 }
 
 export const DEFAULT_SETTINGS: QuickClipSettings = {
-  captureMode: 'fullscreen',
+  bitrateMode: 'light',
+  resolution: '720p',
   audioMode: 'none',
-  qualityMode: 'light',
-  resolution: 'p720',
   hotkey: 'Ctrl+Shift+R',
 }
 
 export interface RecordingSettings {
-  captureMode: CaptureMode
   audioMode: AudioMode
-  qualityMode: QualityMode
+  bitrateMode: BitrateMode
 }
 
 export interface Recording {

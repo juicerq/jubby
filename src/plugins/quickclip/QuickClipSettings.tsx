@@ -1,37 +1,28 @@
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { ShortcutCapture } from '@/core/components/Settings/ShortcutCapture'
-import { Checkbox } from '@/components/ui/checkbox'
 import { useNavigationLevels } from '@/core/hooks'
 import { cn } from '@/lib/utils'
-import type { CaptureMode, QualityMode, ResolutionScale } from './types'
+import type { BitrateMode, ResolutionScale, AudioMode } from './types'
 
 interface QuickClipSettingsProps {
-  captureMode: CaptureMode
-  onCaptureModeChange: (mode: CaptureMode) => void
-  systemAudio: boolean
-  onSystemAudioChange: (enabled: boolean) => void
-  microphone: boolean
-  onMicrophoneChange: (enabled: boolean) => void
-  qualityMode: QualityMode
-  onQualityModeChange: (mode: QualityMode) => void
+  bitrateMode: BitrateMode
+  onBitrateModeChange: (mode: BitrateMode) => void
   resolution: ResolutionScale
   onResolutionChange: (resolution: ResolutionScale) => void
+  audioMode: AudioMode
+  onAudioModeChange: (mode: AudioMode) => void
   hotkey: string
   onHotkeyChange: (hotkey: string) => void
   onNavigateBack: () => void
 }
 
 function QuickClipSettings({
-  captureMode,
-  onCaptureModeChange,
-  systemAudio,
-  onSystemAudioChange,
-  microphone,
-  onMicrophoneChange,
-  qualityMode,
-  onQualityModeChange,
+  bitrateMode,
+  onBitrateModeChange,
   resolution,
   onResolutionChange,
+  audioMode,
+  onAudioModeChange,
   hotkey,
   onHotkeyChange,
   onNavigateBack,
@@ -45,44 +36,11 @@ function QuickClipSettings({
     <div className="flex h-full flex-col overflow-hidden">
       <Breadcrumb />
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
-        <SettingsSection title="Capture">
-          <SettingsRow label="Screen" description="Recording region">
-            <SegmentedToggle
-              value={captureMode}
-              onChange={onCaptureModeChange}
-              options={[
-                { value: 'fullscreen' as const, label: 'Fullscreen' },
-                { value: 'area' as const, label: 'Area' },
-              ]}
-            />
-          </SettingsRow>
-          <SettingsRow label="Audio" description="Sound sources to include">
-            <div className="flex flex-col gap-2">
-              <label className="flex cursor-pointer items-center gap-2.5 text-[13px]">
-                <Checkbox
-                  checked={systemAudio}
-                  onCheckedChange={(checked) => onSystemAudioChange(checked === true)}
-                  className="border-white/20 data-[state=checked]:border-white/40 data-[state=checked]:bg-white/10"
-                />
-                <span className="text-white/70">System audio</span>
-              </label>
-              <label className="flex cursor-pointer items-center gap-2.5 text-[13px]">
-                <Checkbox
-                  checked={microphone}
-                  onCheckedChange={(checked) => onMicrophoneChange(checked === true)}
-                  className="border-white/20 data-[state=checked]:border-white/40 data-[state=checked]:bg-white/10"
-                />
-                <span className="text-white/70">Microphone</span>
-              </label>
-            </div>
-          </SettingsRow>
-        </SettingsSection>
-
         <SettingsSection title="Encoding">
-          <SettingsRow label="Quality" description="Balance between size and clarity">
+          <SettingsRow label="Bitrate" description="Balance between size and clarity">
             <SegmentedToggle
-              value={qualityMode}
-              onChange={onQualityModeChange}
+              value={bitrateMode}
+              onChange={onBitrateModeChange}
               options={[
                 { value: 'light' as const, label: 'Light' },
                 { value: 'high' as const, label: 'High' },
@@ -94,9 +52,25 @@ function QuickClipSettings({
               value={resolution}
               onChange={onResolutionChange}
               options={[
+                { value: '1080p' as const, label: '1080p' },
+                { value: '720p' as const, label: '720p' },
+                { value: '480p' as const, label: '480p' },
                 { value: 'native' as const, label: 'Native' },
-                { value: 'p720' as const, label: '720p' },
-                { value: 'p480' as const, label: '480p' },
+              ]}
+            />
+          </SettingsRow>
+        </SettingsSection>
+
+        <SettingsSection title="Audio">
+          <SettingsRow label="Source" description="Sound sources to include">
+            <SegmentedToggle
+              value={audioMode}
+              onChange={onAudioModeChange}
+              options={[
+                { value: 'none' as const, label: 'None' },
+                { value: 'system' as const, label: 'System' },
+                { value: 'mic' as const, label: 'Mic' },
+                { value: 'both' as const, label: 'Both' },
               ]}
             />
           </SettingsRow>

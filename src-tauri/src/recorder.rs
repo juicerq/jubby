@@ -43,31 +43,31 @@ pub enum RecorderError {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum QualityMode {
+pub enum BitrateMode {
     #[default]
     Light,
     High,
 }
 
-impl QualityMode {
+impl BitrateMode {
     fn crf(&self) -> &str {
         match self {
-            QualityMode::Light => "32",
-            QualityMode::High => "18",
+            BitrateMode::Light => "32",
+            BitrateMode::High => "18",
         }
     }
 
     fn preset(&self) -> &str {
         match self {
-            QualityMode::Light => "fast",
-            QualityMode::High => "slower",
+            BitrateMode::Light => "fast",
+            BitrateMode::High => "slower",
         }
     }
 
     fn default_scale(&self) -> ResolutionScale {
         match self {
-            QualityMode::Light => ResolutionScale::P720,
-            QualityMode::High => ResolutionScale::Native,
+            BitrateMode::Light => ResolutionScale::P720,
+            BitrateMode::High => ResolutionScale::Native,
         }
     }
 
@@ -78,18 +78,23 @@ impl QualityMode {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
 pub enum ResolutionScale {
     #[default]
-    Native,
+    #[serde(rename = "720p")]
     P720,
+    #[serde(rename = "1080p")]
+    P1080,
+    #[serde(rename = "480p")]
     P480,
+    #[serde(rename = "native")]
+    Native,
 }
 
 impl ResolutionScale {
     fn scale_filter(&self) -> Option<&str> {
         match self {
             ResolutionScale::Native => None,
+            ResolutionScale::P1080 => Some("1920:-2"),
             ResolutionScale::P720 => Some("1280:-2"),
             ResolutionScale::P480 => Some("854:-2"),
         }
@@ -273,7 +278,7 @@ const CALIBRATION_FRAMES: usize = 30;
 fn spawn_writer_thread(
     frame_receiver: Receiver<CaptureMessage>,
     video_path: PathBuf,
-    quality: QualityMode,
+    bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
 ) -> JoinHandle<Result<WriterResult, RecorderError>> {
     std::thread::spawn(move || {
@@ -361,7 +366,7 @@ fn spawn_writer_thread(
         }
 
         // Phase 4: Start FFmpeg with measured framerate
-        let target_fps = quality.default_target_fps();
+        let target_fps = bitrate_mode.default_target_fps();
 
         // Build video filter chain: fps conversion + optional scaling
         let video_filter = {
@@ -379,7 +384,7 @@ fn spawn_writer_thread(
 
         tracing::info!(target: "quickclip",
             "[WRITER] Starting FFmpeg: {}x{} @ {}fps -> {}fps, preset={}, crf={}, scale={:?}",
-            width, height, input_fps, target_fps, quality.preset(), quality.crf(), resolution_scale);
+            width, height, input_fps, target_fps, bitrate_mode.preset(), bitrate_mode.crf(), resolution_scale);
 
         let mut child = Command::new("ffmpeg")
             .args([
@@ -391,8 +396,8 @@ fn spawn_writer_thread(
                 "-vf", &video_filter,
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
-                "-crf", quality.crf(),
-                "-preset", quality.preset(),
+                "-crf", bitrate_mode.crf(),
+                "-preset", bitrate_mode.preset(),
                 "-movflags", "+faststart",
                 "-y",
                 &output_str,
@@ -546,25 +551,23 @@ impl From<PipeWireCaptureMode> for CaptureSource {
 #[tauri::command]
 pub async fn recorder_start(
     state: tauri::State<'_, RecorderState>,
-    quality: QualityMode,
-    capture_mode: Option<PipeWireCaptureMode>,
+    bitrate_mode: BitrateMode,
     resolution_scale: Option<ResolutionScale>,
 ) -> Result<(), String> {
-    let scale = resolution_scale.unwrap_or_else(|| quality.default_scale());
-    start_recording_internal(&state, quality, capture_mode.unwrap_or_default(), scale)
+    let scale = resolution_scale.unwrap_or_else(|| bitrate_mode.default_scale());
+    start_recording_internal(&state, bitrate_mode, scale)
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn start_recording_internal(
     state: &RecorderState,
-    quality: QualityMode,
-    capture_mode: PipeWireCaptureMode,
+    bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
 ) -> Result<(), RecorderError> {
     tracing::info!(target: "quickclip",
-        "[RECORD] Starting: quality={:?}, capture_mode={:?}, resolution_scale={:?}",
-        quality, capture_mode, resolution_scale);
+        "[RECORD] Starting: bitrate_mode={:?}, resolution_scale={:?}",
+        bitrate_mode, resolution_scale);
 
     check_ffmpeg()?;
 
@@ -589,8 +592,7 @@ async fn start_recording_internal(
     let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
 
     // Create PipeWire screencast session via XDG Desktop Portal
-    let capture_source: CaptureSource = capture_mode.into();
-    let screencast_session = ScreencastSession::new(capture_source).await?;
+    let screencast_session = ScreencastSession::new(CaptureSource::Fullscreen).await?;
 
     // Capture start time before storing session (needed for duration calculation)
     let recording_start = std::time::Instant::now();
@@ -619,7 +621,7 @@ async fn start_recording_internal(
     let writer_handle = spawn_writer_thread(
         frame_receiver,
         video_path,
-        quality,
+        bitrate_mode,
         resolution_scale,
     );
     *state.writer_handle.lock().unwrap() = Some(writer_handle);
@@ -796,29 +798,21 @@ pub fn recorder_delete_video(video_path: String, thumbnail_path: String) -> Resu
 // Recording Metadata Persistence
 // ============================================================================
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CaptureMode {
-    Fullscreen,
-    Window,
-    Region,
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioMode {
+    #[default]
     None,
     System,
-    Microphone,
+    Mic,
     Both,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSettings {
-    pub capture_mode: CaptureMode,
     pub audio_mode: AudioMode,
-    pub quality_mode: QualityMode,
+    pub bitrate_mode: BitrateMode,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -832,46 +826,28 @@ pub struct Recording {
     pub settings: RecordingSettings,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PersistedCaptureMode {
-    Fullscreen,
-    Area,
-}
-
-impl Default for PersistedCaptureMode {
-    fn default() -> Self {
-        Self::Fullscreen
-    }
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Serialize, Deserialize, Default)]
 pub enum PersistedResolution {
-    Native,
+    #[default]
+    #[serde(rename = "720p")]
     P720,
+    #[serde(rename = "1080p")]
+    P1080,
+    #[serde(rename = "480p")]
     P480,
-}
-
-impl Default for PersistedResolution {
-    fn default() -> Self {
-        Self::P720
-    }
+    #[serde(rename = "native")]
+    Native,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickClipUserSettings {
     #[serde(default)]
-    pub capture_mode: PersistedCaptureMode,
-    #[serde(default)]
-    pub system_audio: bool,
-    #[serde(default)]
-    pub microphone: bool,
-    #[serde(default)]
-    pub quality_mode: QualityMode,
+    pub bitrate_mode: BitrateMode,
     #[serde(default)]
     pub resolution: PersistedResolution,
+    #[serde(default)]
+    pub audio_mode: AudioMode,
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
 }
@@ -883,11 +859,9 @@ fn default_hotkey() -> String {
 impl Default for QuickClipUserSettings {
     fn default() -> Self {
         Self {
-            capture_mode: PersistedCaptureMode::Fullscreen,
-            system_audio: false,
-            microphone: false,
-            quality_mode: QualityMode::Light,
+            bitrate_mode: BitrateMode::Light,
             resolution: PersistedResolution::P720,
+            audio_mode: AudioMode::None,
             hotkey: default_hotkey(),
         }
     }
@@ -950,9 +924,8 @@ pub fn quickclip_save_recording(
     thumbnail_path: String,
     duration: f64,
     timestamp: i64,
-    capture_mode: CaptureMode,
     audio_mode: AudioMode,
-    quality_mode: QualityMode,
+    bitrate_mode: BitrateMode,
 ) -> Result<Recording, String> {
     let mut data = load_quickclip_data().map_err(|e| e.to_string())?;
 
@@ -963,9 +936,8 @@ pub fn quickclip_save_recording(
         duration,
         timestamp,
         settings: RecordingSettings {
-            capture_mode,
             audio_mode,
-            quality_mode,
+            bitrate_mode,
         },
     };
 
