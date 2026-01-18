@@ -24,4 +24,6 @@ pub enum QuickClipError {
     UserCancelled,
     #[error("PipeWire error: {0}")]
     PipeWireError(String),
+    #[error("Event error: {0}")]
+    EventError(String),
 }

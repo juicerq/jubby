@@ -5,7 +5,8 @@ mod shared;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
-use core::settings::{load_settings, parse_shortcut, CurrentShortcut};
+use core::settings::{load_settings, parse_shortcut, CurrentQuickClipShortcut, CurrentShortcut};
+use plugins::quickclip::persistence::load_quickclip_settings;
 
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
@@ -59,16 +60,35 @@ pub fn run() {
     }
 
     let app_settings = load_settings();
-    let shortcut_str = app_settings.global_shortcut.clone();
-    let shortcut = parse_shortcut(&shortcut_str).unwrap_or(Shortcut::new(None, Code::F9));
+    let window_shortcut_str = app_settings.global_shortcut.clone();
+    let window_shortcut =
+        parse_shortcut(&window_shortcut_str).unwrap_or(Shortcut::new(None, Code::F9));
+
+    let quickclip_settings = load_quickclip_settings().unwrap_or_default();
+    let quickclip_shortcut_str = quickclip_settings.hotkey.clone();
+    let quickclip_shortcut = parse_shortcut(&quickclip_shortcut_str).ok();
+
+    let window_shortcut_for_handler = window_shortcut.clone();
+    let quickclip_shortcut_for_handler = quickclip_shortcut.clone();
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(move |app, shortcut, event| {
                     if event.state == ShortcutState::Released {
-                        core::window::toggle(app);
+                        if shortcut == &window_shortcut_for_handler {
+                            core::window::toggle(app);
+                        } else if quickclip_shortcut_for_handler
+                            .as_ref()
+                            .map_or(false, |qs| shortcut == qs)
+                        {
+                            let app_handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                plugins::quickclip::recorder::commands::toggle_recording_with_notification(&app_handle).await;
+                            });
+                        }
                     }
                 })
                 .build(),
@@ -104,6 +124,7 @@ pub fn run() {
             plugins::quickclip::persistence::quickclip_delete_recording,
             plugins::quickclip::persistence::quickclip_get_settings,
             plugins::quickclip::persistence::quickclip_update_settings,
+            plugins::quickclip::persistence::quickclip_update_hotkey,
             plugins::quickclip::recorder::commands::read_video_file,
             plugins::quickclip::clipboard::copy_file_to_clipboard,
             // Core
@@ -125,14 +146,22 @@ pub fn run() {
             // Initialize recorder state
             app.manage(plugins::quickclip::recorder::RecorderState::new());
 
-            // Initialize current shortcut state
-            app.manage(CurrentShortcut::new(shortcut_str.clone()));
+            // Initialize current shortcut states
+            app.manage(CurrentShortcut::new(window_shortcut_str.clone()));
+            app.manage(CurrentQuickClipShortcut::new(quickclip_shortcut_str.clone()));
 
-            // Register the initial shortcut
-            if let Err(e) = app.global_shortcut().register(shortcut) {
+            // Register the window toggle shortcut
+            if let Err(e) = app.global_shortcut().register(window_shortcut) {
                 if e.to_string().contains("already registered") {
                     tracing::warn!(target: "system", "Another instance is already running");
                     std::process::exit(0);
+                }
+            }
+
+            // Register the QuickClip shortcut
+            if let Some(qs) = quickclip_shortcut {
+                if let Err(e) = app.global_shortcut().register(qs) {
+                    tracing::warn!(target: "quickclip", "Failed to register QuickClip shortcut: {}", e);
                 }
             }
 

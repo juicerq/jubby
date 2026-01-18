@@ -30,6 +30,8 @@ pub enum SettingsError {
     ShortcutParseError(String),
     #[error("Failed to register shortcut: {0}")]
     ShortcutRegisterError(String),
+    #[error("Shortcut conflict: {0}")]
+    ShortcutConflict(String),
 }
 
 pub struct CurrentShortcut {
@@ -42,6 +44,56 @@ impl CurrentShortcut {
             current: Mutex::new(shortcut),
         }
     }
+}
+
+pub struct CurrentQuickClipShortcut {
+    pub current: Mutex<String>,
+}
+
+impl CurrentQuickClipShortcut {
+    pub fn new(shortcut: String) -> Self {
+        Self {
+            current: Mutex::new(shortcut),
+        }
+    }
+}
+
+pub fn validate_shortcut_unique(
+    app: &AppHandle,
+    new_shortcut: &str,
+    is_quickclip: bool,
+) -> Result<(), SettingsError> {
+    let window_shortcut = app
+        .try_state::<CurrentShortcut>()
+        .map(|s| s.current.lock().unwrap().clone());
+
+    let quickclip_shortcut = app
+        .try_state::<CurrentQuickClipShortcut>()
+        .map(|s| s.current.lock().unwrap().clone());
+
+    let normalized = new_shortcut.to_lowercase().replace(' ', "");
+
+    if is_quickclip {
+        if let Some(window) = window_shortcut {
+            let window_normalized = window.to_lowercase().replace(' ', "");
+            if normalized == window_normalized {
+                return Err(SettingsError::ShortcutConflict(
+                    "This shortcut is already used for the window toggle".to_string(),
+                ));
+            }
+        }
+    } else {
+        if let Some(quickclip) = quickclip_shortcut {
+            let quickclip_normalized = quickclip.to_lowercase().replace(' ', "");
+            if normalized == quickclip_normalized {
+                return Err(SettingsError::ShortcutConflict(
+                    "This shortcut is already used for QuickClip recording".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn get_settings_path() -> PathBuf {
@@ -89,6 +141,8 @@ fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), Settings
 }
 
 pub fn update_shortcut(app: &AppHandle, new_shortcut_str: &str) -> Result<(), SettingsError> {
+    validate_shortcut_unique(app, new_shortcut_str, false)?;
+
     let new_shortcut = parse_shortcut(new_shortcut_str)?;
 
     let current_state = app.state::<CurrentShortcut>();
