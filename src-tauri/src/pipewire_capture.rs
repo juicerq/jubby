@@ -381,6 +381,14 @@ pub fn run_capture_loop(
 ) -> Result<CaptureStats, RecorderError> {
     tracing::info!(target: "quickclip", "[PIPEWIRE] Initializing capture loop: node_id={}", session.node_id);
 
+    // Extract the portal session so we can close it at the end
+    // The pipewire_fd and node_id are used for capture, portal_session keeps the portal alive
+    let ScreencastSession {
+        pipewire_fd,
+        node_id,
+        session: portal_session,
+    } = session;
+
     // Initialize PipeWire
     pw::init();
 
@@ -397,7 +405,7 @@ pub fn run_capture_loop(
     })?;
 
     // Connect using the portal-provided file descriptor
-    let core = context.connect_fd(session.pipewire_fd, None).map_err(|e| {
+    let core = context.connect_fd(pipewire_fd, None).map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to connect with fd: {}", e);
         RecorderError::PipeWireError(format!("Failed to connect with fd: {}", e))
     })?;
@@ -629,7 +637,7 @@ pub fn run_capture_loop(
     stream
         .connect(
             pw::spa::utils::Direction::Input,
-            Some(session.node_id),
+            Some(node_id),
             StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
             &mut params,
         )
@@ -705,10 +713,29 @@ pub fn run_capture_loop(
         state_guard.frame_count, state_guard.width, state_guard.height,
         actual_duration, source_framerate);
 
-    Ok(CaptureStats {
+    // Extract stats before dropping the guard
+    let stats = CaptureStats {
         frame_count: state_guard.frame_count,
         source_framerate,
-    })
+    };
+    drop(state_guard);
+
+    // Close the portal session to remove the screen sharing indicator
+    // Spawn a thread so this doesn't block the capture thread's return
+    std::thread::spawn(move || {
+        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            if let Err(e) = rt.block_on(portal_session.close()) {
+                tracing::warn!(target: "quickclip", "[PORTAL] Failed to close session: {}", e);
+            } else {
+                tracing::debug!(target: "quickclip", "[PORTAL] Session closed successfully");
+            }
+        }
+    });
+
+    Ok(stats)
 }
 
 #[cfg(test)]
