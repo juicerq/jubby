@@ -9,13 +9,13 @@ Completed Tasks:
 3. [x] Register QuickClip shortcut at app startup
 
 Current Task:
-- Task 8 complete, awaiting review
+- Task 7 complete, awaiting review
 
 Remaining Tasks:
 4. [ ] Create recording tray icon asset
 5. [ ] Implement tray recording indicator with event listeners
 6. [x] Add quickclip_update_hotkey command with runtime re-registration
-7. [ ] Enable shortcuts section in QuickClipSettings.tsx
+7. [x] Enable shortcuts section in QuickClipSettings.tsx
 8. [x] Expose hotkey in useQuickClipSettings hook
 9. [ ] Test global shortcut recording flow
 10. [ ] Test shortcut customization
@@ -111,3 +111,25 @@ Notes:
 - The hotkey field was already in PersistedSettings interface but needed a dedicated setter for runtime re-registration
 - Backend error messages from quickclip_update_hotkey are user-friendly (e.g., "Shortcut conflicts with window toggle")
 - Using a separate `setHotkey` function (vs updateSettings) ensures the runtime shortcut registration is triggered
+
+## 2026-01-18 - Task 7 (Enable shortcuts section in QuickClipSettings.tsx)
+
+### What was implemented:
+
+**Task 7: Enable shortcuts section in QuickClipSettings.tsx**
+- Removed disabled state and 'Coming soon' message from shortcuts section
+- Imported and integrated existing `ShortcutCapture` component from `@/core/components/Settings/ShortcutCapture`
+- Added `hotkey`, `onHotkeyChange`, and `isUpdatingHotkey` props to QuickClipSettings interface
+- Wired `ShortcutCapture` onChange to call `setHotkey` from useQuickClipSettings hook
+- Updated QuickClipPlugin to destructure `isUpdatingHotkey` and `setHotkey` from hook and pass them to settings
+- `ShortcutCapture` is disabled during hotkey update to prevent double-submission
+
+### Files changed:
+- src/plugins/quickclip/QuickClipSettings.tsx (added import, props, replaced Coming soon with ShortcutCapture)
+- src/plugins/quickclip/QuickClipPlugin.tsx (updated hook destructuring and QuickClipSettings props)
+
+### Learnings for future iterations:
+- The shared `ShortcutCapture` component is in `@/core/components/Settings/ShortcutCapture`, not in `@/shared/components`
+- The PRD referenced "ShortcutInput" but the actual component name is "ShortcutCapture"
+- ShortcutCapture handles keyboard capture, escape to cancel, and shows edit icon on hover
+- Pattern: pass `disabled={isUpdatingX}` to input components during async operations to prevent race conditions

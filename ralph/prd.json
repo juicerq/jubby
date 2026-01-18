@@ -89,7 +89,7 @@
       "Display current hotkey value from settings"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Reuse the ShortcutInput component from shared/components. Check useQuickClipSettings.ts for settings hook usage. Use frontend-design skill if UI adjustments needed."
   },
   {
