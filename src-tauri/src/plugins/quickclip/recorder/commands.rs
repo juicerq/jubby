@@ -1,6 +1,9 @@
 use super::super::capture::{CaptureMessage, CaptureSource, ScreencastSession};
 use super::super::errors::QuickClipError;
-use super::super::persistence::{get_sessions_dir, get_thumbnails_dir, get_videos_dir};
+use super::super::persistence::{
+    get_sessions_dir, get_thumbnails_dir, get_videos_dir, load_quickclip_settings, save_recording,
+    Recording,
+};
 use super::super::types::{AudioMode, Framerate, ResolutionScale};
 use super::ffmpeg::{check_ffmpeg, cleanup_session_dir, generate_thumbnail};
 use super::writer::spawn_writer_thread;
@@ -10,20 +13,9 @@ use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tokio::time::timeout;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordingResult {
-    pub id: String,
-    pub video_path: String,
-    pub thumbnail_path: String,
-    pub duration: f64,
-    pub width: u32,
-    pub height: u32,
-    pub frame_count: u32,
-    pub timestamp: i64,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +91,7 @@ async fn start_recording_internal(
         thumbnail_path: thumbnail_path.clone(),
         recording_id,
         timestamp,
+        audio_mode,
     };
 
     *state.session.lock().await = Some(session);
@@ -136,13 +129,13 @@ async fn start_recording_internal(
 #[tauri::command]
 pub async fn recorder_stop(
     state: tauri::State<'_, RecorderState>,
-) -> Result<RecordingResult, String> {
+) -> Result<Recording, String> {
     stop_recording_internal(&state)
         .await
         .map_err(|e| e.to_string())
 }
 
-async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResult, QuickClipError> {
+async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, QuickClipError> {
     tracing::info!(target: "quickclip", "[RECORD] Stopping...");
 
     if !state.is_recording.load(Ordering::SeqCst) {
@@ -230,21 +223,21 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<RecordingResul
 
     cleanup_session_dir(&session.session_dir);
 
+    let recording = save_recording(
+        session.recording_id.clone(),
+        session.video_path.to_string_lossy().to_string(),
+        session.thumbnail_path.to_string_lossy().to_string(),
+        writer_result.duration,
+        session.timestamp,
+        session.audio_mode,
+    )?;
+
     tracing::info!(target: "quickclip",
         "[RECORD] Complete: id={}, frames={}, duration={:.2}s, path={}",
-        session.recording_id, writer_result.frame_count, writer_result.duration,
+        recording.id, writer_result.frame_count, writer_result.duration,
         session.video_path.display());
 
-    Ok(RecordingResult {
-        id: session.recording_id,
-        video_path: session.video_path.to_string_lossy().to_string(),
-        thumbnail_path: session.thumbnail_path.to_string_lossy().to_string(),
-        duration: writer_result.duration,
-        width: writer_result.width,
-        height: writer_result.height,
-        frame_count: writer_result.frame_count,
-        timestamp: session.timestamp,
-    })
+    Ok(recording)
 }
 
 #[tauri::command]
@@ -289,4 +282,53 @@ pub fn recorder_delete_video(video_path: String, thumbnail_path: String) -> Resu
 #[tauri::command]
 pub fn read_video_file(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(&path).map_err(|e| format!("Failed to read video: {}", e))
+}
+
+pub async fn toggle_recording(app: &AppHandle) -> Result<Option<Recording>, QuickClipError> {
+    let state = app.state::<RecorderState>();
+    let is_recording = state.is_recording.load(Ordering::SeqCst);
+
+    if is_recording {
+        tracing::info!(target: "quickclip", "[TOGGLE] Stopping recording");
+        let result = stop_recording_internal(&state).await?;
+        app.emit("quickclip:recording-stopped", ())
+            .map_err(|e| QuickClipError::EventError(e.to_string()))?;
+        Ok(Some(result))
+    } else {
+        tracing::info!(target: "quickclip", "[TOGGLE] Starting recording");
+        let settings = load_quickclip_settings()?;
+        start_recording_internal(
+            &state,
+            settings.resolution.into(),
+            settings.framerate,
+            settings.audio_mode,
+        )
+        .await?;
+        app.emit("quickclip:recording-started", ())
+            .map_err(|e| QuickClipError::EventError(e.to_string()))?;
+        Ok(None)
+    }
+}
+
+pub async fn toggle_recording_with_notification(app: &AppHandle) {
+    match toggle_recording(app).await {
+        Ok(Some(recording)) => {
+            tracing::info!(target: "quickclip", "[TOGGLE] Recording saved: id={}", recording.id);
+        }
+        Ok(None) => {
+            // Recording started - nothing to do
+        }
+        Err(e) => {
+            tracing::error!(target: "quickclip", "[TOGGLE] Error: {}", e);
+            if let Err(notify_err) = app
+                .notification()
+                .builder()
+                .title("QuickClip Error")
+                .body(e.to_string())
+                .show()
+            {
+                tracing::warn!(target: "quickclip", "[TOGGLE] Failed to show notification: {}", notify_err);
+            }
+        }
+    }
 }

@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use tokio::sync::Mutex;
 
 use super::errors::QuickClipError;
+use super::types::AudioMode;
 use writer::WriterResult;
 
 struct RecordingSession {
@@ -18,6 +19,7 @@ struct RecordingSession {
     pub thumbnail_path: PathBuf,
     pub recording_id: String,
     pub timestamp: i64,
+    pub audio_mode: AudioMode,
 }
 
 pub struct RecorderState {

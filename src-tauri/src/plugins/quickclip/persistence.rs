@@ -1,9 +1,14 @@
 use super::errors::QuickClipError;
-use super::types::{AudioMode, Framerate};
+use super::types::{AudioMode, Framerate, ResolutionScale};
+use crate::core::settings::{
+    parse_shortcut, validate_shortcut_unique, CurrentQuickClipShortcut, SettingsError,
+};
 use crate::shared::paths::{ensure_dir, get_plugin_dir};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 fn get_quickclip_dir() -> PathBuf {
     get_plugin_dir("quickclip")
@@ -69,6 +74,17 @@ pub enum PersistedResolution {
     Native,
 }
 
+impl From<PersistedResolution> for ResolutionScale {
+    fn from(res: PersistedResolution) -> Self {
+        match res {
+            PersistedResolution::P720 => ResolutionScale::P720,
+            PersistedResolution::P1080 => ResolutionScale::P1080,
+            PersistedResolution::P480 => ResolutionScale::P480,
+            PersistedResolution::Native => ResolutionScale::Native,
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickClipUserSettings {
@@ -105,7 +121,7 @@ pub struct QuickClipData {
     pub settings: QuickClipUserSettings,
 }
 
-fn load_data() -> Result<QuickClipData, QuickClipError> {
+pub fn load_data() -> Result<QuickClipData, QuickClipError> {
     let path = get_data_path()?;
 
     if !path.exists() {
@@ -117,6 +133,10 @@ fn load_data() -> Result<QuickClipData, QuickClipError> {
 
     serde_json::from_str(&content)
         .map_err(|e| QuickClipError::StorageError(format!("Failed to parse data file: {}", e)))
+}
+
+pub fn load_quickclip_settings() -> Result<QuickClipUserSettings, QuickClipError> {
+    load_data().map(|d| d.settings)
 }
 
 fn save_data(data: &QuickClipData) -> Result<(), QuickClipError> {
@@ -142,16 +162,15 @@ pub fn quickclip_get_recordings() -> Result<Vec<Recording>, String> {
     Ok(valid)
 }
 
-#[tauri::command]
-pub fn quickclip_save_recording(
+pub fn save_recording(
     id: String,
     video_path: String,
     thumbnail_path: String,
     duration: f64,
     timestamp: i64,
     audio_mode: AudioMode,
-) -> Result<Recording, String> {
-    let mut data = load_data().map_err(|e| e.to_string())?;
+) -> Result<Recording, QuickClipError> {
+    let mut data = load_data()?;
 
     let recording = Recording {
         id,
@@ -163,9 +182,22 @@ pub fn quickclip_save_recording(
     };
 
     data.recordings.insert(0, recording.clone());
-    save_data(&data).map_err(|e| e.to_string())?;
+    save_data(&data)?;
 
     Ok(recording)
+}
+
+#[tauri::command]
+pub fn quickclip_save_recording(
+    id: String,
+    video_path: String,
+    thumbnail_path: String,
+    duration: f64,
+    timestamp: i64,
+    audio_mode: AudioMode,
+) -> Result<Recording, String> {
+    save_recording(id, video_path, thumbnail_path, duration, timestamp, audio_mode)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -206,4 +238,35 @@ pub fn quickclip_update_settings(settings: QuickClipUserSettings) -> Result<(), 
     data.settings = settings;
     save_data(&data).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn update_quickclip_hotkey(app: &AppHandle, new_hotkey: &str) -> Result<(), SettingsError> {
+    validate_shortcut_unique(app, new_hotkey, true)?;
+
+    let new_shortcut = parse_shortcut(new_hotkey)?;
+
+    let current_state = app.state::<CurrentQuickClipShortcut>();
+    let current_str = current_state.current.lock().unwrap().clone();
+
+    if let Ok(current_shortcut) = parse_shortcut(&current_str) {
+        let _ = app.global_shortcut().unregister(current_shortcut);
+    }
+
+    app.global_shortcut()
+        .register(new_shortcut)
+        .map_err(|e| SettingsError::ShortcutRegisterError(e.to_string()))?;
+
+    *current_state.current.lock().unwrap() = new_hotkey.to_string();
+
+    let mut data = load_data().map_err(|e| SettingsError::ReadError(std::io::Error::other(e.to_string())))?;
+    data.settings.hotkey = new_hotkey.to_string();
+    save_data(&data).map_err(|e| SettingsError::ReadError(std::io::Error::other(e.to_string())))?;
+
+    tracing::info!(target: "quickclip", "Updated QuickClip hotkey to: {}", new_hotkey);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn quickclip_update_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+    update_quickclip_hotkey(&app, &hotkey).map_err(|e| e.to_string())
 }

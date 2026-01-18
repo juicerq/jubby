@@ -20,7 +20,7 @@ type ViewState = 'recordings' | 'settings'
 function QuickClipPlugin(_props: PluginProps) {
   const [view, setView] = useState<ViewState>('recordings')
 
-  const { settings, isLoading: isLoadingSettings, updateSettings } = useQuickClipSettings()
+  const { settings, isLoading: isLoadingSettings, isUpdatingHotkey, updateSettings, setHotkey } = useQuickClipSettings()
 
   // Only register navigation levels when on recordings view
   // Settings view manages its own navigation
@@ -61,6 +61,9 @@ function QuickClipPlugin(_props: PluginProps) {
         onFramerateChange={(fps) => updateSettings({ framerate: fps })}
         audioMode={settings.audioMode}
         onAudioModeChange={(mode) => updateSettings({ audioMode: mode })}
+        hotkey={settings.hotkey}
+        onHotkeyChange={setHotkey}
+        isUpdatingHotkey={isUpdatingHotkey}
         onNavigateBack={() => setView('recordings')}
       />
     )

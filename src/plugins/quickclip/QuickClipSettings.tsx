@@ -1,4 +1,5 @@
 import { Breadcrumb } from '@/core/components/Breadcrumb'
+import { ShortcutCapture } from '@/core/components/Settings/ShortcutCapture'
 import { useNavigationLevels } from '@/core/hooks'
 import { cn } from '@/lib/utils'
 import type { ResolutionScale, AudioMode, Framerate } from './types'
@@ -10,6 +11,9 @@ interface QuickClipSettingsProps {
   onFramerateChange: (framerate: Framerate) => void
   audioMode: AudioMode
   onAudioModeChange: (mode: AudioMode) => void
+  hotkey: string
+  onHotkeyChange: (hotkey: string) => void
+  isUpdatingHotkey: boolean
   onNavigateBack: () => void
 }
 
@@ -20,6 +24,9 @@ function QuickClipSettings({
   onFramerateChange,
   audioMode,
   onAudioModeChange,
+  hotkey,
+  onHotkeyChange,
+  isUpdatingHotkey,
   onNavigateBack,
 }: QuickClipSettingsProps) {
   useNavigationLevels([
@@ -73,13 +80,13 @@ function QuickClipSettings({
         </SettingsSection>
 
         <SettingsSection title="Shortcuts">
-          <div className="opacity-40">
-            <SettingsRow label="Record" description="Start and stop recording">
-              <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-[12px] text-white/50">
-                Coming soon
-              </span>
-            </SettingsRow>
-          </div>
+          <SettingsRow label="Record" description="Start and stop recording">
+            <ShortcutCapture
+              value={hotkey}
+              onChange={onHotkeyChange}
+              disabled={isUpdatingHotkey}
+            />
+          </SettingsRow>
         </SettingsSection>
       </div>
     </div>

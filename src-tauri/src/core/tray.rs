@@ -2,10 +2,13 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{TrayIcon, TrayIconBuilder},
-    App, RunEvent, WindowEvent,
+    App, AppHandle, Listener, RunEvent, WindowEvent,
 };
 
 use super::window;
+
+const TRAY_ICON_NORMAL: &[u8] = include_bytes!("../../icons/32x32.png");
+const TRAY_ICON_RECORDING: &[u8] = include_bytes!("../../icons/tray-icon-recording.png");
 
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     let icon = app
@@ -51,4 +54,40 @@ pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
             }
         }
     }
+}
+
+pub fn set_tray_recording(app: &AppHandle, is_recording: bool) {
+    let icon_bytes = if is_recording {
+        TRAY_ICON_RECORDING
+    } else {
+        TRAY_ICON_NORMAL
+    };
+
+    let icon = match Image::from_bytes(icon_bytes) {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::error!(target: "quickclip", "Failed to load tray icon: {}", e);
+            return;
+        }
+    };
+
+    if let Some(tray) = app.tray_by_id("jubby-tray") {
+        if let Err(e) = tray.set_icon(Some(icon)) {
+            tracing::error!(target: "quickclip", "Failed to set tray icon: {}", e);
+        }
+    }
+}
+
+pub fn setup_recording_listener(app: &App) {
+    let app_handle = app.handle().clone();
+    app.listen("quickclip:recording-started", move |_| {
+        tracing::debug!(target: "quickclip", "[TRAY] Recording started, updating icon");
+        set_tray_recording(&app_handle, true);
+    });
+
+    let app_handle = app.handle().clone();
+    app.listen("quickclip:recording-stopped", move |_| {
+        tracing::debug!(target: "quickclip", "[TRAY] Recording stopped, updating icon");
+        set_tray_recording(&app_handle, false);
+    });
 }
