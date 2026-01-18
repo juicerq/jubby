@@ -1,5 +1,5 @@
+use super::super::persistence::get_frames_dir;
 use serde::Serialize;
-use std::path::PathBuf;
 use thiserror::Error;
 use xcap::{Monitor, Window};
 
@@ -62,36 +62,6 @@ pub struct CaptureResult {
     pub timestamp: i64,
 }
 
-fn get_quickclip_dir() -> Result<PathBuf, CaptureError> {
-    let base_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg_data)
-    } else {
-        let home = std::env::var("HOME").expect("HOME environment variable must be set");
-        PathBuf::from(home).join(".local").join("share")
-    };
-
-    let quickclip_dir = base_dir.join("jubby").join("quickclip");
-
-    if !quickclip_dir.exists() {
-        std::fs::create_dir_all(&quickclip_dir)
-            .map_err(|e| CaptureError::StorageError(e.to_string()))?;
-    }
-
-    Ok(quickclip_dir)
-}
-
-fn get_frames_dir() -> Result<PathBuf, CaptureError> {
-    let frames_dir = get_quickclip_dir()?.join("frames");
-
-    if !frames_dir.exists() {
-        std::fs::create_dir_all(&frames_dir)
-            .map_err(|e| CaptureError::StorageError(e.to_string()))?;
-    }
-
-    Ok(frames_dir)
-}
-
-/// Get all available capture sources (monitors and windows)
 #[tauri::command]
 pub fn capture_get_sources() -> Result<CaptureSourcesResponse, String> {
     get_sources_internal().map_err(|e| e.to_string())
@@ -136,7 +106,6 @@ fn get_sources_internal() -> Result<CaptureSourcesResponse, CaptureError> {
     })
 }
 
-/// Capture a frame from a specific monitor
 #[tauri::command]
 pub fn capture_monitor(monitor_id: String) -> Result<CaptureResult, String> {
     capture_monitor_internal(&monitor_id).map_err(|e| e.to_string())
@@ -161,7 +130,7 @@ fn capture_monitor_internal(monitor_id: &str) -> Result<CaptureResult, CaptureEr
         .expect("Time went backwards")
         .as_millis() as i64;
 
-    let frames_dir = get_frames_dir()?;
+    let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;
     let filename = format!("frame_{}.png", timestamp);
     let path = frames_dir.join(&filename);
 
@@ -177,7 +146,6 @@ fn capture_monitor_internal(monitor_id: &str) -> Result<CaptureResult, CaptureEr
     })
 }
 
-/// Capture a frame from a specific window
 #[tauri::command]
 pub fn capture_window(window_id: u32) -> Result<CaptureResult, String> {
     capture_window_internal(window_id).map_err(|e| e.to_string())
@@ -202,7 +170,7 @@ fn capture_window_internal(window_id: u32) -> Result<CaptureResult, CaptureError
         .expect("Time went backwards")
         .as_millis() as i64;
 
-    let frames_dir = get_frames_dir()?;
+    let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;
     let filename = format!("frame_{}.png", timestamp);
     let path = frames_dir.join(&filename);
 
@@ -218,7 +186,6 @@ fn capture_window_internal(window_id: u32) -> Result<CaptureResult, CaptureError
     })
 }
 
-/// Capture the primary monitor
 #[tauri::command]
 pub fn capture_primary() -> Result<CaptureResult, String> {
     capture_primary_internal().map_err(|e| e.to_string())
@@ -244,7 +211,7 @@ fn capture_primary_internal() -> Result<CaptureResult, CaptureError> {
         .expect("Time went backwards")
         .as_millis() as i64;
 
-    let frames_dir = get_frames_dir()?;
+    let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;
     let filename = format!("frame_{}.png", timestamp);
     let path = frames_dir.join(&filename);
 

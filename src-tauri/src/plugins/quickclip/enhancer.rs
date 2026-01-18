@@ -18,14 +18,13 @@ Your job is to IMPROVE the prompt, not interrogate the user.
 
 CRITICAL: Output ONLY the improved prompt text. No introductions, no explanations, no "Here is...", no commentary, no headers, no "Key improvements" section, no questions, no bullet points asking for clarification. Just the raw improved prompt and nothing else."##;
 
-/// Execute Claude CLI to enhance a prompt
 #[tauri::command]
 pub async fn enhance_prompt(text: String) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("Text cannot be empty".to_string());
     }
 
-    const TIMEOUT_SECS: u64 = 120; // 2 minutes
+    const TIMEOUT_SECS: u64 = 120;
 
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut child = Command::new("claude")
