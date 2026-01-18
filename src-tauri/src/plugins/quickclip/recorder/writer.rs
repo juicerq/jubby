@@ -1,6 +1,6 @@
 use super::super::capture::CaptureMessage;
 use super::super::errors::QuickClipError;
-use super::super::types::{Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
+use super::super::types::{AudioMode, Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -18,12 +18,51 @@ pub struct WriterResult {
     pub frame_count: u32,
 }
 
+/// Gets the default PulseAudio/PipeWire monitor source for system audio capture.
+fn get_default_monitor_source() -> Option<String> {
+    let output = Command::new("pactl")
+        .args(["get-default-sink"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let sink_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sink_name.is_empty() {
+        return None;
+    }
+
+    Some(format!("{}.monitor", sink_name))
+}
+
+/// Gets the default PulseAudio/PipeWire input source for microphone capture.
+fn get_default_input_source() -> Option<String> {
+    let output = Command::new("pactl")
+        .args(["get-default-source"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let source_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if source_name.is_empty() {
+        return None;
+    }
+
+    Some(source_name)
+}
+
 /// Spawns a thread that receives frames from the capture loop and writes them to FFmpeg.
 pub fn spawn_writer_thread(
     frame_receiver: Receiver<CaptureMessage>,
     video_path: PathBuf,
     resolution_scale: ResolutionScale,
     framerate: Framerate,
+    audio_mode: AudioMode,
 ) -> JoinHandle<Result<WriterResult, QuickClipError>> {
     std::thread::spawn(move || {
         // Phase 1: Wait for metadata
@@ -122,26 +161,133 @@ pub fn spawn_writer_thread(
         let input_framerate = input_fps.to_string();
         let output_str = video_path.to_string_lossy().to_string();
 
+        // Build FFmpeg args dynamically based on audio mode
+        let mut ffmpeg_args: Vec<String> = Vec::new();
+
+        // Audio inputs (must come before video input)
+        let (has_system_audio, has_mic_audio) = match audio_mode {
+            AudioMode::None => (false, false),
+            AudioMode::System => (true, false),
+            AudioMode::Mic => (false, true),
+            AudioMode::Both => (true, true),
+        };
+
+        let system_source = if has_system_audio {
+            get_default_monitor_source()
+        } else {
+            None
+        };
+
+        let mic_source = if has_mic_audio {
+            get_default_input_source()
+        } else {
+            None
+        };
+
+        // Audio offset to sync with buffered video frames
+        // Subtract estimated FFmpeg startup time (~0.35s) from calibration time
+        let audio_offset_secs = (calibration_elapsed - 0.35).max(0.0);
+        let audio_offset = format!("{:.3}", audio_offset_secs);
+
         tracing::info!(target: "quickclip",
-            "[WRITER] Starting FFmpeg: {}x{} @ {}fps -> {}fps, preset={}, crf={}, scale={:?}",
-            width, height, input_fps, target_fps, ENCODING_PRESET, ENCODING_CRF, resolution_scale);
+            "[WRITER] Audio config: mode={:?}, system_source={:?}, mic_source={:?}, calibration={:.3}s, offset={:.3}s",
+            audio_mode, system_source, mic_source, calibration_elapsed, audio_offset_secs);
+
+        // Add system audio input (index 0 if present)
+        // Positive itsoffset delays audio to sync with buffered video frames
+        if let Some(ref source) = system_source {
+            ffmpeg_args.extend([
+                "-itsoffset".to_string(), audio_offset.clone(),
+                "-f".to_string(), "pulse".to_string(),
+                "-i".to_string(), source.clone(),
+            ]);
+        }
+
+        // Add mic audio input (index 0 or 1 depending on system audio)
+        if let Some(ref source) = mic_source {
+            ffmpeg_args.extend([
+                "-itsoffset".to_string(), audio_offset.clone(),
+                "-f".to_string(), "pulse".to_string(),
+                "-i".to_string(), source.clone(),
+            ]);
+        }
+
+        // Video input (piped rawvideo) - this will be the last input
+        ffmpeg_args.extend([
+            "-f".to_string(), "rawvideo".to_string(),
+            "-pixel_format".to_string(), "rgba".to_string(),
+            "-video_size".to_string(), video_size.clone(),
+            "-framerate".to_string(), input_framerate.clone(),
+            "-i".to_string(), "pipe:0".to_string(),
+        ]);
+
+        // Calculate input indices for mapping
+        let video_input_idx = match (system_source.is_some(), mic_source.is_some()) {
+            (true, true) => 2,
+            (true, false) | (false, true) => 1,
+            (false, false) => 0,
+        };
+
+        // Video filter
+        ffmpeg_args.extend(["-vf".to_string(), video_filter.clone()]);
+
+        // Stream mapping and audio filter for multiple inputs
+        match (system_source.is_some(), mic_source.is_some()) {
+            (true, true) => {
+                // Both: merge audio streams, use video from last input
+                ffmpeg_args.extend([
+                    "-filter_complex".to_string(),
+                    "[0:a][1:a]amerge=inputs=2[aout]".to_string(),
+                    "-map".to_string(), format!("{}:v", video_input_idx),
+                    "-map".to_string(), "[aout]".to_string(),
+                    "-ac".to_string(), "2".to_string(),
+                ]);
+            }
+            (true, false) | (false, true) => {
+                // Single audio source: map video and audio explicitly
+                ffmpeg_args.extend([
+                    "-map".to_string(), format!("{}:v", video_input_idx),
+                    "-map".to_string(), "0:a".to_string(),
+                ]);
+            }
+            (false, false) => {
+                // No audio: just use video
+            }
+        }
+
+        // Video encoding
+        ffmpeg_args.extend([
+            "-c:v".to_string(), "libx264".to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-crf".to_string(), ENCODING_CRF.to_string(),
+            "-preset".to_string(), ENCODING_PRESET.to_string(),
+        ]);
+
+        // Audio encoding (if any audio input)
+        if system_source.is_some() || mic_source.is_some() {
+            ffmpeg_args.extend([
+                "-c:a".to_string(), "aac".to_string(),
+                "-b:a".to_string(), "128k".to_string(),
+            ]);
+        }
+
+        // Output options
+        if system_source.is_some() || mic_source.is_some() {
+            ffmpeg_args.push("-shortest".to_string());
+        }
+        ffmpeg_args.extend([
+            "-movflags".to_string(), "+faststart".to_string(),
+            "-y".to_string(),
+            output_str.clone(),
+        ]);
+
+        tracing::info!(target: "quickclip",
+            "[WRITER] Starting FFmpeg: {}x{} @ {}fps -> {}fps, preset={}, crf={}, scale={:?}, audio={:?}",
+            width, height, input_fps, target_fps, ENCODING_PRESET, ENCODING_CRF, resolution_scale, audio_mode);
+        tracing::debug!(target: "quickclip", "[WRITER] FFmpeg args: {:?}", ffmpeg_args);
 
         let mut child = Command::new("ffmpeg")
-            .args([
-                "-f", "rawvideo",
-                "-pixel_format", "rgba",
-                "-video_size", &video_size,
-                "-framerate", &input_framerate,
-                "-i", "pipe:0",
-                "-vf", &video_filter,
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-crf", ENCODING_CRF,
-                "-preset", ENCODING_PRESET,
-                "-movflags", "+faststart",
-                "-y",
-                &output_str,
-            ])
+            .args(&ffmpeg_args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

@@ -128,6 +128,7 @@ export function useQuickClip(): UseQuickClipReturn {
       await invoke('recorder_start', {
         resolutionScale: resolution,
         framerate,
+        audioMode,
       })
 
       setIsRecording(true)
