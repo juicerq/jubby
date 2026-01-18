@@ -1,15 +1,8 @@
 #!/bin/bash
 set -e
 
-if [ -z "$1" ]; then
-  echo "Usage: $0 <iterations>"
-  exit 1
-fi
-
-# For each iteration, run Claude Code with the following prompt.
-# This prompt is basic, we'll expand it later.
-for ((i=1; i<=$1; i++)); do
-  result=$(claude --dangerously-skip-permissions -p "@ralph/prd.json @ralph/progress.txt
+run_iteration() {
+  claude --dangerously-skip-permissions -p "@ralph/prd.json @ralph/progress.txt
 1. Decide which task to work on next.
 This should be the one YOU decide has the highest priority,
 - not necessarily the first in the list.
@@ -26,12 +19,27 @@ This should be the one YOU decide has the highest priority,
 ONLY WORK ON A SINGLE FEATURE.
 If, while implementing the feature, you notice that all work
 is complete, output <promise>COMPLETE</promise>.
-")
+"
+}
 
-  echo "$result"
-
-  if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
-    echo "PRD complete, exiting."
-    exit 0
-  fi
-done
+if [ -z "$1" ]; then
+  # No argument: infinite loop until COMPLETE
+  while true; do
+    result=$(run_iteration)
+    echo "$result"
+    if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
+      echo "PRD complete, exiting."
+      exit 0
+    fi
+  done
+else
+  # With argument: run N iterations
+  for ((i=1; i<=$1; i++)); do
+    result=$(run_iteration)
+    echo "$result"
+    if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
+      echo "PRD complete, exiting."
+      exit 0
+    fi
+  done
+fi

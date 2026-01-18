@@ -48,7 +48,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         create_tables_with_folders(conn)?;
     }
 
-    eprintln!("[JUBBY] Database schema migrations completed");
+    tracing::info!(target: "system", "Database schema migrations completed");
     Ok(())
 }
 
@@ -99,7 +99,7 @@ fn migrate_to_folders_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     use std::time::{SystemTime, UNIX_EPOCH};
     use uuid::Uuid;
 
-    eprintln!("[JUBBY] Migrating existing data to folder schema...");
+    tracing::info!(target: "system", "Migrating existing data to folder schema...");
 
     // Create default folder
     let default_folder_id = Uuid::new_v4().to_string();
@@ -166,7 +166,7 @@ fn migrate_to_folders_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
         "
     ))?;
 
-    eprintln!("[JUBBY] Folder schema migration completed");
+    tracing::info!(target: "system", "Folder schema migration completed");
     Ok(())
 }
 
@@ -214,7 +214,7 @@ pub fn migrate_legacy_json(
         return Ok(());
     }
 
-    eprintln!("[JUBBY] Found legacy todo.json, starting migration...");
+    tracing::info!(target: "system", "Found legacy todo.json, starting migration...");
 
     // Read and parse JSON
     let json_content = fs::read_to_string(&json_path)?;
@@ -223,7 +223,7 @@ pub fn migrate_legacy_json(
     // Check if we already have data (avoid duplicate migration)
     let existing_count: i64 = conn.query_row("SELECT COUNT(*) FROM todos", [], |row| row.get(0))?;
     if existing_count > 0 {
-        eprintln!("[JUBBY] Database already has data, skipping migration");
+        tracing::info!(target: "system", "Database already has data, skipping migration");
         // Rename the file anyway to avoid repeated attempts
         let backup_path = storage_dir.join("todo.json.bak");
         fs::rename(&json_path, &backup_path)?;
@@ -294,8 +294,9 @@ pub fn migrate_legacy_json(
     let backup_path = storage_dir.join("todo.json.bak");
     fs::rename(&json_path, &backup_path)?;
 
-    eprintln!(
-        "[JUBBY] Migration completed: {} todos, {} tags migrated",
+    tracing::info!(
+        target: "system",
+        "Legacy JSON migration completed: {} todos, {} tags migrated",
         legacy_data.todos.len(),
         legacy_data.tags.len()
     );

@@ -1,0 +1,79 @@
+[
+  {
+    "category": "functional",
+    "description": "Create settings view component with navigation",
+    "steps": [
+      "Create QuickClipSettings.tsx component",
+      "Add gear icon button to QuickClip header",
+      "Implement breadcrumb navigation (Jubby / QuickClips / Settings)",
+      "Wire up navigation state to toggle between recording list and settings"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Use frontend-design skill. Follow existing global settings navigation pattern. Reuse SettingsSection and SettingsRow components."
+  },
+  {
+    "category": "functional",
+    "description": "Implement Capture section (Screen + Audio settings)",
+    "steps": [
+      "Add Screen setting with segmented toggle (Fullscreen | Area)",
+      "Add Audio setting with two checkboxes (System audio, Microphone)",
+      "Wire controls to settings state",
+      "Persist changes via usePluginStorage"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Use frontend-design skill. Checkboxes are independent - both unchecked = no audio, both checked = both sources."
+  },
+  {
+    "category": "functional",
+    "description": "Implement Encoding section (Quality + Resolution settings)",
+    "steps": [
+      "Add Quality setting with segmented toggle (Light | High)",
+      "Add Resolution setting with segmented toggle (Native | 720p | 480p)",
+      "Wire controls to settings state",
+      "Decouple resolution from quality mode in recording logic"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Use frontend-design skill. Resolution is now independent from quality - user can pick any combination."
+  },
+  {
+    "category": "functional",
+    "description": "Implement Shortcuts section with hotkey recorder",
+    "steps": [
+      "Extract/reuse hotkey recorder component from global settings",
+      "Add Record hotkey setting to Shortcuts section",
+      "Wire hotkey changes to global shortcut registration",
+      "Handle hotkey conflicts with existing shortcuts"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "DRY: Reuse existing hotkey recorder from global settings. May need to extract to shared component if not already."
+  },
+  {
+    "category": "functional",
+    "description": "Connect settings to recording flow",
+    "steps": [
+      "Update useQuickClip hook to read settings from storage",
+      "Pass capture mode, audio mode, quality, and resolution to recorder_start",
+      "Update Rust backend to accept resolution_scale parameter independently",
+      "Disable settings gear icon while recording is in progress"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Ensure settings are read at recording start time, not cached. Check pipewire_capture.rs and recorder.rs for backend changes."
+  },
+  {
+    "category": "functional",
+    "description": "Set up default values and storage initialization",
+    "steps": [
+      "Define default settings: Fullscreen, no audio, Light, 720p, Ctrl+Shift+R",
+      "Initialize settings on first plugin load if not present",
+      "Migrate existing recordings to work with new settings structure"
+    ],
+    "shouldCommit": true,
+    "passes": true,
+    "notes": "Ensure backwards compatibility with existing quickclip.json data."
+  }
+]

@@ -45,10 +45,10 @@ pub fn init_database(_app: &App) -> Result<Database, Box<dyn std::error::Error>>
 
     // Migrate legacy JSON data if exists
     if let Err(e) = migrations::migrate_legacy_json(&conn, &storage_dir) {
-        eprintln!("[JUBBY] Warning: Failed to migrate legacy data: {}", e);
+        tracing::warn!(target: "system", "Failed to migrate legacy data: {}", e);
     }
 
-    eprintln!("[JUBBY] Database initialized at {:?}", db_path);
+    tracing::info!(target: "system", "Database initialized at {:?}", db_path);
 
     Ok(Database(Mutex::new(conn)))
 }
