@@ -1,18 +1,17 @@
 import { Breadcrumb } from '@/core/components/Breadcrumb'
-import { ShortcutCapture } from '@/core/components/Settings/ShortcutCapture'
 import { useNavigationLevels } from '@/core/hooks'
 import { cn } from '@/lib/utils'
-import type { BitrateMode, ResolutionScale, AudioMode } from './types'
+import type { BitrateMode, ResolutionScale, AudioMode, Framerate } from './types'
 
 interface QuickClipSettingsProps {
   bitrateMode: BitrateMode
   onBitrateModeChange: (mode: BitrateMode) => void
   resolution: ResolutionScale
   onResolutionChange: (resolution: ResolutionScale) => void
+  framerate: Framerate
+  onFramerateChange: (framerate: Framerate) => void
   audioMode: AudioMode
   onAudioModeChange: (mode: AudioMode) => void
-  hotkey: string
-  onHotkeyChange: (hotkey: string) => void
   onNavigateBack: () => void
 }
 
@@ -21,10 +20,10 @@ function QuickClipSettings({
   onBitrateModeChange,
   resolution,
   onResolutionChange,
+  framerate,
+  onFramerateChange,
   audioMode,
   onAudioModeChange,
-  hotkey,
-  onHotkeyChange,
   onNavigateBack,
 }: QuickClipSettingsProps) {
   useNavigationLevels([
@@ -59,6 +58,17 @@ function QuickClipSettings({
               ]}
             />
           </SettingsRow>
+          <SettingsRow label="Frame Rate" description="Frames per second">
+            <SegmentedToggle
+              value={framerate}
+              onChange={onFramerateChange}
+              options={[
+                { value: '30' as const, label: '30' },
+                { value: '60' as const, label: '60' },
+                { value: '120' as const, label: '120' },
+              ]}
+            />
+          </SettingsRow>
         </SettingsSection>
 
         <SettingsSection title="Audio">
@@ -77,9 +87,13 @@ function QuickClipSettings({
         </SettingsSection>
 
         <SettingsSection title="Shortcuts">
-          <SettingsRow label="Record" description="Start and stop recording">
-            <ShortcutCapture value={hotkey} onChange={onHotkeyChange} />
-          </SettingsRow>
+          <div className="opacity-40">
+            <SettingsRow label="Record" description="Start and stop recording">
+              <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-[12px] text-white/50">
+                Coming soon
+              </span>
+            </SettingsRow>
+          </div>
         </SettingsSection>
       </div>
     </div>

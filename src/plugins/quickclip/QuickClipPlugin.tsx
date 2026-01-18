@@ -45,7 +45,7 @@ function QuickClipPlugin(_props: PluginProps) {
     if (isRecording) {
       await stopRecording()
     } else {
-      await startRecording(settings.bitrateMode, settings.audioMode, settings.resolution)
+      await startRecording(settings.bitrateMode, settings.audioMode, settings.resolution, settings.framerate)
     }
   }
 
@@ -59,10 +59,10 @@ function QuickClipPlugin(_props: PluginProps) {
         onBitrateModeChange={(mode) => updateSettings({ bitrateMode: mode })}
         resolution={settings.resolution}
         onResolutionChange={(res) => updateSettings({ resolution: res })}
+        framerate={settings.framerate}
+        onFramerateChange={(fps) => updateSettings({ framerate: fps })}
         audioMode={settings.audioMode}
         onAudioModeChange={(mode) => updateSettings({ audioMode: mode })}
-        hotkey={settings.hotkey}
-        onHotkeyChange={(key) => updateSettings({ hotkey: key })}
         onNavigateBack={() => setView('recordings')}
       />
     )

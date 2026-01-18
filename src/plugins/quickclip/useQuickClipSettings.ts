@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { BitrateMode, ResolutionScale, AudioMode } from './types'
+import type { BitrateMode, ResolutionScale, AudioMode, Framerate } from './types'
 import { DEFAULT_SETTINGS } from './types'
 import { createLogger } from '@/lib/logger'
 
@@ -11,6 +11,7 @@ interface PersistedSettings {
   bitrateMode: BitrateMode
   resolution: ResolutionScale
   audioMode: AudioMode
+  framerate: Framerate
   hotkey: string
 }
 
@@ -25,6 +26,7 @@ export function useQuickClipSettings(): UseQuickClipSettingsReturn {
     bitrateMode: DEFAULT_SETTINGS.bitrateMode,
     resolution: DEFAULT_SETTINGS.resolution,
     audioMode: DEFAULT_SETTINGS.audioMode,
+    framerate: DEFAULT_SETTINGS.framerate,
     hotkey: DEFAULT_SETTINGS.hotkey,
   })
   const [isLoading, setIsLoading] = useState(true)

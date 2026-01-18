@@ -70,11 +70,6 @@ impl BitrateMode {
             BitrateMode::High => ResolutionScale::Native,
         }
     }
-
-    fn default_target_fps(&self) -> u32 {
-        // 30fps is Discord-friendly and keeps file sizes small
-        30
-    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
@@ -97,6 +92,27 @@ impl ResolutionScale {
             ResolutionScale::P1080 => Some("1920:-2"),
             ResolutionScale::P720 => Some("1280:-2"),
             ResolutionScale::P480 => Some("854:-2"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+pub enum Framerate {
+    #[default]
+    #[serde(rename = "30")]
+    Fps30,
+    #[serde(rename = "60")]
+    Fps60,
+    #[serde(rename = "120")]
+    Fps120,
+}
+
+impl Framerate {
+    fn value(&self) -> u32 {
+        match self {
+            Framerate::Fps30 => 30,
+            Framerate::Fps60 => 60,
+            Framerate::Fps120 => 120,
         }
     }
 }
@@ -280,6 +296,7 @@ fn spawn_writer_thread(
     video_path: PathBuf,
     bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
+    framerate: Framerate,
 ) -> JoinHandle<Result<WriterResult, RecorderError>> {
     std::thread::spawn(move || {
         // Phase 1: Wait for metadata message to get dimensions
@@ -366,7 +383,7 @@ fn spawn_writer_thread(
         }
 
         // Phase 4: Start FFmpeg with measured framerate
-        let target_fps = bitrate_mode.default_target_fps();
+        let target_fps = framerate.value();
 
         // Build video filter chain: fps conversion + optional scaling
         let video_filter = {
@@ -553,9 +570,11 @@ pub async fn recorder_start(
     state: tauri::State<'_, RecorderState>,
     bitrate_mode: BitrateMode,
     resolution_scale: Option<ResolutionScale>,
+    framerate: Option<Framerate>,
 ) -> Result<(), String> {
     let scale = resolution_scale.unwrap_or_else(|| bitrate_mode.default_scale());
-    start_recording_internal(&state, bitrate_mode, scale)
+    let fps = framerate.unwrap_or_default();
+    start_recording_internal(&state, bitrate_mode, scale, fps)
         .await
         .map_err(|e| e.to_string())
 }
@@ -564,10 +583,11 @@ async fn start_recording_internal(
     state: &RecorderState,
     bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
+    framerate: Framerate,
 ) -> Result<(), RecorderError> {
     tracing::info!(target: "quickclip",
-        "[RECORD] Starting: bitrate_mode={:?}, resolution_scale={:?}",
-        bitrate_mode, resolution_scale);
+        "[RECORD] Starting: bitrate_mode={:?}, resolution_scale={:?}, framerate={:?}",
+        bitrate_mode, resolution_scale, framerate);
 
     check_ffmpeg()?;
 
@@ -623,6 +643,7 @@ async fn start_recording_internal(
         video_path,
         bitrate_mode,
         resolution_scale,
+        framerate,
     );
     *state.writer_handle.lock().unwrap() = Some(writer_handle);
 
@@ -848,6 +869,8 @@ pub struct QuickClipUserSettings {
     pub resolution: PersistedResolution,
     #[serde(default)]
     pub audio_mode: AudioMode,
+    #[serde(default)]
+    pub framerate: Framerate,
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
 }
@@ -862,6 +885,7 @@ impl Default for QuickClipUserSettings {
             bitrate_mode: BitrateMode::Light,
             resolution: PersistedResolution::P720,
             audio_mode: AudioMode::None,
+            framerate: Framerate::Fps30,
             hotkey: default_hotkey(),
         }
     }

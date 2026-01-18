@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { BitrateMode, AudioMode, Recording, ResolutionScale } from './types'
+import type { BitrateMode, AudioMode, Recording, ResolutionScale, Framerate } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
 import { createLogger } from '@/lib/logger'
 
@@ -59,7 +59,7 @@ interface UseQuickClipReturn {
   recordings: Recording[]
   isLoadingRecordings: boolean
 
-  startRecording: (bitrateMode?: BitrateMode, audioMode?: AudioMode, resolution?: ResolutionScale) => Promise<void>
+  startRecording: (bitrateMode?: BitrateMode, audioMode?: AudioMode, resolution?: ResolutionScale, framerate?: Framerate) => Promise<void>
   stopRecording: () => Promise<Recording | null>
   deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
@@ -117,9 +117,10 @@ export function useQuickClip(): UseQuickClipReturn {
   const startRecording = useCallback(async (
     bitrateMode: BitrateMode = 'light',
     audioMode: AudioMode = 'none',
-    resolution: ResolutionScale = '720p'
+    resolution: ResolutionScale = '720p',
+    framerate: Framerate = '30'
   ) => {
-    log.info('Starting recording', { bitrateMode, audioMode, resolution })
+    log.info('Starting recording', { bitrateMode, audioMode, resolution, framerate })
     setIsPreparing(true)
 
     try {
@@ -129,6 +130,7 @@ export function useQuickClip(): UseQuickClipReturn {
       await invoke('recorder_start', {
         bitrateMode,
         resolutionScale: resolution,
+        framerate,
       })
 
       setIsRecording(true)
