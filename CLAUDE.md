@@ -38,10 +38,36 @@ src/
 
 src-tauri/src/
 ├── main.rs           # Entry point
-├── tray.rs           # System tray
-├── commands.rs       # Comandos IPC
-├── storage.rs        # Persistência JSON
-└── window.rs         # Gerenciamento de janelas
+├── lib.rs            # App setup, command registration
+├── shared/
+│   ├── paths.rs      # XDG paths (get_storage_dir, get_log_dir, get_plugin_dir)
+│   └── errors.rs     # Common error types
+├── core/
+│   ├── tray.rs       # System tray
+│   ├── window.rs     # Window management
+│   ├── settings.rs   # App settings, shortcuts
+│   └── logging.rs    # Per-plugin log files
+└── plugins/
+    ├── todo/
+    │   ├── types.rs      # Folder, Todo, Tag
+    │   ├── storage.rs    # JSON persistence + SQLite migration
+    │   └── commands.rs   # Tauri commands
+    └── quickclip/
+        ├── types.rs      # BitrateMode, ResolutionScale, etc.
+        ├── errors.rs     # QuickClipError
+        ├── clipboard.rs  # copy_file_to_clipboard
+        ├── enhancer.rs   # Claude CLI integration
+        ├── persistence.rs # Recordings CRUD
+        ├── capture/
+        │   ├── screenshot.rs  # xcap single-frame capture
+        │   └── pipewire/      # PipeWire video capture
+        │       ├── tokens.rs  # Portal token persistence
+        │       ├── session.rs # ScreencastSession
+        │       └── stream.rs  # run_capture_loop
+        └── recorder/
+            ├── ffmpeg.rs     # FFmpeg helpers
+            ├── writer.rs     # Frame → FFmpeg thread
+            └── commands.rs   # recorder_* commands
 ```
 
 ## Sistema de Plugins
@@ -256,6 +282,51 @@ plugins/    ← pode usar core/ e shared/
 - `ralph/prd.json` - Product Requirements Document
 - `src/core/types.ts` - Tipos centrais do sistema
 - `src/plugins/registry.ts` - Lista de plugins ativos
+
+## Sistema de Logs
+
+### Localização dos arquivos
+
+```
+~/.local/share/jubby/logs/
+├── system.log      # Logs gerais e módulos não-plugin
+├── quickclip.log   # Logs do plugin QuickClip
+└── todo.log        # Logs do plugin Todo
+```
+
+### Rotação
+
+Logs são rotacionados diariamente via `tracing_appender`. Não há limpeza automática de logs antigos.
+
+### Uso no Rust
+
+```rust
+// Sempre especificar target para roteamento correto
+tracing::info!(target: "quickclip", "Recording started");
+tracing::error!(target: "todo", "Failed to save: {}", err);
+
+// Sem target → vai para system.log
+tracing::debug!("App initialized");
+```
+
+### Uso no Frontend
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+
+await invoke('log_from_frontend', {
+  level: 'info',      // trace, debug, info, warn, error
+  plugin: 'quickclip',
+  message: 'User clicked record'
+})
+```
+
+### Configuração de nível
+
+```bash
+RUST_LOG=debug bun tauri dev   # Verbose
+RUST_LOG=warn bun tauri dev    # Apenas avisos e erros
+```
 
 ## Regras para o Claude
 

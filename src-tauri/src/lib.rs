@@ -1,24 +1,16 @@
-mod capture;
-mod clipboard;
-mod enhancer;
-mod logging;
-mod pipewire_capture;
-mod recorder;
-mod settings;
-mod storage;
-mod tray;
-mod window;
+mod core;
+mod plugins;
+mod shared;
 
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
-use settings::{load_settings, parse_shortcut, CurrentShortcut};
+use core::settings::{load_settings, parse_shortcut, CurrentShortcut};
 
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     let file_uri = format!("file://{}", path);
 
-    // Use DBus FileManager1.ShowItems to open folder and highlight the file
     let result = std::process::Command::new("dbus-send")
         .args([
             "--session",
@@ -34,7 +26,6 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
     match result {
         Ok(_) => Ok(()),
         Err(_) => {
-            // Fallback: open parent folder with gio/xdg-open
             let folder = std::path::Path::new(&path)
                 .parent()
                 .unwrap_or(std::path::Path::new(&path));
@@ -58,13 +49,8 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
-        // Workaround para erro "Failed to create GBM buffer" em NVIDIA + Wayland
-        // Força path de renderização compatível no WebKitGTK
-        // https://github.com/tauri-apps/tauri/issues/13493
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
 
-        // Só força X11 se XWayland estiver disponível
-        // Em sistemas Wayland puro sem XWayland, usa o backend padrão
         if std::path::Path::new("/usr/bin/Xwayland").exists()
             || std::env::var("DISPLAY").is_ok()
         {
@@ -72,7 +58,6 @@ pub fn run() {
         }
     }
 
-    // Load settings and parse shortcut (fallback to F9 if invalid)
     let app_settings = load_settings();
     let shortcut_str = app_settings.global_shortcut.clone();
     let shortcut = parse_shortcut(&shortcut_str).unwrap_or(Shortcut::new(None, Code::F9));
@@ -83,66 +68,67 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Released {
-                        window::toggle(app);
+                        core::window::toggle(app);
                     }
                 })
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            storage::folder::folder_get_all,
-            storage::folder::folder_create,
-            storage::folder::folder_rename,
-            storage::folder::folder_delete,
-            storage::folder::folder_reorder,
-            storage::todo::todo_get_by_folder,
-            storage::todo::todo_create,
-            storage::todo::todo_update_status,
-            storage::todo::todo_delete,
-            storage::todo::todo_set_tags,
-            storage::todo::tag_create,
-            storage::todo::tag_update,
-            storage::todo::tag_delete,
-            enhancer::enhance_prompt,
-            settings::get_settings,
-            settings::update_global_shortcut,
-            capture::capture_get_sources,
-            capture::capture_monitor,
-            capture::capture_window,
-            capture::capture_primary,
-            recorder::recorder_check_ffmpeg,
-            recorder::recorder_start,
-            recorder::recorder_stop,
-            recorder::recorder_status,
-            recorder::recorder_delete_video,
-            recorder::quickclip_get_recordings,
-            recorder::quickclip_save_recording,
-            recorder::quickclip_delete_recording,
-            recorder::quickclip_get_settings,
-            recorder::quickclip_update_settings,
-            recorder::read_video_file,
-            logging::log_from_frontend,
-            clipboard::copy_file_to_clipboard,
+            // Todo plugin
+            plugins::todo::commands::folder_get_all,
+            plugins::todo::commands::folder_create,
+            plugins::todo::commands::folder_rename,
+            plugins::todo::commands::folder_delete,
+            plugins::todo::commands::folder_reorder,
+            plugins::todo::commands::todo_get_by_folder,
+            plugins::todo::commands::todo_create,
+            plugins::todo::commands::todo_update_status,
+            plugins::todo::commands::todo_delete,
+            plugins::todo::commands::todo_set_tags,
+            plugins::todo::commands::tag_create,
+            plugins::todo::commands::tag_update,
+            plugins::todo::commands::tag_delete,
+            // QuickClip plugin
+            plugins::quickclip::enhancer::enhance_prompt,
+            plugins::quickclip::capture::screenshot::capture_get_sources,
+            plugins::quickclip::capture::screenshot::capture_monitor,
+            plugins::quickclip::capture::screenshot::capture_window,
+            plugins::quickclip::capture::screenshot::capture_primary,
+            plugins::quickclip::recorder::commands::recorder_check_ffmpeg,
+            plugins::quickclip::recorder::commands::recorder_start,
+            plugins::quickclip::recorder::commands::recorder_stop,
+            plugins::quickclip::recorder::commands::recorder_status,
+            plugins::quickclip::recorder::commands::recorder_delete_video,
+            plugins::quickclip::persistence::quickclip_get_recordings,
+            plugins::quickclip::persistence::quickclip_save_recording,
+            plugins::quickclip::persistence::quickclip_delete_recording,
+            plugins::quickclip::persistence::quickclip_get_settings,
+            plugins::quickclip::persistence::quickclip_update_settings,
+            plugins::quickclip::recorder::commands::read_video_file,
+            plugins::quickclip::clipboard::copy_file_to_clipboard,
+            // Core
+            core::settings::get_settings,
+            core::settings::update_global_shortcut,
+            core::logging::log_from_frontend,
             reveal_in_folder,
         ])
         .setup(move |app| {
-            // Initialize logging first (before any other initialization)
-            let logging_guards = logging::init_logging();
-            app.manage(logging::LoggingState::new(logging_guards));
+            // Initialize logging first
+            let logging_guards = core::logging::init_logging();
+            app.manage(core::logging::LoggingState::new(logging_guards));
 
-            // Initialize database
-            let db = storage::init_database(app)
-                .map_err(|e| format!("Failed to initialize database: {}", e))?;
-            app.manage(db);
+            // Initialize todo store (migrates from SQLite if needed)
+            let todo_store = plugins::todo::init_todo_store()
+                .map_err(|e| format!("Failed to initialize todo store: {}", e))?;
+            app.manage(todo_store);
 
             // Initialize recorder state
-            app.manage(recorder::RecorderState::new());
+            app.manage(plugins::quickclip::recorder::RecorderState::new());
 
-            // Initialize current shortcut state (tracks what's registered)
-            // Note: shortcut_str is captured from outer scope where settings were loaded
+            // Initialize current shortcut state
             app.manage(CurrentShortcut::new(shortcut_str.clone()));
 
-            // Register the initial shortcut (handler is set globally in the plugin builder)
-            // If shortcut is already registered, another instance is running - exit silently
+            // Register the initial shortcut
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 if e.to_string().contains("already registered") {
                     tracing::warn!(target: "system", "Another instance is already running");
@@ -150,11 +136,11 @@ pub fn run() {
                 }
             }
 
-            tray::setup_tray(app)?;
+            core::tray::setup_tray(app)?;
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Failed to build app");
 
-    app.run(tray::handle_run_event);
+    app.run(core::tray::handle_run_event);
 }
