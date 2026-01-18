@@ -9,14 +9,14 @@ Completed Tasks:
 3. [x] Register QuickClip shortcut at app startup
 
 Current Task:
-- Task 6 complete, awaiting review
+- Task 8 complete, awaiting review
 
 Remaining Tasks:
 4. [ ] Create recording tray icon asset
 5. [ ] Implement tray recording indicator with event listeners
 6. [x] Add quickclip_update_hotkey command with runtime re-registration
 7. [ ] Enable shortcuts section in QuickClipSettings.tsx
-8. [ ] Expose hotkey in useQuickClipSettings hook
+8. [x] Expose hotkey in useQuickClipSettings hook
 9. [ ] Test global shortcut recording flow
 10. [ ] Test shortcut customization
 11. [ ] Test frontend sync during recording
@@ -92,3 +92,22 @@ Notes:
 - The pattern from update_global_shortcut in core/settings.rs is reusable for other shortcut types
 - Must pass `is_quickclip: true` to validate_shortcut_unique() to check against window shortcut
 - SettingsError from core/settings.rs can be reused for shortcut-related errors in plugins
+
+## 2026-01-18 - Task 8 (Expose hotkey in useQuickClipSettings hook)
+
+### What was implemented:
+
+**Task 8: Expose hotkey in useQuickClipSettings hook**
+- Added `isUpdatingHotkey` loading state to track hotkey update in progress
+- Added `setHotkey(hotkey: string)` function that calls `quickclip_update_hotkey` command
+- Function uses optimistic update pattern with rollback on error
+- Error messages from backend are displayed via toast (includes conflict validation errors)
+- Updated `UseQuickClipSettingsReturn` interface with new properties
+
+### Files changed:
+- src/plugins/quickclip/useQuickClipSettings.ts (added isUpdatingHotkey state, setHotkey function, updated interface and return)
+
+### Learnings for future iterations:
+- The hotkey field was already in PersistedSettings interface but needed a dedicated setter for runtime re-registration
+- Backend error messages from quickclip_update_hotkey are user-friendly (e.g., "Shortcut conflicts with window toggle")
+- Using a separate `setHotkey` function (vs updateSettings) ensures the runtime shortcut registration is triggered

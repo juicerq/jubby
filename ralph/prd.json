@@ -101,7 +101,7 @@
       "Handle loading and error states for hotkey updates"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Read useQuickClipSettings.ts - hotkey field already exists in QuickClipUserSettings type."
   },
   {

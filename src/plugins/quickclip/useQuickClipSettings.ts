@@ -17,7 +17,9 @@ interface PersistedSettings {
 interface UseQuickClipSettingsReturn {
   settings: PersistedSettings
   isLoading: boolean
+  isUpdatingHotkey: boolean
   updateSettings: (settings: Partial<PersistedSettings>) => Promise<void>
+  setHotkey: (hotkey: string) => Promise<void>
 }
 
 export function useQuickClipSettings(): UseQuickClipSettingsReturn {
@@ -28,6 +30,7 @@ export function useQuickClipSettings(): UseQuickClipSettingsReturn {
     hotkey: DEFAULT_SETTINGS.hotkey,
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [isUpdatingHotkey, setIsUpdatingHotkey] = useState(false)
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -62,9 +65,31 @@ export function useQuickClipSettings(): UseQuickClipSettingsReturn {
     }
   }, [settings])
 
+  const setHotkey = useCallback(async (hotkey: string) => {
+    const previousHotkey = settings.hotkey
+
+    // Optimistic update
+    setSettings(prev => ({ ...prev, hotkey }))
+    setIsUpdatingHotkey(true)
+
+    try {
+      await invoke('quickclip_update_hotkey', { hotkey })
+      log.debug('Hotkey updated', { hotkey })
+    } catch (error) {
+      // Rollback on error
+      setSettings(prev => ({ ...prev, hotkey: previousHotkey }))
+      log.error('Failed to update hotkey', { error: String(error) })
+      toast.error(String(error))
+    } finally {
+      setIsUpdatingHotkey(false)
+    }
+  }, [settings.hotkey])
+
   return {
     settings,
     isLoading,
+    isUpdatingHotkey,
     updateSettings,
+    setHotkey,
   }
 }
