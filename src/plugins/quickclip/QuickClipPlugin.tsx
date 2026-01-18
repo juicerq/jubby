@@ -45,7 +45,7 @@ function QuickClipPlugin(_props: PluginProps) {
     if (isRecording) {
       await stopRecording()
     } else {
-      await startRecording(settings.bitrateMode, settings.audioMode, settings.resolution, settings.framerate)
+      await startRecording(settings.audioMode, settings.resolution, settings.framerate)
     }
   }
 
@@ -55,8 +55,6 @@ function QuickClipPlugin(_props: PluginProps) {
   if (view === 'settings') {
     return (
       <QuickClipSettings
-        bitrateMode={settings.bitrateMode}
-        onBitrateModeChange={(mode) => updateSettings({ bitrateMode: mode })}
         resolution={settings.resolution}
         onResolutionChange={(res) => updateSettings({ resolution: res })}
         framerate={settings.framerate}
@@ -656,7 +654,7 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
             {formatTimestamp(recording.timestamp)}
           </span>
           <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/40">
-            {recording.settings.bitrateMode === 'light' ? 'HD' : 'FHD'}
+            FHD
           </span>
         </div>
       </div>

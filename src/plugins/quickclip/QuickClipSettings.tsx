@@ -1,11 +1,9 @@
 import { Breadcrumb } from '@/core/components/Breadcrumb'
 import { useNavigationLevels } from '@/core/hooks'
 import { cn } from '@/lib/utils'
-import type { BitrateMode, ResolutionScale, AudioMode, Framerate } from './types'
+import type { ResolutionScale, AudioMode, Framerate } from './types'
 
 interface QuickClipSettingsProps {
-  bitrateMode: BitrateMode
-  onBitrateModeChange: (mode: BitrateMode) => void
   resolution: ResolutionScale
   onResolutionChange: (resolution: ResolutionScale) => void
   framerate: Framerate
@@ -16,8 +14,6 @@ interface QuickClipSettingsProps {
 }
 
 function QuickClipSettings({
-  bitrateMode,
-  onBitrateModeChange,
   resolution,
   onResolutionChange,
   framerate,
@@ -36,16 +32,6 @@ function QuickClipSettings({
       <Breadcrumb />
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
         <SettingsSection title="Encoding">
-          <SettingsRow label="Bitrate" description="Balance between size and clarity">
-            <SegmentedToggle
-              value={bitrateMode}
-              onChange={onBitrateModeChange}
-              options={[
-                { value: 'light' as const, label: 'Light' },
-                { value: 'high' as const, label: 'High' },
-              ]}
-            />
-          </SettingsRow>
           <SettingsRow label="Resolution" description="Output video dimensions">
             <SegmentedToggle
               value={resolution}

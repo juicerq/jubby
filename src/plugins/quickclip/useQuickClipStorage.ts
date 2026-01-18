@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { Recording, AudioMode, BitrateMode } from './types'
+import type { Recording, AudioMode } from './types'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('quickclip')
@@ -22,7 +22,6 @@ interface SaveRecordingParams {
   duration: number
   timestamp: number
   audioMode: AudioMode
-  bitrateMode: BitrateMode
 }
 
 export function useQuickClipStorage(): UseQuickClipStorageReturn {
@@ -56,7 +55,6 @@ export function useQuickClipStorage(): UseQuickClipStorageReturn {
         duration: params.duration,
         timestamp: params.timestamp,
         audioMode: params.audioMode,
-        bitrateMode: params.bitrateMode,
       })
 
       // Add to state (already sorted newest first from backend)

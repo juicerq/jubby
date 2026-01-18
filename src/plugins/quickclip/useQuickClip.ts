@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
-import type { BitrateMode, AudioMode, Recording, ResolutionScale, Framerate } from './types'
+import type { AudioMode, Recording, ResolutionScale, Framerate } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
 import { createLogger } from '@/lib/logger'
 
@@ -59,7 +59,7 @@ interface UseQuickClipReturn {
   recordings: Recording[]
   isLoadingRecordings: boolean
 
-  startRecording: (bitrateMode?: BitrateMode, audioMode?: AudioMode, resolution?: ResolutionScale, framerate?: Framerate) => Promise<void>
+  startRecording: (audioMode?: AudioMode, resolution?: ResolutionScale, framerate?: Framerate) => Promise<void>
   stopRecording: () => Promise<Recording | null>
   deleteRecording: (id: string) => Promise<void>
   refreshSources: () => Promise<void>
@@ -68,7 +68,6 @@ interface UseQuickClipReturn {
 
 interface CurrentRecordingSettings {
   audioMode: AudioMode
-  bitrateMode: BitrateMode
 }
 
 export function useQuickClip(): UseQuickClipReturn {
@@ -115,20 +114,18 @@ export function useQuickClip(): UseQuickClipReturn {
   }, [])
 
   const startRecording = useCallback(async (
-    bitrateMode: BitrateMode = 'light',
     audioMode: AudioMode = 'none',
     resolution: ResolutionScale = '720p',
     framerate: Framerate = '30'
   ) => {
-    log.info('Starting recording', { bitrateMode, audioMode, resolution, framerate })
+    log.info('Starting recording', { audioMode, resolution, framerate })
     setIsPreparing(true)
 
     try {
       // Store current settings for when we save the recording
-      setCurrentSettings({ audioMode, bitrateMode })
+      setCurrentSettings({ audioMode })
 
       await invoke('recorder_start', {
-        bitrateMode,
         resolutionScale: resolution,
         framerate,
       })
@@ -167,7 +164,6 @@ export function useQuickClip(): UseQuickClipReturn {
       // Save to storage
       const settings = currentSettings ?? {
         audioMode: 'none' as AudioMode,
-        bitrateMode: 'light' as BitrateMode,
       }
 
       const recording = await saveRecording({
@@ -177,7 +173,6 @@ export function useQuickClip(): UseQuickClipReturn {
         duration: result.duration,
         timestamp: result.timestamp,
         audioMode: settings.audioMode,
-        bitrateMode: settings.bitrateMode,
       })
 
       setCurrentSettings(null)

@@ -1,5 +1,5 @@
 use super::errors::QuickClipError;
-use super::types::{AudioMode, BitrateMode, Framerate};
+use super::types::{AudioMode, Framerate};
 use crate::shared::paths::{ensure_dir, get_plugin_dir};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -43,7 +43,6 @@ fn get_data_path() -> Result<PathBuf, QuickClipError> {
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSettings {
     pub audio_mode: AudioMode,
-    pub bitrate_mode: BitrateMode,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -74,8 +73,6 @@ pub enum PersistedResolution {
 #[serde(rename_all = "camelCase")]
 pub struct QuickClipUserSettings {
     #[serde(default)]
-    pub bitrate_mode: BitrateMode,
-    #[serde(default)]
     pub resolution: PersistedResolution,
     #[serde(default)]
     pub audio_mode: AudioMode,
@@ -92,7 +89,6 @@ fn default_hotkey() -> String {
 impl Default for QuickClipUserSettings {
     fn default() -> Self {
         Self {
-            bitrate_mode: BitrateMode::Light,
             resolution: PersistedResolution::P720,
             audio_mode: AudioMode::None,
             framerate: Framerate::Fps30,
@@ -154,7 +150,6 @@ pub fn quickclip_save_recording(
     duration: f64,
     timestamp: i64,
     audio_mode: AudioMode,
-    bitrate_mode: BitrateMode,
 ) -> Result<Recording, String> {
     let mut data = load_data().map_err(|e| e.to_string())?;
 
@@ -164,10 +159,7 @@ pub fn quickclip_save_recording(
         thumbnail_path,
         duration,
         timestamp,
-        settings: RecordingSettings {
-            audio_mode,
-            bitrate_mode,
-        },
+        settings: RecordingSettings { audio_mode },
     };
 
     data.recordings.insert(0, recording.clone());

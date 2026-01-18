@@ -1,7 +1,7 @@
 use super::super::capture::{CaptureMessage, CaptureSource, ScreencastSession};
 use super::super::errors::QuickClipError;
 use super::super::persistence::{get_sessions_dir, get_thumbnails_dir, get_videos_dir};
-use super::super::types::{BitrateMode, Framerate, ResolutionScale};
+use super::super::types::{Framerate, ResolutionScale};
 use super::ffmpeg::{check_ffmpeg, cleanup_session_dir, generate_thumbnail};
 use super::writer::spawn_writer_thread;
 use super::RecorderState;
@@ -44,26 +44,24 @@ pub fn recorder_check_ffmpeg() -> Result<bool, String> {
 #[tauri::command]
 pub async fn recorder_start(
     state: tauri::State<'_, RecorderState>,
-    bitrate_mode: BitrateMode,
     resolution_scale: Option<ResolutionScale>,
     framerate: Option<Framerate>,
 ) -> Result<(), String> {
-    let scale = resolution_scale.unwrap_or_else(|| bitrate_mode.default_scale());
+    let scale = resolution_scale.unwrap_or_default();
     let fps = framerate.unwrap_or_default();
-    start_recording_internal(&state, bitrate_mode, scale, fps)
+    start_recording_internal(&state, scale, fps)
         .await
         .map_err(|e| e.to_string())
 }
 
 async fn start_recording_internal(
     state: &RecorderState,
-    bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
     framerate: Framerate,
 ) -> Result<(), QuickClipError> {
     tracing::info!(target: "quickclip",
-        "[RECORD] Starting: bitrate_mode={:?}, resolution_scale={:?}, framerate={:?}",
-        bitrate_mode, resolution_scale, framerate);
+        "[RECORD] Starting: resolution_scale={:?}, framerate={:?}",
+        resolution_scale, framerate);
 
     check_ffmpeg()?;
 
@@ -113,7 +111,6 @@ async fn start_recording_internal(
     let writer_handle = spawn_writer_thread(
         frame_receiver,
         video_path,
-        bitrate_mode,
         resolution_scale,
         framerate,
     );

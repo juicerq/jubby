@@ -1,6 +1,6 @@
 use super::super::capture::CaptureMessage;
 use super::super::errors::QuickClipError;
-use super::super::types::{BitrateMode, Framerate, ResolutionScale};
+use super::super::types::{Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -22,7 +22,6 @@ pub struct WriterResult {
 pub fn spawn_writer_thread(
     frame_receiver: Receiver<CaptureMessage>,
     video_path: PathBuf,
-    bitrate_mode: BitrateMode,
     resolution_scale: ResolutionScale,
     framerate: Framerate,
 ) -> JoinHandle<Result<WriterResult, QuickClipError>> {
@@ -125,7 +124,7 @@ pub fn spawn_writer_thread(
 
         tracing::info!(target: "quickclip",
             "[WRITER] Starting FFmpeg: {}x{} @ {}fps -> {}fps, preset={}, crf={}, scale={:?}",
-            width, height, input_fps, target_fps, bitrate_mode.preset(), bitrate_mode.crf(), resolution_scale);
+            width, height, input_fps, target_fps, ENCODING_PRESET, ENCODING_CRF, resolution_scale);
 
         let mut child = Command::new("ffmpeg")
             .args([
@@ -137,8 +136,8 @@ pub fn spawn_writer_thread(
                 "-vf", &video_filter,
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
-                "-crf", bitrate_mode.crf(),
-                "-preset", bitrate_mode.preset(),
+                "-crf", ENCODING_CRF,
+                "-preset", ENCODING_PRESET,
                 "-movflags", "+faststart",
                 "-y",
                 &output_str,

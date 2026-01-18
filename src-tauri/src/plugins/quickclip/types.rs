@@ -1,35 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum BitrateMode {
-    #[default]
-    Light,
-    High,
-}
-
-impl BitrateMode {
-    pub fn crf(&self) -> &str {
-        match self {
-            BitrateMode::Light => "32",
-            BitrateMode::High => "18",
-        }
-    }
-
-    pub fn preset(&self) -> &str {
-        match self {
-            BitrateMode::Light => "fast",
-            BitrateMode::High => "slower",
-        }
-    }
-
-    pub fn default_scale(&self) -> ResolutionScale {
-        match self {
-            BitrateMode::Light => ResolutionScale::P720,
-            BitrateMode::High => ResolutionScale::Native,
-        }
-    }
-}
+pub const ENCODING_CRF: &str = "18";
+pub const ENCODING_PRESET: &str = "slower";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub enum ResolutionScale {
