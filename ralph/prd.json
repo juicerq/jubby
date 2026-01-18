@@ -48,7 +48,7 @@
       "Place in src-tauri/icons/ directory"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Keep same dimensions as existing tray icon. Red dot should be visible but not overwhelming."
   },
   {
@@ -61,7 +61,7 @@
       "Call setup_recording_listener() during app initialization"
     ],
     "shouldCommit": true,
-    "passes": false,
+    "passes": true,
     "notes": "Read core/tray.rs to understand existing tray setup. Use app.listen() for event handling."
   },
   {

@@ -166,6 +166,7 @@ pub fn run() {
             }
 
             core::tray::setup_tray(app)?;
+            core::tray::setup_recording_listener(app);
             Ok(())
         })
         .build(tauri::generate_context!())
