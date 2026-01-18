@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { toast } from 'sonner'
 import type { AudioMode, Recording, ResolutionScale, Framerate } from './types'
 import { useQuickClipStorage } from './useQuickClipStorage'
@@ -31,17 +32,6 @@ interface CaptureSourcesResponse {
   }>
 }
 
-interface RecordingResult {
-  id: string
-  videoPath: string
-  thumbnailPath: string
-  duration: number
-  width: number
-  height: number
-  frameCount: number
-  timestamp: number
-}
-
 interface RecordingStatus {
   isRecording: boolean
   frameCount: number
@@ -66,10 +56,6 @@ interface UseQuickClipReturn {
   checkFfmpeg: () => Promise<boolean>
 }
 
-interface CurrentRecordingSettings {
-  audioMode: AudioMode
-}
-
 export function useQuickClip(): UseQuickClipReturn {
   const [isRecording, setIsRecording] = useState(false)
   const [isPreparing, setIsPreparing] = useState(false)
@@ -77,7 +63,6 @@ export function useQuickClip(): UseQuickClipReturn {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null)
-  const [currentSettings, setCurrentSettings] = useState<CurrentRecordingSettings | null>(null)
 
   // Ref to track intentional stop (prevents false "stopped unexpectedly" during user-initiated stop)
   const isStoppingRef = useRef(false)
@@ -85,8 +70,8 @@ export function useQuickClip(): UseQuickClipReturn {
   const {
     recordings,
     isLoading: isLoadingRecordings,
-    saveRecording,
     deleteRecording,
+    refreshRecordings,
   } = useQuickClipStorage()
 
   const checkFfmpeg = useCallback(async () => {
@@ -122,9 +107,6 @@ export function useQuickClip(): UseQuickClipReturn {
     setIsPreparing(true)
 
     try {
-      // Store current settings for when we save the recording
-      setCurrentSettings({ audioMode })
-
       await invoke('recorder_start', {
         resolutionScale: resolution,
         framerate,
@@ -140,7 +122,6 @@ export function useQuickClip(): UseQuickClipReturn {
       if (!errorStr.includes('UserCancelled') && !errorStr.includes('user cancelled')) {
         toast.error(`Failed to start recording: ${error}`)
       }
-      setCurrentSettings(null)
     } finally {
       setIsPreparing(false)
     }
@@ -154,46 +135,26 @@ export function useQuickClip(): UseQuickClipReturn {
     setIsEncoding(true)
 
     try {
-      const result = await invoke<RecordingResult>('recorder_stop')
+      // recorder_stop now returns Recording (already saved by backend)
+      const recording = await invoke<Recording>('recorder_stop')
       setIsRecording(false)
-      log.info('Recording stopped, encoding completed', {
-        id: result.id,
-        duration: result.duration,
-        frameCount: result.frameCount,
-      })
 
-      // Save to storage
-      const settings = currentSettings ?? {
-        audioMode: 'none' as AudioMode,
-      }
+      log.info('Recording stopped and saved', { id: recording.id })
 
-      const recording = await saveRecording({
-        id: result.id,
-        videoPath: result.videoPath,
-        thumbnailPath: result.thumbnailPath,
-        duration: result.duration,
-        timestamp: result.timestamp,
-        audioMode: settings.audioMode,
-      })
+      // Refresh recordings list to show the new one
+      await refreshRecordings()
 
-      setCurrentSettings(null)
-
-      if (recording) {
-        log.info('Recording saved to storage', { id: recording.id })
-        toast.success('Recording saved!')
-      }
-
+      toast.success('Recording saved!')
       return recording
     } catch (error) {
       log.error('Failed to stop recording', { error: String(error) })
       toast.error(`Failed to stop recording: ${error}`)
-      setCurrentSettings(null)
       return null
     } finally {
       isStoppingRef.current = false
       setIsEncoding(false)
     }
-  }, [isRecording, currentSettings, saveRecording])
+  }, [isRecording, refreshRecordings])
 
   // Poll recording status while recording
   useEffect(() => {
@@ -207,11 +168,9 @@ export function useQuickClip(): UseQuickClipReturn {
         const status = await invoke<RecordingStatus>('recorder_status')
         setRecordingStatus(status)
 
-        // Sync frontend state with backend - detect unexpected stop
-        if (!status.isRecording && !isStoppingRef.current) {
+        // Sync frontend state with backend (events handle the actual stop notification)
+        if (!status.isRecording) {
           setIsRecording(false)
-          setCurrentSettings(null)
-          toast.error('Recording stopped unexpectedly')
         }
       } catch (error) {
         log.warn('Failed to get recording status', { error: String(error) })
@@ -229,6 +188,34 @@ export function useQuickClip(): UseQuickClipReturn {
     checkFfmpeg()
     refreshSources()
   }, [checkFfmpeg, refreshSources])
+
+  // Sync state with backend events (from global shortcut)
+  useEffect(() => {
+    const unlistenStarted = listen('quickclip:recording-started', () => {
+      log.info('Recording started via shortcut')
+      setIsPreparing(false)
+      setIsRecording(true)
+    })
+
+    const unlistenStopped = listen('quickclip:recording-stopped', async () => {
+      log.info('Recording stopped via shortcut, refreshing list')
+      isStoppingRef.current = true
+      setIsRecording(false)
+      setIsEncoding(false)
+      try {
+        await refreshRecordings()
+      } catch (e) {
+        log.error('Failed to refresh recordings after shortcut stop', { error: String(e) })
+      } finally {
+        isStoppingRef.current = false
+      }
+    })
+
+    return () => {
+      unlistenStarted.then(fn => fn()).catch(() => {})
+      unlistenStopped.then(fn => fn()).catch(() => {})
+    }
+  }, [refreshRecordings])
 
   return {
     isRecording,

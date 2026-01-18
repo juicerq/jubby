@@ -185,8 +185,8 @@ pub fn spawn_writer_thread(
         };
 
         // Audio offset to sync with buffered video frames
-        // Subtract estimated FFmpeg startup time (~0.35s) from calibration time
-        let audio_offset_secs = (calibration_elapsed - 0.35).max(0.0);
+        // Use full calibration time - audio starts when FFmpeg spawns, video started at T=0
+        let audio_offset_secs = calibration_elapsed;
         let audio_offset = format!("{:.3}", audio_offset_secs);
 
         tracing::info!(target: "quickclip",

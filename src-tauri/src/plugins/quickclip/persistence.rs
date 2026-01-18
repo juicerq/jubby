@@ -162,16 +162,15 @@ pub fn quickclip_get_recordings() -> Result<Vec<Recording>, String> {
     Ok(valid)
 }
 
-#[tauri::command]
-pub fn quickclip_save_recording(
+pub fn save_recording(
     id: String,
     video_path: String,
     thumbnail_path: String,
     duration: f64,
     timestamp: i64,
     audio_mode: AudioMode,
-) -> Result<Recording, String> {
-    let mut data = load_data().map_err(|e| e.to_string())?;
+) -> Result<Recording, QuickClipError> {
+    let mut data = load_data()?;
 
     let recording = Recording {
         id,
@@ -183,9 +182,22 @@ pub fn quickclip_save_recording(
     };
 
     data.recordings.insert(0, recording.clone());
-    save_data(&data).map_err(|e| e.to_string())?;
+    save_data(&data)?;
 
     Ok(recording)
+}
+
+#[tauri::command]
+pub fn quickclip_save_recording(
+    id: String,
+    video_path: String,
+    thumbnail_path: String,
+    duration: f64,
+    timestamp: i64,
+    audio_mode: AudioMode,
+) -> Result<Recording, String> {
+    save_recording(id, video_path, thumbnail_path, duration, timestamp, audio_mode)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
