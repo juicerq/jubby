@@ -1,5 +1,5 @@
 use super::super::capture::{CaptureMessage, CaptureSource, ScreencastSession};
-use super::super::errors::QuickClipError;
+use super::super::errors::{CaptureError, EncodingError, QuickClipError};
 use super::super::persistence::{
     get_sessions_dir, get_thumbnails_dir, get_videos_dir, load_quickclip_settings, save_recording,
     Recording,
@@ -160,14 +160,14 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, Qui
         .lock()
         .unwrap()
         .take()
-        .ok_or_else(|| QuickClipError::CaptureFailure("No capture handle".to_string()))?;
+        .ok_or_else(|| CaptureError::InitFailed("No capture handle".to_string()))?;
 
     let writer_handle = state
         .writer_handle
         .lock()
         .unwrap()
         .take()
-        .ok_or_else(|| QuickClipError::CaptureFailure("No writer handle".to_string()))?;
+        .ok_or_else(|| CaptureError::InitFailed("No writer handle".to_string()))?;
 
     tracing::debug!(target: "quickclip", "[RECORD] Waiting for capture thread...");
     let capture_join_result = timeout(
@@ -177,12 +177,12 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, Qui
     .await
     .map_err(|_| {
         tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for capture thread");
-        QuickClipError::EncodingTimeout(30)
+        EncodingError::Timeout(Duration::from_secs(30))
     })?
-    .map_err(|e| QuickClipError::CaptureFailure(format!("Spawn blocking failed: {}", e)))?;
+    .map_err(|e| CaptureError::StreamFailed(format!("Spawn blocking failed: {}", e)))?;
 
     let capture_stats = capture_join_result
-        .map_err(|_| QuickClipError::CaptureFailure("Capture thread panicked".to_string()))??;
+        .map_err(|_| CaptureError::StreamFailed("Capture thread panicked".to_string()))??;
 
     tracing::info!(target: "quickclip",
         "[RECORD] Capture complete: frames={}, fps={:.2}",
@@ -196,12 +196,12 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, Qui
     .await
     .map_err(|_| {
         tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for writer thread");
-        QuickClipError::EncodingTimeout(300)
+        EncodingError::Timeout(Duration::from_secs(300))
     })?
-    .map_err(|e| QuickClipError::EncodingError(format!("Spawn blocking failed: {}", e)))?;
+    .map_err(|e| EncodingError::WriteFailed(format!("Spawn blocking failed: {}", e)))?;
 
     let writer_result = writer_join_result
-        .map_err(|_| QuickClipError::EncodingError("Writer thread panicked".to_string()))??;
+        .map_err(|_| EncodingError::WriteFailed("Writer thread panicked".to_string()))??;
 
     tracing::info!(target: "quickclip",
         "[RECORD] Writer complete: duration={:.2}s, frames={}, size={}x{}",
@@ -217,7 +217,7 @@ async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, Qui
         generate_thumbnail(&video_path_for_thumb, &thumbnail_path_clone)
     })
     .await
-    .map_err(|e| QuickClipError::EncodingError(e.to_string()))??;
+    .map_err(|e| EncodingError::WriteFailed(e.to_string()))??;
 
     tracing::debug!(target: "quickclip", "[RECORD] Thumbnail generated");
 

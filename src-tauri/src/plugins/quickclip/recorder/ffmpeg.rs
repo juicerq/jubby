@@ -1,4 +1,4 @@
-use super::super::errors::QuickClipError;
+use super::super::errors::{EncodingError, QuickClipError};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -8,7 +8,7 @@ pub fn check_ffmpeg() -> Result<(), QuickClipError> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|_| QuickClipError::FfmpegNotFound)?;
+        .map_err(|_| EncodingError::FfmpegNotFound)?;
     Ok(())
 }
 
@@ -33,16 +33,14 @@ pub fn generate_thumbnail(
         .stderr(Stdio::piped())
         .output()
         .map_err(|e| {
-            QuickClipError::EncodingError(format!("Thumbnail generation failed: {}", e))
+            EncodingError::WriteFailed(format!("Thumbnail generation failed: {}", e))
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         tracing::error!(target: "quickclip", "[ENCODE] Thumbnail failed: {}", stderr);
-        return Err(QuickClipError::EncodingError(format!(
-            "Thumbnail generation failed: {}",
-            stderr
-        )));
+        let exit_code = output.status.code().unwrap_or(-1);
+        return Err(EncodingError::ProcessFailed { exit_code, stderr: stderr.to_string() }.into());
     }
 
     Ok(())

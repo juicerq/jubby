@@ -1,5 +1,5 @@
 use super::super::capture::CaptureMessage;
-use super::super::errors::QuickClipError;
+use super::super::errors::{CaptureError, EncodingError, QuickClipError};
 use super::super::types::{AudioMode, Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
 use std::io::Write;
 use std::path::PathBuf;
@@ -74,7 +74,7 @@ pub fn spawn_writer_thread(
                 }
                 Ok(CaptureMessage::EndOfStream) => {
                     tracing::warn!(target: "quickclip", "[WRITER] EndOfStream before metadata");
-                    return Err(QuickClipError::NoFrames);
+                    return Err(CaptureError::NoFrames.into());
                 }
                 Ok(CaptureMessage::Frame(_)) => {
                     tracing::warn!(target: "quickclip", "[WRITER] Frame received before metadata, skipping");
@@ -82,7 +82,7 @@ pub fn spawn_writer_thread(
                 }
                 Err(_) => {
                     tracing::error!(target: "quickclip", "[WRITER] Channel closed before metadata");
-                    return Err(QuickClipError::NoFrames);
+                    return Err(CaptureError::NoFrames.into());
                 }
             }
         };
@@ -142,7 +142,7 @@ pub fn spawn_writer_thread(
             measured_fps, frame_buffer.len(), calibration_elapsed, input_fps);
 
         if frame_buffer.is_empty() {
-            return Err(QuickClipError::NoFrames);
+            return Err(CaptureError::NoFrames.into());
         }
 
         // Phase 4: Start FFmpeg
@@ -292,12 +292,12 @@ pub fn spawn_writer_thread(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| QuickClipError::EncodingError(format!("Failed to spawn FFmpeg: {}", e)))?;
+            .map_err(|e| EncodingError::WriteFailed(format!("Failed to spawn FFmpeg: {}", e)))?;
 
         let mut stdin = child
             .stdin
             .take()
-            .ok_or_else(|| QuickClipError::EncodingError("Failed to capture FFmpeg stdin".to_string()))?;
+            .ok_or_else(|| EncodingError::WriteFailed("Failed to capture FFmpeg stdin".to_string()))?;
 
         // Phase 5: Flush buffered frames
         let mut frame_count: u32 = 0;
@@ -305,16 +305,16 @@ pub fn spawn_writer_thread(
             if let Err(e) = stdin.write_all(&frame_data) {
                 drop(stdin);
                 let output = child.wait_with_output().map_err(|e2| {
-                    QuickClipError::EncodingError(format!(
+                    EncodingError::WriteFailed(format!(
                         "Write failed: {}, then wait failed: {}",
                         e, e2
                     ))
                 })?;
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(QuickClipError::EncodingError(format!(
+                return Err(EncodingError::WriteFailed(format!(
                     "Failed to write buffered frame {}: {} - FFmpeg stderr: {}",
                     frame_count, e, stderr
-                )));
+                )).into());
             }
             frame_count += 1;
         }
@@ -336,16 +336,16 @@ pub fn spawn_writer_thread(
                         if let Err(e) = stdin.write_all(&frame_data) {
                             drop(stdin);
                             let output = child.wait_with_output().map_err(|e2| {
-                                QuickClipError::EncodingError(format!(
+                                EncodingError::WriteFailed(format!(
                                     "Write failed: {}, then wait failed: {}",
                                     e, e2
                                 ))
                             })?;
                             let stderr = String::from_utf8_lossy(&output.stderr);
-                            return Err(QuickClipError::EncodingError(format!(
+                            return Err(EncodingError::WriteFailed(format!(
                                 "Failed to write frame {}: {} - FFmpeg stderr: {}",
                                 frame_count, e, stderr
-                            )));
+                            )).into());
                         }
 
                         frame_count += 1;
@@ -375,12 +375,13 @@ pub fn spawn_writer_thread(
 
         let output = child
             .wait_with_output()
-            .map_err(|e| QuickClipError::EncodingError(format!("FFmpeg wait failed: {}", e)))?;
+            .map_err(|e| EncodingError::WriteFailed(format!("FFmpeg wait failed: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             tracing::error!(target: "quickclip", "[WRITER] FFmpeg failed: {}", stderr);
-            return Err(QuickClipError::EncodingError(stderr.to_string()));
+            let exit_code = output.status.code().unwrap_or(-1);
+            return Err(EncodingError::ProcessFailed { exit_code, stderr: stderr.to_string() }.into());
         }
 
         tracing::info!(target: "quickclip", "[WRITER] FFmpeg complete, {} frames written", frame_count);
@@ -394,7 +395,7 @@ pub fn spawn_writer_thread(
                 &output_str,
             ])
             .output()
-            .map_err(|e| QuickClipError::EncodingError(format!("ffprobe failed: {}", e)))?;
+            .map_err(|e| EncodingError::WriteFailed(format!("ffprobe failed: {}", e)))?;
 
         let duration_str = String::from_utf8_lossy(&duration_output.stdout);
         let duration: f64 = duration_str.trim().parse().unwrap_or(0.0);

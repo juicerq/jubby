@@ -1,10 +1,19 @@
 use super::tokens::{clear_token, load_tokens, save_token, RESTORE_TOKEN};
 use super::CaptureSource;
-use crate::plugins::quickclip::errors::QuickClipError;
+use crate::plugins::quickclip::errors::{CaptureError, PortalError, QuickClipError};
 use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType, Stream as PortalStream};
 use ashpd::desktop::PersistMode;
 use ashpd::enumflags2::BitFlags;
 use std::os::fd::OwnedFd;
+
+fn classify_portal_error<E: std::fmt::Display>(e: E) -> PortalError {
+    let msg = e.to_string();
+    if msg.contains("cancelled") || msg.contains("Cancelled") {
+        PortalError::UserCancelled
+    } else {
+        PortalError::SessionFailed(msg)
+    }
+}
 
 /// Result of starting a screencast session.
 pub struct ScreencastSession {
@@ -18,7 +27,6 @@ pub struct ScreencastSession {
 }
 
 impl ScreencastSession {
-    /// Create a new screencast session via XDG Desktop Portal.
     pub async fn new(source: CaptureSource) -> Result<Self, QuickClipError> {
         tracing::info!(target: "quickclip", "[PORTAL] Creating screencast session: source={:?}", source);
 
@@ -36,8 +44,10 @@ impl ScreencastSession {
 
         match Self::create_session_internal(source, restore_token.as_deref()).await {
             Ok(session) => Ok(session),
-            Err(QuickClipError::UserCancelled) => Err(QuickClipError::UserCancelled),
-            Err(e) if had_token => {
+            Err(QuickClipError::Portal(PortalError::UserCancelled)) => {
+                Err(PortalError::UserCancelled.into())
+            }
+            Err(QuickClipError::Portal(e)) if had_token && e.is_recoverable_with_retry() => {
                 tracing::warn!(target: "quickclip", "[PORTAL] Token invalid, clearing and retrying: {}", e);
                 clear_token(source);
                 *RESTORE_TOKEN.lock().unwrap() = None;
@@ -53,12 +63,12 @@ impl ScreencastSession {
     ) -> Result<Self, QuickClipError> {
         let proxy = Screencast::new().await.map_err(|e| {
             tracing::error!(target: "quickclip", "[PORTAL] Failed to create Screencast proxy: {}", e);
-            QuickClipError::PortalUnavailable
+            PortalError::Unavailable
         })?;
 
         let session = proxy.create_session().await.map_err(|e| {
             tracing::error!(target: "quickclip", "[PORTAL] Failed to create session: {}", e);
-            QuickClipError::PortalUnavailable
+            PortalError::SessionFailed(format!("Failed to create session: {}", e))
         })?;
 
         let source_type = match source {
@@ -81,36 +91,21 @@ impl ScreencastSession {
             )
             .await
             .map_err(|e| {
-                let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[PORTAL] Source selection failed: {}", err_str);
-                if err_str.contains("cancelled") || err_str.contains("Cancelled") {
-                    QuickClipError::UserCancelled
-                } else {
-                    QuickClipError::PipeWireError(format!("Source selection failed: {}", e))
-                }
+                tracing::warn!(target: "quickclip", "[PORTAL] Source selection failed: {}", e);
+                classify_portal_error(e)
             })?;
 
         let response = proxy
             .start(&session, None)
             .await
             .map_err(|e| {
-                let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[PORTAL] Failed to start session: {}", err_str);
-                if err_str.contains("cancelled") || err_str.contains("Cancelled") {
-                    QuickClipError::UserCancelled
-                } else {
-                    QuickClipError::PipeWireError(format!("Failed to start session: {}", e))
-                }
+                tracing::warn!(target: "quickclip", "[PORTAL] Failed to start session: {}", e);
+                classify_portal_error(e)
             })?
             .response()
             .map_err(|e| {
-                let err_str = e.to_string();
-                tracing::warn!(target: "quickclip", "[PORTAL] Session response error: {}", err_str);
-                if err_str.contains("cancelled") || err_str.contains("Cancelled") {
-                    QuickClipError::UserCancelled
-                } else {
-                    QuickClipError::PipeWireError(format!("Session response error: {}", e))
-                }
+                tracing::warn!(target: "quickclip", "[PORTAL] Session response error: {}", e);
+                classify_portal_error(e)
             })?;
 
         if let Some(token) = response.restore_token() {
@@ -122,9 +117,7 @@ impl ScreencastSession {
         let streams: Vec<&PortalStream> = response.streams().iter().collect();
         if streams.is_empty() {
             tracing::error!(target: "quickclip", "[PORTAL] No streams returned");
-            return Err(QuickClipError::PipeWireError(
-                "No streams returned from portal".to_string(),
-            ));
+            return Err(CaptureError::InitFailed("No streams returned from portal".to_string()).into());
         }
 
         let stream = streams[0];
@@ -137,7 +130,7 @@ impl ScreencastSession {
 
         let pipewire_fd = proxy.open_pipe_wire_remote(&session).await.map_err(|e| {
             tracing::error!(target: "quickclip", "[PORTAL] Failed to open PipeWire remote: {}", e);
-            QuickClipError::PipeWireError(format!("Failed to open PipeWire remote: {}", e))
+            CaptureError::InitFailed(format!("Failed to open PipeWire remote: {}", e))
         })?;
 
         tracing::debug!(target: "quickclip", "[PORTAL] PipeWire remote fd acquired");

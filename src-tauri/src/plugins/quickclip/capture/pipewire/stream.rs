@@ -1,5 +1,5 @@
 use super::{CaptureMessage, CaptureStats, ScreencastSession, DRAIN_DURATION};
-use crate::plugins::quickclip::errors::QuickClipError;
+use crate::plugins::quickclip::errors::{CaptureError, QuickClipError};
 use pipewire as pw;
 use pw::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
 use pw::spa::param::video::VideoFormat;
@@ -58,17 +58,17 @@ pub fn run_capture_loop(
 
     let mainloop = pw::main_loop::MainLoop::new(None).map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create main loop: {}", e);
-        QuickClipError::PipeWireError(format!("Failed to create main loop: {}", e))
+        CaptureError::InitFailed(format!("Failed to create main loop: {}", e))
     })?;
 
     let context = pw::context::Context::new(&mainloop).map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create context: {}", e);
-        QuickClipError::PipeWireError(format!("Failed to create context: {}", e))
+        CaptureError::InitFailed(format!("Failed to create context: {}", e))
     })?;
 
     let core = context.connect_fd(pipewire_fd, None).map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to connect with fd: {}", e);
-        QuickClipError::PipeWireError(format!("Failed to connect with fd: {}", e))
+        CaptureError::InitFailed(format!("Failed to connect with fd: {}", e))
     })?;
 
     tracing::debug!(target: "quickclip", "[PIPEWIRE] Connected to core via portal fd");
@@ -87,7 +87,7 @@ pub fn run_capture_loop(
     )
     .map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create stream: {}", e);
-        QuickClipError::PipeWireError(format!("Failed to create stream: {}", e))
+        CaptureError::InitFailed(format!("Failed to create stream: {}", e))
     })?;
 
     let state_param = Arc::clone(&state);
@@ -219,7 +219,7 @@ pub fn run_capture_loop(
         .register()
         .map_err(|e| {
             tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to register stream listener: {}", e);
-            QuickClipError::PipeWireError(format!("Failed to register listener: {}", e))
+            CaptureError::InitFailed(format!("Failed to register listener: {}", e))
         })?;
 
     let obj = pw::spa::pod::object!(
@@ -264,7 +264,7 @@ pub fn run_capture_loop(
     )
     .map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to serialize format pod: {:?}", e);
-        QuickClipError::PipeWireError(format!("Failed to serialize format pod: {:?}", e))
+        CaptureError::InitFailed(format!("Failed to serialize format pod: {:?}", e))
     })?
     .0
     .into_inner();
@@ -280,7 +280,7 @@ pub fn run_capture_loop(
         )
         .map_err(|e| {
             tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to connect stream: {}", e);
-            QuickClipError::PipeWireError(format!("Failed to connect stream: {}", e))
+            CaptureError::StreamFailed(format!("Failed to connect stream: {}", e))
         })?;
 
     tracing::info!(target: "quickclip", "[PIPEWIRE] Stream connected, entering capture loop");
@@ -319,7 +319,7 @@ pub fn run_capture_loop(
 
     if state_guard.frame_count == 0 {
         tracing::warn!(target: "quickclip", "[CAPTURE] No frames captured");
-        return Err(QuickClipError::NoFrames);
+        return Err(CaptureError::NoFrames.into());
     }
 
     let actual_duration = state_guard
