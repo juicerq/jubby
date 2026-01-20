@@ -1,5 +1,6 @@
 use super::{CaptureMessage, CaptureStats, ScreencastSession, DRAIN_DURATION};
 use crate::plugins::quickclip::errors::{CaptureError, QuickClipError};
+use crossbeam_channel::{SendTimeoutError, Sender};
 use pipewire as pw;
 use pw::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
 use pw::spa::param::video::VideoFormat;
@@ -10,9 +11,18 @@ use pw::spa::pod::Pod;
 use pw::spa::utils::SpaTypes;
 use pw::stream::StreamFlags;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn send_frame(sender: &Sender<CaptureMessage>, msg: CaptureMessage) -> Result<(), CaptureError> {
+    match sender.send_timeout(msg, SEND_TIMEOUT) {
+        Ok(()) => Ok(()),
+        Err(SendTimeoutError::Timeout(_)) => Err(CaptureError::WriterStalled),
+        Err(SendTimeoutError::Disconnected(_)) => Err(CaptureError::WriterDisconnected),
+    }
+}
 
 pub struct CaptureGuard {
     mainloop: pw::main_loop::MainLoop,
@@ -82,7 +92,7 @@ pub fn run_capture_loop(
     session: ScreencastSession,
     stop_signal: Arc<AtomicBool>,
     recording_start: std::time::Instant,
-    frame_sender: SyncSender<CaptureMessage>,
+    frame_sender: Sender<CaptureMessage>,
 ) -> Result<CaptureStats, QuickClipError> {
     tracing::info!(target: "quickclip", "[PIPEWIRE] Initializing capture loop: node_id={}", session.node_id);
 
@@ -114,7 +124,7 @@ pub fn run_capture_loop(
     tracing::debug!(target: "quickclip", "[PIPEWIRE] Connected to core via portal fd");
 
     let state = Arc::new(Mutex::new(CaptureState::default()));
-    let channel_open = Arc::new(AtomicBool::new(true));
+    let capture_error: Arc<Mutex<Option<CaptureError>>> = Arc::new(Mutex::new(None));
 
     let stream = pw::stream::Stream::new(
         &core,
@@ -133,7 +143,7 @@ pub fn run_capture_loop(
     let state_param = Arc::clone(&state);
     let state_process = Arc::clone(&state);
     let stop_signal_process = Arc::clone(&stop_signal);
-    let channel_open_process = Arc::clone(&channel_open);
+    let capture_error_process = Arc::clone(&capture_error);
     let frame_sender_process = frame_sender.clone();
     let mainloop_quit = guard.mainloop().clone();
 
@@ -165,11 +175,6 @@ pub fn run_capture_loop(
             );
         })
         .process(move |stream, _user_data| {
-            if !channel_open_process.load(Ordering::SeqCst) {
-                mainloop_quit.quit();
-                return;
-            }
-
             let mut state_guard = state_process.lock().unwrap();
 
             if stop_signal_process.load(Ordering::SeqCst) && state_guard.drain_start.is_none() {
@@ -192,9 +197,9 @@ pub fn run_capture_loop(
                 state_guard.metadata_sent = true;
                 drop(state_guard);
 
-                if frame_sender_process.send(CaptureMessage::Metadata { width, height }).is_err() {
-                    tracing::warn!(target: "quickclip", "[CAPTURE] Channel closed, stopping capture");
-                    channel_open_process.store(false, Ordering::SeqCst);
+                if let Err(e) = send_frame(&frame_sender_process, CaptureMessage::Metadata { width, height }) {
+                    tracing::warn!(target: "quickclip", "[CAPTURE] Failed to send metadata: {:?}", e);
+                    *capture_error_process.lock().unwrap() = Some(e);
                     mainloop_quit.quit();
                     return;
                 }
@@ -241,9 +246,9 @@ pub fn run_capture_loop(
                 pixel[3] = 255;
             }
 
-            if frame_sender_process.send(CaptureMessage::Frame(rgba_frame)).is_err() {
-                tracing::warn!(target: "quickclip", "[CAPTURE] Channel closed, stopping capture");
-                channel_open_process.store(false, Ordering::SeqCst);
+            if let Err(e) = send_frame(&frame_sender_process, CaptureMessage::Frame(rgba_frame)) {
+                tracing::warn!(target: "quickclip", "[CAPTURE] Failed to send frame: {:?}", e);
+                *capture_error_process.lock().unwrap() = Some(e);
                 mainloop_quit.quit();
                 return;
             }
@@ -355,7 +360,11 @@ pub fn run_capture_loop(
         guard.run();
     }
 
-    let _ = frame_sender.send(CaptureMessage::EndOfStream);
+    if let Some(err) = capture_error.lock().unwrap().take() {
+        return Err(err.into());
+    }
+
+    let _ = frame_sender.send_timeout(CaptureMessage::EndOfStream, SEND_TIMEOUT);
 
     let state_guard = state.lock().unwrap();
 

@@ -2244,6 +2244,7 @@ version = "0.2.0"
 dependencies = [
  "ashpd",
  "clipboard-rs",
+ "crossbeam-channel",
  "dirs",
  "global-hotkey",
  "image",

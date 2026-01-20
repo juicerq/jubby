@@ -102,7 +102,7 @@ async fn start_recording_internal(
     let stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
     *state.stop_signal.lock().await = Some(stop_signal.clone());
 
-    let (frame_sender, frame_receiver) = std::sync::mpsc::sync_channel::<CaptureMessage>(30);
+    let (frame_sender, frame_receiver) = crossbeam_channel::bounded::<CaptureMessage>(30);
 
     let writer_handle = spawn_writer_thread(
         frame_receiver,

@@ -1,10 +1,10 @@
 use super::super::capture::CaptureMessage;
 use super::super::errors::{CaptureError, EncodingError, QuickClipError};
 use super::super::types::{AudioMode, Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
+use crossbeam_channel::Receiver;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 
 /// RAII guard ensuring FFmpeg process cleanup and partial file deletion on abnormal exit.
