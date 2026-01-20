@@ -14,6 +14,45 @@ use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+pub struct CaptureGuard {
+    mainloop: pw::main_loop::MainLoop,
+    completed: bool,
+}
+
+impl CaptureGuard {
+    pub fn new(mainloop: pw::main_loop::MainLoop) -> Self {
+        Self {
+            mainloop,
+            completed: false,
+        }
+    }
+
+    pub fn mainloop(&self) -> &pw::main_loop::MainLoop {
+        &self.mainloop
+    }
+
+    pub fn mark_completed(&mut self) {
+        self.completed = true;
+    }
+
+    pub fn run(&self) {
+        self.mainloop.run();
+    }
+}
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        self.mainloop.quit();
+
+        if !self.completed {
+            tracing::warn!(
+                target: "quickclip",
+                "[CAPTURE] CaptureGuard dropped without completion - abnormal termination"
+            );
+        }
+    }
+}
+
 /// Shared state for frame capture between PipeWire callbacks and main thread.
 struct CaptureState {
     format: VideoInfoRaw,
@@ -39,7 +78,6 @@ impl Default for CaptureState {
     }
 }
 
-/// Run the PipeWire capture loop in a blocking thread.
 pub fn run_capture_loop(
     session: ScreencastSession,
     stop_signal: Arc<AtomicBool>,
@@ -61,7 +99,9 @@ pub fn run_capture_loop(
         CaptureError::InitFailed(format!("Failed to create main loop: {}", e))
     })?;
 
-    let context = pw::context::Context::new(&mainloop).map_err(|e| {
+    let mut guard = CaptureGuard::new(mainloop);
+
+    let context = pw::context::Context::new(guard.mainloop()).map_err(|e| {
         tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to create context: {}", e);
         CaptureError::InitFailed(format!("Failed to create context: {}", e))
     })?;
@@ -95,7 +135,7 @@ pub fn run_capture_loop(
     let stop_signal_process = Arc::clone(&stop_signal);
     let channel_open_process = Arc::clone(&channel_open);
     let frame_sender_process = frame_sender.clone();
-    let mainloop_quit = mainloop.clone();
+    let mainloop_quit = guard.mainloop().clone();
 
     let _listener = stream
         .add_local_listener_with_user_data(())
@@ -286,7 +326,7 @@ pub fn run_capture_loop(
     tracing::info!(target: "quickclip", "[PIPEWIRE] Stream connected, entering capture loop");
 
     let stop_signal_timer = Arc::clone(&stop_signal);
-    let mainloop_for_timer = mainloop.clone();
+    let mainloop_for_timer = guard.mainloop().clone();
     let state_timer = Arc::clone(&state);
     let timer_callback = move |_expirations: u64| {
         if stop_signal_timer.load(Ordering::SeqCst) {
@@ -305,13 +345,15 @@ pub fn run_capture_loop(
         }
     };
 
-    let timer = mainloop.loop_().add_timer(timer_callback);
-    timer.update_timer(
-        Some(Duration::from_millis(100)),
-        Some(Duration::from_millis(100)),
-    );
+    {
+        let timer = guard.mainloop().loop_().add_timer(timer_callback);
+        timer.update_timer(
+            Some(Duration::from_millis(100)),
+            Some(Duration::from_millis(100)),
+        );
 
-    mainloop.run();
+        guard.run();
+    }
 
     let _ = frame_sender.send(CaptureMessage::EndOfStream);
 
@@ -343,6 +385,8 @@ pub fn run_capture_loop(
         source_framerate,
     };
     drop(state_guard);
+
+    guard.mark_completed();
 
     std::thread::spawn(move || {
         if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
