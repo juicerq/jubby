@@ -1,29 +1,10 @@
-use super::super::capture::{CaptureMessage, CaptureSource, ScreencastSession};
-use super::super::errors::{CaptureError, EncodingError, QuickClipError};
-use super::super::persistence::{
-    get_sessions_dir, get_thumbnails_dir, get_videos_dir, load_quickclip_settings, save_recording,
-    Recording,
-};
+use super::super::errors::QuickClipError;
+use super::super::persistence::{load_quickclip_settings, Recording};
 use super::super::types::{AudioMode, Framerate, ResolutionScale};
-use super::ffmpeg::{check_ffmpeg, cleanup_session_dir, generate_thumbnail};
-use super::writer::spawn_writer_thread;
-use super::RecorderState;
-use super::RecordingSession;
-use serde::Serialize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::time::Duration;
+use super::coordinator::{CoordinatorHandle, RecordingStatus};
+use super::ffmpeg::check_ffmpeg;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
-use tokio::time::timeout;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordingStatus {
-    pub is_recording: bool,
-    pub frame_count: u32,
-    pub elapsed_seconds: f64,
-}
 
 #[tauri::command]
 pub fn recorder_check_ffmpeg() -> Result<bool, String> {
@@ -35,7 +16,7 @@ pub fn recorder_check_ffmpeg() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn recorder_start(
-    state: tauri::State<'_, RecorderState>,
+    handle: tauri::State<'_, CoordinatorHandle>,
     resolution_scale: Option<ResolutionScale>,
     framerate: Option<Framerate>,
     audio_mode: Option<AudioMode>,
@@ -43,226 +24,25 @@ pub async fn recorder_start(
     let scale = resolution_scale.unwrap_or_default();
     let fps = framerate.unwrap_or_default();
     let audio = audio_mode.unwrap_or_default();
-    start_recording_internal(&state, scale, fps, audio)
+    
+    handle
+        .start(scale, fps, audio)
         .await
         .map_err(|e| e.to_string())
-}
-
-async fn start_recording_internal(
-    state: &RecorderState,
-    resolution_scale: ResolutionScale,
-    framerate: Framerate,
-    audio_mode: AudioMode,
-) -> Result<(), QuickClipError> {
-    tracing::info!(target: "quickclip",
-        "[RECORD] Starting: resolution_scale={:?}, framerate={:?}, audio_mode={:?}",
-        resolution_scale, framerate, audio_mode);
-
-    check_ffmpeg()?;
-
-    if state.is_recording.load(Ordering::SeqCst) {
-        tracing::warn!(target: "quickclip", "[RECORD] Already recording");
-        return Err(QuickClipError::AlreadyRecording);
-    }
-
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis() as i64;
-
-    let session_dir = get_sessions_dir()?.join(format!("session_{}", timestamp));
-    std::fs::create_dir_all(&session_dir)
-        .map_err(|e| QuickClipError::StorageError(e.to_string()))?;
-
-    let recording_id = uuid::Uuid::new_v4().to_string();
-    let video_filename = format!("recording_{}.mp4", timestamp);
-    let thumbnail_filename = format!("thumb_{}.png", timestamp);
-    let video_path = get_videos_dir()?.join(&video_filename);
-    let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
-
-    let screencast_session = ScreencastSession::new(CaptureSource::Fullscreen)?;
-
-    let recording_start = std::time::Instant::now();
-
-    let session = RecordingSession {
-        session_dir,
-        start_time: recording_start,
-        video_path: video_path.clone(),
-        thumbnail_path: thumbnail_path.clone(),
-        recording_id,
-        timestamp,
-        audio_mode,
-    };
-
-    *state.session.lock().await = Some(session);
-    state.is_recording.store(true, Ordering::SeqCst);
-
-    tracing::info!(target: "quickclip", "[RECORD] Session started: node_id={}", screencast_session.node_id);
-
-    let stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    *state.stop_signal.lock().await = Some(stop_signal.clone());
-
-    let (frame_sender, frame_receiver) = crossbeam_channel::bounded::<CaptureMessage>(30);
-
-    let writer_handle = spawn_writer_thread(
-        frame_receiver,
-        video_path,
-        resolution_scale,
-        framerate,
-        audio_mode,
-    );
-    *state.writer_handle.lock().unwrap() = Some(writer_handle);
-
-    let capture_handle = std::thread::spawn(move || {
-        super::super::capture::run_capture_loop(
-            screencast_session,
-            stop_signal,
-            recording_start,
-            frame_sender,
-        )
-    });
-    *state.capture_handle.lock().unwrap() = Some(capture_handle);
-
-    Ok(())
 }
 
 #[tauri::command]
 pub async fn recorder_stop(
-    state: tauri::State<'_, RecorderState>,
+    handle: tauri::State<'_, CoordinatorHandle>,
 ) -> Result<Recording, String> {
-    stop_recording_internal(&state)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn stop_recording_internal(state: &RecorderState) -> Result<Recording, QuickClipError> {
-    tracing::info!(target: "quickclip", "[RECORD] Stopping...");
-
-    if !state.is_recording.load(Ordering::SeqCst) {
-        tracing::warn!(target: "quickclip", "[RECORD] Not recording");
-        return Err(QuickClipError::NotRecording);
-    }
-
-    if let Some(stop_signal) = state.stop_signal.lock().await.take() {
-        stop_signal.store(true, Ordering::SeqCst);
-        tracing::debug!(target: "quickclip", "[RECORD] Stop signal sent");
-    }
-
-    let session = state
-        .session
-        .lock()
-        .await
-        .take()
-        .ok_or(QuickClipError::NotRecording)?;
-
-    let capture_handle = state
-        .capture_handle
-        .lock()
-        .unwrap()
-        .take()
-        .ok_or_else(|| CaptureError::InitFailed("No capture handle".to_string()))?;
-
-    let writer_handle = state
-        .writer_handle
-        .lock()
-        .unwrap()
-        .take()
-        .ok_or_else(|| CaptureError::InitFailed("No writer handle".to_string()))?;
-
-    tracing::debug!(target: "quickclip", "[RECORD] Waiting for capture thread...");
-    let capture_join_result = timeout(
-        Duration::from_secs(30),
-        tauri::async_runtime::spawn_blocking(move || capture_handle.join()),
-    )
-    .await
-    .map_err(|_| {
-        tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for capture thread");
-        EncodingError::Timeout(Duration::from_secs(30))
-    })?
-    .map_err(|e| CaptureError::StreamFailed(format!("Spawn blocking failed: {}", e)))?;
-
-    let capture_stats = capture_join_result
-        .map_err(|_| CaptureError::StreamFailed("Capture thread panicked".to_string()))??;
-
-    tracing::info!(target: "quickclip",
-        "[RECORD] Capture complete: frames={}, fps={:.2}",
-        capture_stats.frame_count, capture_stats.source_framerate);
-
-    tracing::debug!(target: "quickclip", "[RECORD] Waiting for writer thread...");
-    let writer_join_result = timeout(
-        Duration::from_secs(300),
-        tauri::async_runtime::spawn_blocking(move || writer_handle.join()),
-    )
-    .await
-    .map_err(|_| {
-        tracing::error!(target: "quickclip", "[RECORD] Timeout waiting for writer thread");
-        EncodingError::Timeout(Duration::from_secs(300))
-    })?
-    .map_err(|e| EncodingError::WriteFailed(format!("Spawn blocking failed: {}", e)))?;
-
-    let writer_result = writer_join_result
-        .map_err(|_| EncodingError::WriteFailed("Writer thread panicked".to_string()))??;
-
-    tracing::info!(target: "quickclip",
-        "[RECORD] Writer complete: duration={:.2}s, frames={}, size={}x{}",
-        writer_result.duration, writer_result.frame_count,
-        writer_result.width, writer_result.height);
-
-    state.is_recording.store(false, Ordering::SeqCst);
-
-    let video_path_for_thumb = session.video_path.clone();
-    let thumbnail_path_clone = session.thumbnail_path.clone();
-
-    tauri::async_runtime::spawn_blocking(move || {
-        generate_thumbnail(&video_path_for_thumb, &thumbnail_path_clone)
-    })
-    .await
-    .map_err(|e| EncodingError::WriteFailed(e.to_string()))??;
-
-    tracing::debug!(target: "quickclip", "[RECORD] Thumbnail generated");
-
-    cleanup_session_dir(&session.session_dir);
-
-    let recording = save_recording(
-        session.recording_id.clone(),
-        session.video_path.to_string_lossy().to_string(),
-        session.thumbnail_path.to_string_lossy().to_string(),
-        writer_result.duration,
-        session.timestamp,
-        session.audio_mode,
-    )?;
-
-    tracing::info!(target: "quickclip",
-        "[RECORD] Complete: id={}, frames={}, duration={:.2}s, path={}",
-        recording.id, writer_result.frame_count, writer_result.duration,
-        session.video_path.display());
-
-    Ok(recording)
+    handle.stop().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn recorder_status(
-    state: tauri::State<'_, RecorderState>,
+    handle: tauri::State<'_, CoordinatorHandle>,
 ) -> Result<RecordingStatus, String> {
-    let is_recording = state.is_recording.load(Ordering::SeqCst);
-
-    let session_guard = state.session.lock().await;
-    let elapsed = if let Some(ref session) = *session_guard {
-        session.start_time.elapsed().as_secs_f64()
-    } else {
-        0.0
-    };
-    let frame_count = if is_recording {
-        (elapsed * 60.0) as u32
-    } else {
-        0
-    };
-
-    Ok(RecordingStatus {
-        is_recording,
-        frame_count,
-        elapsed_seconds: elapsed,
-    })
+    Ok(handle.status().await)
 }
 
 #[tauri::command]
@@ -286,25 +66,28 @@ pub fn read_video_file(path: String) -> Result<tauri::ipc::Response, String> {
 }
 
 pub async fn toggle_recording(app: &AppHandle) -> Result<Option<Recording>, QuickClipError> {
-    let state = app.state::<RecorderState>();
-    let is_recording = state.is_recording.load(Ordering::SeqCst);
+    let handle = app.state::<CoordinatorHandle>();
+    let status = handle.status().await;
 
-    if is_recording {
+    if status.is_recording || status.is_stopping {
         tracing::info!(target: "quickclip", "[TOGGLE] Stopping recording");
-        let result = stop_recording_internal(&state).await?;
+        let result = handle.stop().await?;
         app.emit("quickclip:recording-stopped", ())
             .map_err(|e| QuickClipError::EventError(e.to_string()))?;
         Ok(Some(result))
+    } else if status.is_starting {
+        tracing::info!(target: "quickclip", "[TOGGLE] Already starting, ignoring");
+        Ok(None)
     } else {
         tracing::info!(target: "quickclip", "[TOGGLE] Starting recording");
         let settings = load_quickclip_settings()?;
-        start_recording_internal(
-            &state,
-            settings.resolution.into(),
-            settings.framerate,
-            settings.audio_mode,
-        )
-        .await?;
+        handle
+            .start(
+                settings.resolution.into(),
+                settings.framerate,
+                settings.audio_mode,
+            )
+            .await?;
         app.emit("quickclip:recording-started", ())
             .map_err(|e| QuickClipError::EventError(e.to_string()))?;
         Ok(None)
@@ -316,9 +99,7 @@ pub async fn toggle_recording_with_notification(app: &AppHandle) {
         Ok(Some(recording)) => {
             tracing::info!(target: "quickclip", "[TOGGLE] Recording saved: id={}", recording.id);
         }
-        Ok(None) => {
-            // Recording started - nothing to do
-        }
+        Ok(None) => {}
         Err(e) => {
             tracing::error!(target: "quickclip", "[TOGGLE] Error: {}", e);
             if let Err(notify_err) = app
