@@ -8,7 +8,7 @@
 //! - Tauri commands send Commands to coordinator via command_tx
 //! - Capture/writer threads send Events to coordinator via event_tx
 //! - Coordinator processes commands/events and executes SideEffects
-//! - Frontend receives state changes via Tauri events
+//! - Frontend receives state changes via Tauri events ('quickclip:state-change')
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
 use super::super::capture::{
@@ -114,11 +115,8 @@ impl Default for WorkerHandles {
     }
 }
 
-/// The RecordingCoordinator actor.
-///
-/// Single owner of all recording resources. Processes commands and events
-/// through the state machine and executes side effects.
 pub struct RecordingCoordinator {
+    app_handle: AppHandle,
     state: RecordingState,
     handles: WorkerHandles,
     session: Option<RecordingSession>,
@@ -133,12 +131,12 @@ pub struct RecordingCoordinator {
 }
 
 impl RecordingCoordinator {
-    /// Creates a new coordinator and returns the command sender.
-    pub fn new() -> (Self, mpsc::Sender<Command>) {
+    pub fn new(app_handle: AppHandle) -> (Self, mpsc::Sender<Command>) {
         let (command_tx, command_rx) = mpsc::channel(16);
         let (event_tx, event_rx) = mpsc::channel(64);
 
         let coordinator = Self {
+            app_handle,
             state: RecordingState::Idle,
             handles: WorkerHandles::default(),
             session: None,
@@ -456,8 +454,80 @@ impl RecordingCoordinator {
     }
 
     fn emit_state_change(&self, state: &RecordingState) {
-        tracing::debug!(target: "quickclip", "[COORDINATOR] State changed: {:?}", state);
-        // TODO(Task 10): Emit Tauri event to frontend
+        let status = self.build_status_from_state(state);
+        tracing::debug!(target: "quickclip", "[COORDINATOR] Emitting state change: {:?}", status);
+
+        if let Err(e) = self.app_handle.emit("quickclip:state-change", &status) {
+            tracing::error!(target: "quickclip", "[COORDINATOR] Failed to emit state-change: {}", e);
+        }
+
+        // Emit legacy events for backwards compatibility with tray icon
+        match state {
+            RecordingState::Recording { .. } => {
+                let _ = self.app_handle.emit("quickclip:recording-started", ());
+            }
+            RecordingState::Idle => {
+                let _ = self.app_handle.emit("quickclip:recording-stopped", ());
+            }
+            _ => {}
+        }
+    }
+
+    fn build_status_from_state(&self, state: &RecordingState) -> RecordingStatus {
+        match state {
+            RecordingState::Idle => RecordingStatus {
+                is_recording: false,
+                is_starting: false,
+                is_stopping: false,
+                frame_count: 0,
+                elapsed_seconds: 0.0,
+                resolution: None,
+                error: None,
+            },
+            RecordingState::Starting { started_at } => RecordingStatus {
+                is_recording: false,
+                is_starting: true,
+                is_stopping: false,
+                frame_count: 0,
+                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                resolution: None,
+                error: None,
+            },
+            RecordingState::Recording {
+                started_at,
+                frame_count,
+                resolution,
+            } => RecordingStatus {
+                is_recording: true,
+                is_starting: false,
+                is_stopping: false,
+                frame_count: *frame_count,
+                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                resolution: Some(*resolution),
+                error: None,
+            },
+            RecordingState::Stopping {
+                started_at,
+                stop_requested_at: _,
+            } => RecordingStatus {
+                is_recording: false,
+                is_starting: false,
+                is_stopping: true,
+                frame_count: 0,
+                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                resolution: None,
+                error: None,
+            },
+            RecordingState::Failed { error, .. } => RecordingStatus {
+                is_recording: false,
+                is_starting: false,
+                is_stopping: false,
+                frame_count: 0,
+                elapsed_seconds: 0.0,
+                resolution: None,
+                error: Some(error.clone()),
+            },
+        }
     }
 
     fn cleanup(&mut self) {
@@ -549,8 +619,15 @@ impl RecordingCoordinator {
         self.capture_stats = None;
     }
 
+    fn emit_error(&self, error: &str) {
+        if let Err(e) = self.app_handle.emit("quickclip:error", error) {
+            tracing::error!(target: "quickclip", "[COORDINATOR] Failed to emit error: {}", e);
+        }
+    }
+
     fn fail_start(&mut self, error: QuickClipError) {
         tracing::error!(target: "quickclip", "[COORDINATOR] Start failed: {}", error);
+        self.emit_error(&error.to_string());
 
         if let Some(response_tx) = self.pending_start_response.take() {
             let _ = response_tx.send(Err(error.clone()));
@@ -565,6 +642,7 @@ impl RecordingCoordinator {
 
     fn fail_stop(&mut self, error: QuickClipError) {
         tracing::error!(target: "quickclip", "[COORDINATOR] Stop failed: {}", error);
+        self.emit_error(&error.to_string());
 
         if let Some(response_tx) = self.pending_stop_response.take() {
             let _ = response_tx.send(Err(error));
@@ -574,43 +652,7 @@ impl RecordingCoordinator {
     }
 
     fn get_status(&self) -> RecordingStatus {
-        let (is_recording, is_starting, is_stopping, frame_count, elapsed_seconds, resolution, error) =
-            match &self.state {
-                RecordingState::Idle => (false, false, false, 0, 0.0, None, None),
-                RecordingState::Starting { started_at } => {
-                    (false, true, false, 0, started_at.elapsed().as_secs_f64(), None, None)
-                }
-                RecordingState::Recording {
-                    started_at,
-                    frame_count,
-                    resolution,
-                } => (
-                    true,
-                    false,
-                    false,
-                    *frame_count,
-                    started_at.elapsed().as_secs_f64(),
-                    Some(*resolution),
-                    None,
-                ),
-                RecordingState::Stopping {
-                    started_at,
-                    stop_requested_at: _,
-                } => (false, false, true, 0, started_at.elapsed().as_secs_f64(), None, None),
-                RecordingState::Failed { error, .. } => {
-                    (false, false, false, 0, 0.0, None, Some(error.clone()))
-                }
-            };
-
-        RecordingStatus {
-            is_recording,
-            is_starting,
-            is_stopping,
-            frame_count,
-            elapsed_seconds,
-            resolution,
-            error,
-        }
+        self.build_status_from_state(&self.state)
     }
 }
 

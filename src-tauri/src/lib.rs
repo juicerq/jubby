@@ -157,7 +157,7 @@ pub fn run() {
                 .map_err(|e| format!("Failed to initialize todo store: {}", e))?;
             app.manage(todo_store);
 
-            let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new();
+            let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new(app.handle().clone());
             let handle = plugins::quickclip::recorder::coordinator::CoordinatorHandle::new(command_tx);
             app.manage(handle);
             tauri::async_runtime::spawn(coordinator.run());
