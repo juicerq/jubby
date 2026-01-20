@@ -463,3 +463,153 @@ pub fn spawn_writer_thread(
         })
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+    use tempfile::NamedTempFile;
+
+    /// Test that WriterGuard deletes the output file when dropped without completion
+    #[test]
+    fn writer_guard_deletes_partial_file_on_drop() {
+        // Create a temp file that simulates a partial recording
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        // Keep the file by persisting it (so it's not deleted when NamedTempFile drops)
+        temp_file.persist(&temp_path).expect("Failed to persist temp file");
+
+        // Verify file exists
+        assert!(temp_path.exists(), "Temp file should exist before guard");
+
+        // Create a simple process that exits immediately (no stdin needed)
+        let child = Command::new("true")
+            .spawn()
+            .expect("Failed to spawn 'true' process");
+
+        // Create guard and drop it without marking complete
+        {
+            let _guard = WriterGuard::new(child, temp_path.clone());
+            // guard drops here without mark_completed()
+        }
+
+        // File should be deleted
+        assert!(!temp_path.exists(), "File should be deleted when guard drops without completion");
+    }
+
+    /// Test that WriterGuard preserves the file when mark_completed() is called
+    #[test]
+    fn writer_guard_preserves_file_when_completed() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+        temp_file.persist(&temp_path).expect("Failed to persist temp file");
+
+        assert!(temp_path.exists(), "Temp file should exist before guard");
+
+        let child = Command::new("true")
+            .spawn()
+            .expect("Failed to spawn 'true' process");
+
+        {
+            let mut guard = WriterGuard::new(child, temp_path.clone());
+            guard.mark_completed();
+            // guard drops here with completion flag set
+        }
+
+        // File should still exist
+        assert!(temp_path.exists(), "File should be preserved when guard is marked complete");
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+    }
+
+    /// Test that WriterGuard kills a long-running process on abnormal drop
+    #[test]
+    fn writer_guard_kills_process_on_abnormal_drop() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+        temp_file.persist(&temp_path).expect("Failed to persist temp file");
+
+        // Spawn a long-running process (sleep 60 seconds)
+        let child = Command::new("sleep")
+            .arg("60")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("Failed to spawn 'sleep' process");
+
+        let pid = child.id();
+
+        // Drop guard without completion - should kill the process
+        {
+            let _guard = WriterGuard::new(child, temp_path.clone());
+            // guard drops here
+        }
+
+        // Give OS time to clean up the process
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Check if process is still running (on Unix, we can check /proc/PID)
+        let proc_path = format!("/proc/{}", pid);
+        assert!(
+            !std::path::Path::new(&proc_path).exists(),
+            "Process should be killed when guard drops without completion"
+        );
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+    }
+
+    /// Test that take_child() removes the child so Drop won't try to kill it
+    #[test]
+    fn writer_guard_take_child_prevents_kill() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+        temp_file.persist(&temp_path).expect("Failed to persist temp file");
+
+        let child = Command::new("true")
+            .spawn()
+            .expect("Failed to spawn 'true' process");
+
+        {
+            let mut guard = WriterGuard::new(child, temp_path.clone());
+            let taken = guard.take_child();
+            assert!(taken.is_some(), "take_child should return the child");
+            
+            // Second take should return None
+            let taken_again = guard.take_child();
+            assert!(taken_again.is_none(), "take_child should return None after first take");
+            
+            // Guard drops here - should not panic since child is gone
+            // File will still be deleted since not marked complete
+        }
+
+        // File should be deleted (guard wasn't marked complete)
+        assert!(!temp_path.exists(), "File should be deleted when guard drops without completion");
+    }
+
+    /// Test that child_mut() provides mutable access to the child process
+    #[test]
+    fn writer_guard_child_mut_access() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+        temp_file.persist(&temp_path).expect("Failed to persist temp file");
+
+        let child = Command::new("true")
+            .spawn()
+            .expect("Failed to spawn 'true' process");
+
+        let mut guard = WriterGuard::new(child, temp_path.clone());
+        
+        assert!(guard.child_mut().is_some(), "child_mut should return Some");
+        
+        // Take the child and verify child_mut returns None
+        let _ = guard.take_child();
+        assert!(guard.child_mut().is_none(), "child_mut should return None after take_child");
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+    }
+}
