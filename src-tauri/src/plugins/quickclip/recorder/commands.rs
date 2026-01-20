@@ -80,7 +80,7 @@ async fn start_recording_internal(
     let video_path = get_videos_dir()?.join(&video_filename);
     let thumbnail_path = get_thumbnails_dir()?.join(&thumbnail_filename);
 
-    let screencast_session = ScreencastSession::new(CaptureSource::Fullscreen).await?;
+    let screencast_session = ScreencastSession::new(CaptureSource::Fullscreen)?;
 
     let recording_start = std::time::Instant::now();
 

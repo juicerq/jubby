@@ -2,7 +2,7 @@ pub mod session;
 pub mod stream;
 pub mod tokens;
 
-pub use session::ScreencastSession;
+pub use session::{PortalHandle, PortalSession, PortalSessionData, ScreencastSession, spawn_portal_thread};
 pub use stream::run_capture_loop;
 
 use std::time::Duration;

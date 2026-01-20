@@ -89,7 +89,7 @@ pub fn run_capture_loop(
     let ScreencastSession {
         pipewire_fd,
         node_id,
-        session: portal_session,
+        handle,
     } = session;
 
     pw::init();
@@ -388,18 +388,8 @@ pub fn run_capture_loop(
 
     guard.mark_completed();
 
-    std::thread::spawn(move || {
-        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            if let Err(e) = rt.block_on(portal_session.close()) {
-                tracing::warn!(target: "quickclip", "[PORTAL] Failed to close session: {}", e);
-            } else {
-                tracing::debug!(target: "quickclip", "[PORTAL] Session closed successfully");
-            }
-        }
-    });
+    drop(handle);
+    tracing::debug!(target: "quickclip", "[PORTAL] Session handle dropped, portal thread will close");
 
     Ok(stats)
 }
