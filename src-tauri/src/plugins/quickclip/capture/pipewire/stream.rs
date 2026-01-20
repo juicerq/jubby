@@ -15,6 +15,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum recording duration (4 hours) to prevent PipeWire mainloop from running indefinitely
+const MAX_RECORDING_DURATION: Duration = Duration::from_secs(4 * 60 * 60);
 
 fn send_frame(sender: &Sender<CaptureMessage>, msg: CaptureMessage) -> Result<(), CaptureError> {
     match sender.send_timeout(msg, SEND_TIMEOUT) {
@@ -349,7 +351,21 @@ pub fn run_capture_loop(
     let stop_signal_timer = Arc::clone(&stop_signal);
     let mainloop_for_timer = guard.mainloop().clone();
     let state_timer = Arc::clone(&state);
+    let capture_error_timer = Arc::clone(&capture_error);
     let timer_callback = move |_expirations: u64| {
+        if recording_start.elapsed() >= MAX_RECORDING_DURATION {
+            tracing::warn!(target: "quickclip",
+                "[CAPTURE] Maximum recording duration ({:?}) exceeded, forcing stop",
+                MAX_RECORDING_DURATION
+            );
+            *capture_error_timer
+                .lock()
+                .expect("capture_error mutex poisoned in timer callback") =
+                Some(CaptureError::MainloopTimeout(MAX_RECORDING_DURATION));
+            mainloop_for_timer.quit();
+            return;
+        }
+
         if stop_signal_timer.load(Ordering::SeqCst) {
             let mut state_guard = state_timer
                 .lock()
