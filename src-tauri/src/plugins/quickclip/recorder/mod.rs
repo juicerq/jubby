@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod ffmpeg;
+pub mod state;
 pub mod writer;
 
 use std::path::PathBuf;

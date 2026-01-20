@@ -56,7 +56,7 @@ pub enum EncodingError {
 }
 
 /// Top-level error type for QuickClip operations.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum QuickClipError {
     #[error(transparent)]
     Portal(#[from] PortalError),
