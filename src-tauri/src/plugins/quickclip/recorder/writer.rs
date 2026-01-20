@@ -3,9 +3,71 @@ use super::super::errors::{CaptureError, EncodingError, QuickClipError};
 use super::super::types::{AudioMode, Framerate, ResolutionScale, ENCODING_CRF, ENCODING_PRESET};
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
+
+/// RAII guard ensuring FFmpeg process cleanup and partial file deletion on abnormal exit.
+///
+/// On drop, if not marked as completed:
+/// 1. Kills the FFmpeg process (SIGKILL on Unix)
+/// 2. Deletes the partial output file
+///
+/// This ensures cleanup happens even on panic or early return.
+pub struct WriterGuard {
+    child: Option<Child>,
+    output_path: PathBuf,
+    completed: bool,
+}
+
+impl WriterGuard {
+    pub fn new(child: Child, output_path: PathBuf) -> Self {
+        Self {
+            child: Some(child),
+            output_path,
+            completed: false,
+        }
+    }
+
+    /// Prevents cleanup on drop. Call after FFmpeg successfully completes.
+    pub fn mark_completed(&mut self) {
+        self.completed = true;
+    }
+
+    /// Takes ownership of child for wait_with_output(). Drop will not kill after this.
+    pub fn take_child(&mut self) -> Option<Child> {
+        self.child.take()
+    }
+
+    pub fn child_mut(&mut self) -> Option<&mut Child> {
+        self.child.as_mut()
+    }
+}
+
+impl Drop for WriterGuard {
+    fn drop(&mut self) {
+        if self.completed {
+            return;
+        }
+
+        tracing::warn!(target: "quickclip", "[WRITER] WriterGuard dropping without completion, cleaning up...");
+
+        if let Some(mut child) = self.child.take() {
+            tracing::info!(target: "quickclip", "[WRITER] Killing FFmpeg process");
+            if let Err(e) = child.kill() {
+                tracing::warn!(target: "quickclip", "[WRITER] Failed to kill FFmpeg: {}", e);
+            }
+            let _ = child.wait();
+        }
+
+        if self.output_path.exists() {
+            tracing::info!(target: "quickclip", "[WRITER] Deleting partial file: {:?}", self.output_path);
+            if let Err(e) = std::fs::remove_file(&self.output_path) {
+                tracing::warn!(target: "quickclip", "[WRITER] Failed to delete partial file: {}", e);
+            }
+        }
+    }
+}
 
 /// Number of frames to buffer during calibration phase to measure actual framerate.
 const CALIBRATION_FRAMES: usize = 30;
@@ -286,7 +348,7 @@ pub fn spawn_writer_thread(
             width, height, input_fps, target_fps, ENCODING_PRESET, ENCODING_CRF, resolution_scale, audio_mode);
         tracing::debug!(target: "quickclip", "[WRITER] FFmpeg args: {:?}", ffmpeg_args);
 
-        let mut child = Command::new("ffmpeg")
+        let child = Command::new("ffmpeg")
             .args(&ffmpeg_args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -294,26 +356,20 @@ pub fn spawn_writer_thread(
             .spawn()
             .map_err(|e| EncodingError::WriteFailed(format!("Failed to spawn FFmpeg: {}", e)))?;
 
-        let mut stdin = child
-            .stdin
-            .take()
+        let mut guard = WriterGuard::new(child, video_path.clone());
+
+        let mut stdin = guard
+            .child_mut()
+            .and_then(|c| c.stdin.take())
             .ok_or_else(|| EncodingError::WriteFailed("Failed to capture FFmpeg stdin".to_string()))?;
 
-        // Phase 5: Flush buffered frames
         let mut frame_count: u32 = 0;
         for frame_data in frame_buffer {
             if let Err(e) = stdin.write_all(&frame_data) {
                 drop(stdin);
-                let output = child.wait_with_output().map_err(|e2| {
-                    EncodingError::WriteFailed(format!(
-                        "Write failed: {}, then wait failed: {}",
-                        e, e2
-                    ))
-                })?;
-                let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(EncodingError::WriteFailed(format!(
-                    "Failed to write buffered frame {}: {} - FFmpeg stderr: {}",
-                    frame_count, e, stderr
+                    "Failed to write buffered frame {}: {}",
+                    frame_count, e
                 )).into());
             }
             frame_count += 1;
@@ -321,7 +377,6 @@ pub fn spawn_writer_thread(
 
         tracing::debug!(target: "quickclip", "[WRITER] Flushed {} buffered frames", frame_count);
 
-        // Phase 6: Continue streaming
         if !got_end_of_stream {
             loop {
                 match frame_receiver.recv() {
@@ -335,16 +390,9 @@ pub fn spawn_writer_thread(
 
                         if let Err(e) = stdin.write_all(&frame_data) {
                             drop(stdin);
-                            let output = child.wait_with_output().map_err(|e2| {
-                                EncodingError::WriteFailed(format!(
-                                    "Write failed: {}, then wait failed: {}",
-                                    e, e2
-                                ))
-                            })?;
-                            let stderr = String::from_utf8_lossy(&output.stderr);
                             return Err(EncodingError::WriteFailed(format!(
-                                "Failed to write frame {}: {} - FFmpeg stderr: {}",
-                                frame_count, e, stderr
+                                "Failed to write frame {}: {}",
+                                frame_count, e
                             )).into());
                         }
 
@@ -373,6 +421,9 @@ pub fn spawn_writer_thread(
 
         tracing::debug!(target: "quickclip", "[WRITER] Waiting for FFmpeg to finish...");
 
+        let child = guard.take_child()
+            .ok_or_else(|| EncodingError::WriteFailed("FFmpeg child already taken".to_string()))?;
+        
         let output = child
             .wait_with_output()
             .map_err(|e| EncodingError::WriteFailed(format!("FFmpeg wait failed: {}", e)))?;
@@ -383,6 +434,8 @@ pub fn spawn_writer_thread(
             let exit_code = output.status.code().unwrap_or(-1);
             return Err(EncodingError::ProcessFailed { exit_code, stderr: stderr.to_string() }.into());
         }
+
+        guard.mark_completed();
 
         tracing::info!(target: "quickclip", "[WRITER] FFmpeg complete, {} frames written", frame_count);
 
