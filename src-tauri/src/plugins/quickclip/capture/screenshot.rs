@@ -127,7 +127,7 @@ fn capture_monitor_internal(monitor_id: &str) -> Result<CaptureResult, CaptureEr
     let height = image.height();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
+        .expect("System clock before UNIX epoch - invariant violation")
         .as_millis() as i64;
 
     let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;
@@ -167,7 +167,7 @@ fn capture_window_internal(window_id: u32) -> Result<CaptureResult, CaptureError
     let height = image.height();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
+        .expect("System clock before UNIX epoch - invariant violation")
         .as_millis() as i64;
 
     let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;
@@ -208,7 +208,7 @@ fn capture_primary_internal() -> Result<CaptureResult, CaptureError> {
     let height = image.height();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
+        .expect("System clock before UNIX epoch - invariant violation")
         .as_millis() as i64;
 
     let frames_dir = get_frames_dir().map_err(|e| CaptureError::StorageError(e.to_string()))?;

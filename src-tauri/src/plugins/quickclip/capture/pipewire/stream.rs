@@ -155,7 +155,9 @@ pub fn run_capture_loop(
                 return;
             }
 
-            let mut state_guard = state_param.lock().unwrap();
+            let mut state_guard = state_param
+                .lock()
+                .expect("CaptureState mutex poisoned in param_changed callback");
 
             if let Err(e) = state_guard.format.parse(param) {
                 tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to parse video format: {}", e);
@@ -175,7 +177,9 @@ pub fn run_capture_loop(
             );
         })
         .process(move |stream, _user_data| {
-            let mut state_guard = state_process.lock().unwrap();
+            let mut state_guard = state_process
+                .lock()
+                .expect("CaptureState mutex poisoned in process callback");
 
             if stop_signal_process.load(Ordering::SeqCst) && state_guard.drain_start.is_none() {
                 state_guard.drain_start = Some(std::time::Instant::now());
@@ -199,12 +203,16 @@ pub fn run_capture_loop(
 
                 if let Err(e) = send_frame(&frame_sender_process, CaptureMessage::Metadata { width, height }) {
                     tracing::warn!(target: "quickclip", "[CAPTURE] Failed to send metadata: {:?}", e);
-                    *capture_error_process.lock().unwrap() = Some(e);
+                    *capture_error_process
+                        .lock()
+                        .expect("capture_error mutex poisoned") = Some(e);
                     mainloop_quit.quit();
                     return;
                 }
 
-                state_guard = state_process.lock().unwrap();
+                state_guard = state_process
+                    .lock()
+                    .expect("CaptureState mutex poisoned in process callback");
             }
 
             drop(state_guard);
@@ -248,12 +256,16 @@ pub fn run_capture_loop(
 
             if let Err(e) = send_frame(&frame_sender_process, CaptureMessage::Frame(rgba_frame)) {
                 tracing::warn!(target: "quickclip", "[CAPTURE] Failed to send frame: {:?}", e);
-                *capture_error_process.lock().unwrap() = Some(e);
+                *capture_error_process
+                    .lock()
+                    .expect("capture_error mutex poisoned") = Some(e);
                 mainloop_quit.quit();
                 return;
             }
 
-            let mut state_guard = state_process.lock().unwrap();
+            let mut state_guard = state_process
+                .lock()
+                .expect("CaptureState mutex poisoned in process callback");
             state_guard.frame_count += 1;
 
             if state_guard.frame_count % 60 == 0 {
@@ -314,7 +326,11 @@ pub fn run_capture_loop(
     .0
     .into_inner();
 
-    let mut params = [Pod::from_bytes(&values).expect("Pod from bytes should succeed")];
+    let pod = Pod::from_bytes(&values).ok_or_else(|| {
+        tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to parse serialized format pod");
+        CaptureError::InitFailed("Failed to parse serialized format pod".to_string())
+    })?;
+    let mut params = [pod];
 
     stream
         .connect(
@@ -335,7 +351,9 @@ pub fn run_capture_loop(
     let state_timer = Arc::clone(&state);
     let timer_callback = move |_expirations: u64| {
         if stop_signal_timer.load(Ordering::SeqCst) {
-            let mut state_guard = state_timer.lock().unwrap();
+            let mut state_guard = state_timer
+                .lock()
+                .expect("CaptureState mutex poisoned in timer callback");
 
             if state_guard.drain_start.is_none() {
                 state_guard.drain_start = Some(std::time::Instant::now());
@@ -360,13 +378,19 @@ pub fn run_capture_loop(
         guard.run();
     }
 
-    if let Some(err) = capture_error.lock().unwrap().take() {
+    if let Some(err) = capture_error
+        .lock()
+        .expect("capture_error mutex poisoned")
+        .take()
+    {
         return Err(err.into());
     }
 
     let _ = frame_sender.send_timeout(CaptureMessage::EndOfStream, SEND_TIMEOUT);
 
-    let state_guard = state.lock().unwrap();
+    let state_guard = state
+        .lock()
+        .expect("CaptureState mutex poisoned after capture loop");
 
     if state_guard.frame_count == 0 {
         tracing::warn!(target: "quickclip", "[CAPTURE] No frames captured");

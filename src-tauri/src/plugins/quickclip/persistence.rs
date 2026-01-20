@@ -246,7 +246,11 @@ fn update_quickclip_hotkey(app: &AppHandle, new_hotkey: &str) -> Result<(), Sett
     let new_shortcut = parse_shortcut(new_hotkey)?;
 
     let current_state = app.state::<CurrentQuickClipShortcut>();
-    let current_str = current_state.current.lock().unwrap().clone();
+    let current_str = current_state
+        .current
+        .lock()
+        .expect("CurrentQuickClipShortcut mutex poisoned")
+        .clone();
 
     if let Ok(current_shortcut) = parse_shortcut(&current_str) {
         let _ = app.global_shortcut().unregister(current_shortcut);
@@ -256,7 +260,10 @@ fn update_quickclip_hotkey(app: &AppHandle, new_hotkey: &str) -> Result<(), Sett
         .register(new_shortcut)
         .map_err(|e| SettingsError::ShortcutRegisterError(e.to_string()))?;
 
-    *current_state.current.lock().unwrap() = new_hotkey.to_string();
+    *current_state
+        .current
+        .lock()
+        .expect("CurrentQuickClipShortcut mutex poisoned") = new_hotkey.to_string();
 
     let mut data = load_data().map_err(|e| SettingsError::ReadError(std::io::Error::other(e.to_string())))?;
     data.settings.hotkey = new_hotkey.to_string();

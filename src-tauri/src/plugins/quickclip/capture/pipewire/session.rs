@@ -124,7 +124,12 @@ async fn create_portal_session(source: CaptureSource) -> Result<PortalResources,
         CaptureSource::Fullscreen => tokens.fullscreen,
         CaptureSource::Area => tokens.area,
     };
-    let restore_token = stored_token.or_else(|| RESTORE_TOKEN.lock().unwrap().clone());
+    let restore_token = stored_token.or_else(|| {
+        RESTORE_TOKEN
+            .lock()
+            .expect("RESTORE_TOKEN mutex poisoned")
+            .clone()
+    });
     let had_token = restore_token.is_some();
 
     if had_token {
@@ -139,7 +144,9 @@ async fn create_portal_session(source: CaptureSource) -> Result<PortalResources,
         Err(QuickClipError::Portal(e)) if had_token && e.is_recoverable_with_retry() => {
             tracing::warn!(target: "quickclip", "[PORTAL] Token invalid, clearing and retrying: {}", e);
             clear_token(source);
-            *RESTORE_TOKEN.lock().unwrap() = None;
+            *RESTORE_TOKEN
+                .lock()
+                .expect("RESTORE_TOKEN mutex poisoned") = None;
             create_portal_session_internal(source, None).await
         }
         Err(e) => Err(e),
@@ -200,7 +207,9 @@ async fn create_portal_session_internal(
     if let Some(token) = response.restore_token() {
         tracing::debug!(target: "quickclip", "[PORTAL] Saving restore token");
         save_token(source, token);
-        *RESTORE_TOKEN.lock().unwrap() = Some(token.to_string());
+        *RESTORE_TOKEN
+            .lock()
+            .expect("RESTORE_TOKEN mutex poisoned") = Some(token.to_string());
     }
 
     let streams: Vec<&PortalStream> = response.streams().iter().collect();
