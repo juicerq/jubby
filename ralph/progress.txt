@@ -1,176 +1,42 @@
-QuickClip Global Shortcut - Implementation Progress
-===================================================
+# Recording Architecture 100/100 Implementation Progress
 
-Status: IN PROGRESS
+## Overview
+Refactoring QuickClip recording from 62/100 to 100/100 architecture.
 
-Completed Tasks:
-1. [x] Add recorder_toggle() function with event emission
-2. [x] Add shortcut conflict validation
-3. [x] Register QuickClip shortcut at app startup
+**Key Changes:**
+- State machine (enum) instead of boolean flags
+- Single owner (coordinator) instead of shared mutexes  
+- RAII guards for automatic cleanup
+- Typed errors instead of string matching
+- Bounded channels with timeout (deadlock prevention)
+- Portal session in dedicated thread (eliminates unsafe transmute)
 
-Current Task:
-- Task 5 complete, ready for manual testing
+## Task Progress
 
-Remaining Tasks:
-4. [x] Create recording tray icon asset
-5. [x] Implement tray recording indicator with event listeners
-6. [x] Add quickclip_update_hotkey command with runtime re-registration
-7. [x] Enable shortcuts section in QuickClipSettings.tsx
-8. [x] Expose hotkey in useQuickClipSettings hook
-9. [ ] Test global shortcut recording flow
-10. [ ] Test shortcut customization
-11. [ ] Test frontend sync during recording
+### Functional Tasks
+- [ ] 1. Create typed error hierarchy
+- [ ] 2. Implement RecordingState state machine
+- [ ] 3. Create WriterGuard RAII struct
+- [ ] 4. Create CaptureGuard RAII struct
+- [ ] 5. Move portal session to dedicated thread
+- [ ] 6. Implement bounded channels with timeout
+- [ ] 7. Implement atomic token file persistence
+- [ ] 8. Create RecordingCoordinator actor
+- [ ] 9. Refactor Tauri commands to use coordinator
+- [ ] 10. Implement event-based frontend sync
+- [ ] 11. Replace all .unwrap() calls
+- [ ] 12. Add PipeWire mainloop timeout
 
-Notes:
-- Global shortcut works even when Jubby window is closed
-- Tray icon indicates recording state (red dot when recording)
-- Shortcut is customizable via QuickClip settings (default: Ctrl+Shift+R)
-- Errors shown via system notifications
-- Events used for cross-module communication (quickclip:recording-started/stopped)
+### Test Tasks
+- [ ] 13. Unit tests for state machine
+- [ ] 14. Unit tests for RAII guards
+- [ ] 15. Unit tests for error recovery
+- [ ] 16. Integration test for channel timeout
+- [ ] 17. Manual test: full recording flow
+- [ ] 18. Manual test: resource leak verification
 
-## 2026-01-18 - Batch 1 (Tasks 1-3)
-
-### What was implemented:
-
-**Task 1: recorder_toggle() function with event emission**
-- Added `toggle_recording()` and `toggle_recording_with_notification()` functions in recorder/commands.rs
-- Functions check RecorderState.is_recording to determine start/stop action
-- Emit 'quickclip:recording-started' or 'quickclip:recording-stopped' events
-- Error handling shows system notifications via tauri-plugin-notification
-- Uses user's saved settings (resolution, framerate, audio_mode) when starting
-
-**Task 2: Shortcut conflict validation**
-- Added `ShortcutConflict` error variant to SettingsError
-- Created `validate_shortcut_unique()` function in core/settings.rs
-- Added `CurrentQuickClipShortcut` state struct for tracking current QuickClip hotkey
-- Integrated validation in window shortcut update flow
-- Normalizes shortcuts for comparison (lowercase, no spaces)
-
-**Task 3: Register QuickClip shortcut at app startup**
-- Load QuickClipUserSettings in lib.rs before app build
-- Parse hotkey string to Shortcut object
-- Register global shortcut handler that distinguishes between window and QuickClip shortcuts
-- QuickClip handler calls toggle_recording_with_notification on key release
-- Store CurrentQuickClipShortcut in app state for runtime tracking
-
-### Files changed:
-- src-tauri/src/plugins/quickclip/recorder/commands.rs (added toggle functions, imports)
-- src-tauri/src/plugins/quickclip/persistence.rs (added load_quickclip_settings, From impl)
-- src-tauri/src/plugins/quickclip/errors.rs (added EventError variant)
-- src-tauri/src/core/settings.rs (added validation, CurrentQuickClipShortcut)
-- src-tauri/src/lib.rs (updated shortcut registration and handler)
-- src-tauri/Cargo.toml (added tauri-plugin-notification)
-
-### Learnings for future iterations:
-- The global shortcut handler receives the specific shortcut that was pressed, allowing discrimination
-- tauri-plugin-notification needs to be added to Cargo.toml and initialized in Builder
-- PersistedResolution and ResolutionScale are separate enums - need From implementation
-- Shortcut comparison should normalize case and whitespace
-- Async functions in shortcut handlers need tauri::async_runtime::spawn
-
-## 2026-01-18 - Task 6 (quickclip_update_hotkey command)
-
-### What was implemented:
-
-**Task 6: Add quickclip_update_hotkey command with runtime re-registration**
-- Added `update_quickclip_hotkey()` internal function in persistence.rs
-- Function validates new hotkey doesn't conflict with window shortcut using `validate_shortcut_unique()`
-- Parses new hotkey string to Shortcut object
-- Unregisters old global shortcut
-- Registers new global shortcut
-- Updates CurrentQuickClipShortcut state
-- Saves updated hotkey to quickclip.json
-- Added `quickclip_update_hotkey` Tauri command that wraps the internal function
-- Registered command in lib.rs invoke_handler
-
-### Files changed:
-- src-tauri/src/plugins/quickclip/persistence.rs (added imports, update_quickclip_hotkey function, command)
-- src-tauri/src/lib.rs (registered quickclip_update_hotkey command)
-
-### Learnings for future iterations:
-- std::io::Error::other() is the idiomatic way to create custom IO errors in Rust
-- The pattern from update_global_shortcut in core/settings.rs is reusable for other shortcut types
-- Must pass `is_quickclip: true` to validate_shortcut_unique() to check against window shortcut
-- SettingsError from core/settings.rs can be reused for shortcut-related errors in plugins
-
-## 2026-01-18 - Task 8 (Expose hotkey in useQuickClipSettings hook)
-
-### What was implemented:
-
-**Task 8: Expose hotkey in useQuickClipSettings hook**
-- Added `isUpdatingHotkey` loading state to track hotkey update in progress
-- Added `setHotkey(hotkey: string)` function that calls `quickclip_update_hotkey` command
-- Function uses optimistic update pattern with rollback on error
-- Error messages from backend are displayed via toast (includes conflict validation errors)
-- Updated `UseQuickClipSettingsReturn` interface with new properties
-
-### Files changed:
-- src/plugins/quickclip/useQuickClipSettings.ts (added isUpdatingHotkey state, setHotkey function, updated interface and return)
-
-### Learnings for future iterations:
-- The hotkey field was already in PersistedSettings interface but needed a dedicated setter for runtime re-registration
-- Backend error messages from quickclip_update_hotkey are user-friendly (e.g., "Shortcut conflicts with window toggle")
-- Using a separate `setHotkey` function (vs updateSettings) ensures the runtime shortcut registration is triggered
-
-## 2026-01-18 - Task 7 (Enable shortcuts section in QuickClipSettings.tsx)
-
-### What was implemented:
-
-**Task 7: Enable shortcuts section in QuickClipSettings.tsx**
-- Removed disabled state and 'Coming soon' message from shortcuts section
-- Imported and integrated existing `ShortcutCapture` component from `@/core/components/Settings/ShortcutCapture`
-- Added `hotkey`, `onHotkeyChange`, and `isUpdatingHotkey` props to QuickClipSettings interface
-- Wired `ShortcutCapture` onChange to call `setHotkey` from useQuickClipSettings hook
-- Updated QuickClipPlugin to destructure `isUpdatingHotkey` and `setHotkey` from hook and pass them to settings
-- `ShortcutCapture` is disabled during hotkey update to prevent double-submission
-
-### Files changed:
-- src/plugins/quickclip/QuickClipSettings.tsx (added import, props, replaced Coming soon with ShortcutCapture)
-- src/plugins/quickclip/QuickClipPlugin.tsx (updated hook destructuring and QuickClipSettings props)
-
-### Learnings for future iterations:
-- The shared `ShortcutCapture` component is in `@/core/components/Settings/ShortcutCapture`, not in `@/shared/components`
-- The PRD referenced "ShortcutInput" but the actual component name is "ShortcutCapture"
-- ShortcutCapture handles keyboard capture, escape to cancel, and shows edit icon on hover
-- Pattern: pass `disabled={isUpdatingX}` to input components during async operations to prevent race conditions
-
-## 2026-01-18 - Task 4 (Create recording tray icon asset)
-
-### What was implemented:
-
-**Task 4: Create recording tray icon asset**
-- Created `tray-icon-recording.png` in src-tauri/icons/ directory
-- Used ImageMagick to composite a red dot (#FF3B30) onto existing 32x32.png icon
-- Red dot is positioned in the bottom-right corner (10x10 pixels)
-- Maintains same dimensions (32x32) as existing tray icon
-
-### Files changed:
-- src-tauri/icons/tray-icon-recording.png (new file)
-
-### Learnings for future iterations:
-- ImageMagick `magick` command is available on this system for image manipulation
-- The `-gravity southeast` option positions composited elements at bottom-right
-- Red dot color #FF3B30 is Apple's system red, good for visibility
-- Existing tray icon is 32x32 with transparent background (cyan/orange interlocking rings)
-
-## 2026-01-18 - Task 5 (Implement tray recording indicator with event listeners)
-
-### What was implemented:
-
-**Task 5: Implement tray recording indicator with event listeners**
-- Added `setup_recording_listener()` function in core/tray.rs
-- Created `set_tray_recording(is_recording: bool)` function to swap tray icon
-- Embedded both icon bytes at compile time using `include_bytes!()` for TRAY_ICON_NORMAL and TRAY_ICON_RECORDING
-- Uses `app.listen()` to handle 'quickclip:recording-started' and 'quickclip:recording-stopped' events
-- Uses `app.tray_by_id("jubby-tray")` to get the tray handle and `tray.set_icon()` to update
-- Called `setup_recording_listener()` in lib.rs setup hook after `setup_tray()`
-
-### Files changed:
-- src-tauri/src/core/tray.rs (added imports, constants, set_tray_recording, setup_recording_listener)
-- src-tauri/src/lib.rs (added call to setup_recording_listener)
-
-### Learnings for future iterations:
-- `app.listen()` is the Tauri 2 API for listening to app events (requires `Listener` trait)
-- `app.tray_by_id()` returns `Option<TrayIcon>` - use the tray ID from TrayIconBuilder::with_id()
-- `include_bytes!()` is the idiomatic way to embed binary assets at compile time
-- Icon swapping requires creating a new Image from bytes each time (no caching built-in)
+## Notes
+- Do NOT commit prd.json or progress.txt to remote
+- Each functional task should be committed separately
+- Run `cargo check` after each Rust change
+- Run `bun tsc --noEmit` after frontend changes

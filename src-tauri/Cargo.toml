@@ -17,6 +17,8 @@ tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png",
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+dirs = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -32,6 +34,6 @@ image = "0.25"
 clipboard-rs = "0.2"
 
 # PipeWire screen capture (for Wayland)
-ashpd = { version = "0.11", features = ["tokio"] }
+ashpd = { version = "0.12", features = ["tokio"] }
 pipewire = "0.8"
 libspa = "0.8"

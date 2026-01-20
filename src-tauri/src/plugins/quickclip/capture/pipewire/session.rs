@@ -3,6 +3,7 @@ use super::CaptureSource;
 use crate::plugins::quickclip::errors::QuickClipError;
 use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType, Stream as PortalStream};
 use ashpd::desktop::PersistMode;
+use ashpd::enumflags2::BitFlags;
 use std::os::fd::OwnedFd;
 
 /// Result of starting a screencast session.
@@ -73,7 +74,7 @@ impl ScreencastSession {
             .select_sources(
                 &session,
                 CursorMode::Embedded,
-                source_type.into(),
+                BitFlags::from_flag(source_type),
                 multiple,
                 restore_token,
                 PersistMode::Application,

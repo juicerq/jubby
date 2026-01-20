@@ -20,7 +20,7 @@
         "y": 100,
         "decorations": false,
         "resizable": false,
-        "visible": false,
+        "visible": true,
         "skipTaskbar": true,
         "alwaysOnTop": true,
         "transparent": true,

@@ -394,7 +394,6 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
     setVideoSrc(undefined)
   }
 
-  // Clean up blob URL on unmount to avoid memory leaks
   useEffect(() => {
     return () => {
       if (videoSrc?.startsWith('blob:')) {
@@ -403,14 +402,17 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
     }
   }, [videoSrc])
 
-  // Force video to load when src is set (required because preload="none")
+  useEffect(() => {
+    if (videoSrc && videoRef.current) {
+      videoRef.current.load()
+    }
+  }, [videoSrc])
   useEffect(() => {
     if (videoSrc && videoRef.current) {
       videoRef.current.load()
     }
   }, [videoSrc])
 
-  // Click to play - safer than auto-play on hover
   const handlePlayClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (videoError || isLoading) return
@@ -418,20 +420,16 @@ function QuickClipRecordingCard({ recording, onDelete }: QuickClipRecordingCardP
     if (!videoSrc) {
       try {
         setIsLoading(true)
-        log.debug('Loading video via blob', { id: recording.id, path: recording.videoPath })
-        // Read video bytes from Tauri backend
-        const bytes = await invoke<number[]>('read_video_file', { path: recording.videoPath })
-        const blob = new Blob([new Uint8Array(bytes)], { type: 'video/mp4' })
-        const url = URL.createObjectURL(blob)
-        setVideoSrc(url)
-        // Don't set isPlaying here - wait for canplay event
+        log.debug('Loading video', { id: recording.id, path: recording.videoPath })
+        const bytes = await invoke<ArrayBuffer>('read_video_file', { path: recording.videoPath })
+        const blob = new Blob([bytes], { type: 'video/mp4' })
+        setVideoSrc(URL.createObjectURL(blob))
       } catch (err) {
         log.error('Failed to load video', { id: recording.id, error: String(err) })
         setIsLoading(false)
         setVideoError(true)
       }
     } else if (videoRef.current) {
-      // Toggle play/pause (video already loaded)
       if (videoRef.current.paused) {
         videoRef.current.play().then(() => {
           setIsPlaying(true)

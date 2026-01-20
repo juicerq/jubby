@@ -143,16 +143,21 @@ fn register_shortcut(app: &AppHandle, shortcut: Shortcut) -> Result<(), Settings
 pub fn update_shortcut(app: &AppHandle, new_shortcut_str: &str) -> Result<(), SettingsError> {
     validate_shortcut_unique(app, new_shortcut_str, false)?;
 
-    let new_shortcut = parse_shortcut(new_shortcut_str)?;
-
     let current_state = app.state::<CurrentShortcut>();
     let current_str = current_state.current.lock().unwrap().clone();
 
-    if let Ok(current_shortcut) = parse_shortcut(&current_str) {
-        let _ = app.global_shortcut().unregister(current_shortcut);
-    }
+    if crate::core::hyprland::is_hyprland() {
+        crate::core::hyprland::update_hyprland_binding(new_shortcut_str)
+            .map_err(|e| SettingsError::ShortcutRegisterError(e))?;
+    } else {
+        let new_shortcut = parse_shortcut(new_shortcut_str)?;
 
-    register_shortcut(app, new_shortcut)?;
+        if let Ok(current_shortcut) = parse_shortcut(&current_str) {
+            let _ = app.global_shortcut().unregister(current_shortcut);
+        }
+
+        register_shortcut(app, new_shortcut)?;
+    }
 
     *current_state.current.lock().unwrap() = new_shortcut_str.to_string();
 

@@ -8,6 +8,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutSt
 use core::settings::{load_settings, parse_shortcut, CurrentQuickClipShortcut, CurrentShortcut};
 use plugins::quickclip::persistence::load_quickclip_settings;
 
+const TOGGLE_ARG: &str = "--toggle";
+
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     let file_uri = format!("file://{}", path);
@@ -74,11 +76,23 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            tracing::info!(target: "system", "Single instance callback: argv={:?}", argv);
+            let should_toggle = argv.iter().any(|arg| arg == TOGGLE_ARG);
+            tracing::info!(target: "system", "should_toggle={}, TOGGLE_ARG={}", should_toggle, TOGGLE_ARG);
+            if should_toggle {
+                core::window::toggle(app);
+            } else {
+                core::window::show(app);
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
+                    tracing::debug!(target: "system", "Shortcut event: {:?} state={:?}", shortcut, event.state);
                     if event.state == ShortcutState::Released {
                         if shortcut == &window_shortcut_for_handler {
+                            tracing::info!(target: "system", "Window shortcut triggered");
                             core::window::toggle(app);
                         } else if quickclip_shortcut_for_handler
                             .as_ref()
@@ -146,19 +160,34 @@ pub fn run() {
             // Initialize recorder state
             app.manage(plugins::quickclip::recorder::RecorderState::new());
 
-            // Initialize current shortcut states
             app.manage(CurrentShortcut::new(window_shortcut_str.clone()));
             app.manage(CurrentQuickClipShortcut::new(quickclip_shortcut_str.clone()));
 
-            // Register the window toggle shortcut
-            if let Err(e) = app.global_shortcut().register(window_shortcut) {
-                if e.to_string().contains("already registered") {
-                    tracing::warn!(target: "system", "Another instance is already running");
-                    std::process::exit(0);
+            let is_hyprland = core::hyprland::is_hyprland();
+            tracing::info!(target: "system", "Starting Jubby (Hyprland: {})", is_hyprland);
+
+            if is_hyprland {
+                if let Err(e) = core::hyprland::ensure_hyprland_binding(&window_shortcut_str) {
+                    tracing::warn!(target: "system", "Failed to setup Hyprland binding: {}", e);
+                }
+                if let Err(e) = core::hyprland::ensure_window_rules() {
+                    tracing::warn!(target: "system", "Failed to setup Hyprland window rules: {}", e);
+                }
+            } else {
+                match app.global_shortcut().register(window_shortcut) {
+                    Ok(_) => {
+                        tracing::info!(target: "system", "Registered global shortcut: {}", window_shortcut_str);
+                    }
+                    Err(e) => {
+                        if e.to_string().contains("already registered") {
+                            tracing::warn!(target: "system", "Another instance is already running");
+                            std::process::exit(0);
+                        }
+                        tracing::warn!(target: "system", "Failed to register window shortcut: {}", e);
+                    }
                 }
             }
 
-            // Register the QuickClip shortcut
             if let Some(qs) = quickclip_shortcut {
                 if let Err(e) = app.global_shortcut().register(qs) {
                     tracing::warn!(target: "quickclip", "Failed to register QuickClip shortcut: {}", e);
@@ -167,6 +196,13 @@ pub fn run() {
 
             core::tray::setup_tray(app)?;
             core::tray::setup_recording_listener(app);
+
+            if !is_hyprland {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())

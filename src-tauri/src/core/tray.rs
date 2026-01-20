@@ -45,11 +45,6 @@ pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
                     api.prevent_close();
                     window::hide(app_handle);
                 }
-                WindowEvent::Focused(focused) => {
-                    if !focused {
-                        window::hide_on_blur(app_handle);
-                    }
-                }
                 _ => {}
             }
         }

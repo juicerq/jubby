@@ -280,8 +280,9 @@ pub fn recorder_delete_video(video_path: String, thumbnail_path: String) -> Resu
 }
 
 #[tauri::command]
-pub fn read_video_file(path: String) -> Result<Vec<u8>, String> {
-    std::fs::read(&path).map_err(|e| format!("Failed to read video: {}", e))
+pub fn read_video_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read video: {}", e))?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 pub async fn toggle_recording(app: &AppHandle) -> Result<Option<Recording>, QuickClipError> {

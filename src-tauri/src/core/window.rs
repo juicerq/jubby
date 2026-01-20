@@ -1,68 +1,95 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager, WebviewWindow};
 
-const BLUR_COOLDOWN_MS: u64 = 1500;
-static LAST_WINDOW_SHOW: AtomicU64 = AtomicU64::new(0);
 static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
 
-fn current_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
-fn mark_window_shown() {
-    LAST_WINDOW_SHOW.store(current_time_ms(), Ordering::SeqCst);
-}
-
-fn is_recently_shown() -> bool {
-    let last = LAST_WINDOW_SHOW.load(Ordering::SeqCst);
-    let elapsed = current_time_ms().saturating_sub(last);
-    elapsed < BLUR_COOLDOWN_MS
+fn focus_window(window: &WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
 }
 
 fn get_main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }
 
-pub fn toggle(app: &AppHandle) {
-    if let Some(window) = get_main_window(app) {
-        let is_visible = WINDOW_VISIBLE.load(Ordering::SeqCst);
+fn hyprland_show_window() {
+    let _ = std::process::Command::new("hyprctl")
+        .args(["--batch", "dispatch movetoworkspace e+0,class:Jubby ; dispatch focuswindow class:Jubby"])
+        .status();
+}
 
+fn hyprland_hide_window() {
+    let _ = std::process::Command::new("hyprctl")
+        .args(["dispatch", "movetoworkspacesilent", "special:jubby,class:Jubby"])
+        .status();
+}
+
+fn hyprland_is_window_visible() -> bool {
+    let output = std::process::Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()
+        .ok();
+    
+    if let Some(output) = output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Ok(clients) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+            for client in clients {
+                if client.get("class").and_then(|c| c.as_str()) == Some("Jubby") {
+                    let workspace = client.get("workspace").and_then(|w| w.get("name")).and_then(|n| n.as_str());
+                    return workspace.map(|w| !w.starts_with("special:")).unwrap_or(false);
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn toggle(app: &AppHandle) {
+    if crate::core::hyprland::is_hyprland() {
+        if hyprland_is_window_visible() {
+            hyprland_hide_window();
+        } else {
+            hyprland_show_window();
+        }
+        return;
+    }
+
+    let is_visible = WINDOW_VISIBLE.load(Ordering::SeqCst);
+    tracing::info!(target: "system", "toggle() called, current state: visible={}", is_visible);
+
+    if let Some(window) = get_main_window(app) {
         if is_visible {
+            tracing::info!(target: "system", "Window toggle: hiding");
             WINDOW_VISIBLE.store(false, Ordering::SeqCst);
             let _ = window.hide();
         } else {
+            tracing::info!(target: "system", "Window toggle: showing");
             WINDOW_VISIBLE.store(true, Ordering::SeqCst);
-            mark_window_shown();
-            let _ = window.show();
-            let _ = window.set_focus();
+            focus_window(&window);
         }
+    } else {
+        tracing::warn!(target: "system", "Window toggle: main window not found");
     }
 }
 
 pub fn show(app: &AppHandle) {
-    WINDOW_VISIBLE.store(true, Ordering::SeqCst);
-    mark_window_shown();
-    if let Some(window) = get_main_window(app) {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
-
-pub fn hide_on_blur(app: &AppHandle) {
-    if is_recently_shown() {
+    if crate::core::hyprland::is_hyprland() {
+        hyprland_show_window();
         return;
     }
-    WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+
+    tracing::info!(target: "system", "show() called");
+    WINDOW_VISIBLE.store(true, Ordering::SeqCst);
     if let Some(window) = get_main_window(app) {
-        let _ = window.hide();
+        focus_window(&window);
     }
 }
 
 pub fn hide(app: &AppHandle) {
+    if crate::core::hyprland::is_hyprland() {
+        return;
+    }
+
     WINDOW_VISIBLE.store(false, Ordering::SeqCst);
     if let Some(window) = get_main_window(app) {
         let _ = window.hide();

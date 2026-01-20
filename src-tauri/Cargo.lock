@@ -103,9 +103,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "ashpd"
-version = "0.11.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2f3f79755c74fd155000314eb349864caa787c6592eace6c6882dad873d9c39"
+checksum = "618a409b91d5265798a99e3d1d0b226911605e581c4e7255e83c1e397b172bce"
 dependencies = [
  "enumflags2",
  "futures-channel",
@@ -2244,6 +2244,7 @@ version = "0.2.0"
 dependencies = [
  "ashpd",
  "clipboard-rs",
+ "dirs",
  "global-hotkey",
  "image",
  "libspa",
@@ -2256,6 +2257,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -4615,6 +4617,21 @@ dependencies = [
  "thiserror 2.0.17",
  "url",
  "windows 0.61.3",
+ "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acba6b5ca527a96cdfcc96ae09b09ccb91ddff5e33978ca6873b96ea16bb404c"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.17",
+ "tracing",
+ "windows-sys 0.60.2",
  "zbus",
 ]
 

@@ -1,148 +1,270 @@
 [
   {
     "category": "functional",
-    "description": "Add recorder_toggle() function with event emission",
+    "description": "Create typed error hierarchy (eliminate string-based error detection)",
     "steps": [
-      "Create toggle_recording() function in recorder/commands.rs",
-      "Check RecorderState.is_recording to determine action",
-      "Call start_recording_internal() or stop_recording_internal() accordingly",
-      "Emit 'quickclip:recording-started' or 'quickclip:recording-stopped' events",
-      "Wrap in error handler that shows system notification on failure"
+      "Create PortalError enum with variants: Unavailable, UserCancelled, TokenInvalid, SessionFailed(String), Timeout(Duration)",
+      "Create CaptureError enum with variants: InitFailed, StreamFailed, NoFrames, FormatNegotiationFailed, MainloopTimeout, WriterStalled, WriterDisconnected",
+      "Create EncodingError enum with variants: FfmpegNotFound, ProcessFailed { exit_code, stderr }, WriteFailed, Timeout(Duration)",
+      "Refactor QuickClipError to use #[from] for automatic conversions from sub-errors",
+      "Add is_recoverable_with_retry() method to PortalError for token retry logic",
+      "Remove all string-based error detection (contains('cancelled')) from session.rs"
     ],
     "shouldCommit": true,
     "passes": false,
-    "notes": "Read existing start_recording_internal and stop_recording_internal functions first. Use tauri::Notification for error feedback."
+    "notes": "Read errors.rs and session.rs first. The goal is to make error handling typed and exhaustive. Use thiserror for all enums."
   },
   {
     "category": "functional",
-    "description": "Add shortcut conflict validation",
+    "description": "Implement RecordingState enum state machine",
     "steps": [
-      "Create validate_shortcut_unique() function in core/settings.rs",
-      "Check new shortcut doesn't match window toggle shortcut",
-      "Return descriptive error if conflict detected",
-      "Integrate validation in both window and quickclip shortcut update flows"
+      "Create RecordingState enum with variants: Idle, Starting { started_at }, Recording { started_at, frame_count, resolution }, Stopping { started_at, stop_requested_at }, Failed { error, recoverable }",
+      "Create RecordingEvent enum with all possible events (StartRequested, StopRequested, PortalReady, CaptureFailed, etc.)",
+      "Create SideEffect enum for effects triggered by transitions (InitiatePortal, SignalStop, EmitStateChange, Cleanup, SaveRecording)",
+      "Implement transition() as pure function: (State, Event) -> (NewState, Vec<SideEffect>)",
+      "Ensure invalid transitions return current state with empty effects (no panic)",
+      "Add derive for Debug, Clone, PartialEq on state types"
     ],
     "shouldCommit": true,
     "passes": false,
-    "notes": "Read core/settings.rs to understand existing shortcut management pattern."
+    "notes": "This is the core architectural change. The state machine should make invalid states unrepresentable. Place in recorder/state.rs."
   },
   {
     "category": "functional",
-    "description": "Register QuickClip shortcut at app startup",
+    "description": "Create WriterGuard RAII struct for FFmpeg cleanup",
     "steps": [
-      "Load QuickClipUserSettings in lib.rs setup() hook",
-      "Parse the hotkey string to Shortcut object",
-      "Register global shortcut handler that calls toggle_recording on release",
-      "Store current QuickClip shortcut in app state for runtime updates"
+      "Create WriterGuard struct with fields: ffmpeg_child, output_path, completed flag",
+      "Implement Drop trait that kills FFmpeg and deletes partial file if not completed",
+      "Add mark_completed() method to prevent cleanup on normal exit",
+      "Refactor spawn_writer_thread to use WriterGuard",
+      "Ensure guard is held throughout entire writer thread lifetime",
+      "Test that partial files are deleted on panic/error"
     ],
     "shouldCommit": true,
     "passes": false,
-    "notes": "Follow the existing pattern used for window toggle shortcut registration in lib.rs lines 115-137."
+    "notes": "Read writer.rs first. The guard pattern ensures cleanup happens even on panic. FFmpeg child should be killed with SIGKILL if not completed."
   },
   {
     "category": "functional",
-    "description": "Create recording tray icon asset",
+    "description": "Create CaptureGuard RAII struct for PipeWire cleanup",
     "steps": [
-      "Create tray-icon-recording.png based on existing tray-icon.png",
-      "Add red dot indicator to signify recording state",
-      "Place in src-tauri/icons/ directory"
+      "Create CaptureGuard struct that ensures mainloop quit and cleanup on drop",
+      "Add event_tx field to send CaptureError on abnormal exit",
+      "Implement Drop to log abnormal termination and notify coordinator",
+      "Refactor run_capture_loop to use CaptureGuard",
+      "Ensure PipeWire resources are released even on panic"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Keep same dimensions as existing tray icon. Red dot should be visible but not overwhelming."
+    "passes": false,
+    "notes": "Read stream.rs first. The guard should wrap the mainloop run and ensure proper cleanup sequence."
   },
   {
     "category": "functional",
-    "description": "Implement tray recording indicator with event listeners",
+    "description": "Move portal session to dedicated thread (eliminate unsafe transmute)",
     "steps": [
-      "Add setup_recording_listener() function in core/tray.rs",
-      "Listen for 'quickclip:recording-started' and 'quickclip:recording-stopped' events",
-      "Create set_tray_recording(bool) function to swap tray icon",
-      "Call setup_recording_listener() during app initialization"
+      "Create PortalSessionData struct with owned fields: pipewire_fd (OwnedFd), node_id (u32), resolution_hint",
+      "Create spawn_portal_thread() function that runs portal in dedicated std::thread",
+      "Create own tokio runtime inside portal thread for async operations",
+      "Use oneshot channel to send PortalSessionData back to coordinator",
+      "Use oneshot channel for close signal (session lives until signal received)",
+      "Remove unsafe transmute from session.rs",
+      "Create PortalHandle struct with close_tx and join_handle"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Read core/tray.rs to understand existing tray setup. Use app.listen() for event handling."
+    "passes": false,
+    "notes": "This is critical for safety. The portal session has lifetime issues - by running it in a dedicated thread that OWNS the session, we eliminate the need for unsafe transmute. Read session.rs lines 145-146."
   },
   {
     "category": "functional",
-    "description": "Add quickclip_update_hotkey command with runtime re-registration",
+    "description": "Implement bounded channels with timeout (deadlock prevention)",
     "steps": [
-      "Create quickclip_update_hotkey Tauri command in persistence.rs",
-      "Validate new hotkey doesn't conflict with window shortcut",
-      "Save updated hotkey to quickclip.json",
-      "Unregister old global shortcut",
-      "Register new global shortcut",
-      "Update stored shortcut state"
+      "Replace std::sync::mpsc::sync_channel with crossbeam_channel::bounded",
+      "Add crossbeam-channel dependency to Cargo.toml",
+      "Create send_frame() helper that uses send_timeout(5s)",
+      "Return CaptureError::WriterStalled on timeout",
+      "Return CaptureError::WriterDisconnected on channel close",
+      "Update stream.rs to use new channel pattern",
+      "Remove channel_open AtomicBool (no longer needed with timeout)"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Follow pattern from update_global_shortcut() in core/settings.rs for runtime shortcut changes."
+    "passes": false,
+    "notes": "Read stream.rs lines 128-209. The current pattern can deadlock if writer crashes. Timeout-based sends prevent this entirely."
   },
   {
     "category": "functional",
-    "description": "Enable shortcuts section in QuickClipSettings.tsx",
+    "description": "Implement atomic token file persistence",
     "steps": [
-      "Remove disabled state and 'Coming soon' message from shortcuts section",
-      "Import and use existing ShortcutInput component",
-      "Wire onChange to call quickclip_update_hotkey command",
-      "Display current hotkey value from settings"
+      "Create TokenStore struct wrapping the token file path",
+      "Implement save() using write-to-temp-then-rename pattern",
+      "Ensure temp file uses .tmp extension",
+      "Use std::fs::rename for atomic replacement (POSIX guarantee)",
+      "Return Result<(), io::Error> instead of silently failing",
+      "Refactor load_tokens/save_token/clear_token to use TokenStore",
+      "Remove silent error swallowing (unwrap_or_default on parse)"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Reuse the ShortcutInput component from shared/components. Check useQuickClipSettings.ts for settings hook usage. Use frontend-design skill if UI adjustments needed."
+    "passes": false,
+    "notes": "Read tokens.rs. Current implementation has TOCTOU race conditions. Atomic rename is the standard solution."
   },
   {
     "category": "functional",
-    "description": "Expose hotkey in useQuickClipSettings hook",
+    "description": "Create RecordingCoordinator actor (single owner pattern)",
     "steps": [
-      "Add hotkey to returned settings object",
-      "Add setHotkey function that calls quickclip_update_hotkey",
-      "Handle loading and error states for hotkey updates"
+      "Create RecordingCoordinator struct owning: state, event channels, handles (PortalHandle, CaptureHandle, WriterHandle)",
+      "Implement run() async method with tokio::select! over event_rx and command_rx",
+      "Implement handle_event() that calls state.transition() and executes side effects",
+      "Implement execute_effect() for each SideEffect variant",
+      "Ensure cleanup drops handles in correct order: writer -> capture -> portal",
+      "Replace RecorderState (shared mutexes) with RecordingCoordinator (single owner)"
     ],
     "shouldCommit": true,
-    "passes": true,
-    "notes": "Read useQuickClipSettings.ts - hotkey field already exists in QuickClipUserSettings type."
+    "passes": false,
+    "notes": "This is the main architectural change. Read recorder/mod.rs and recorder/commands.rs. The coordinator OWNS all resources - no shared mutexes between threads."
+  },
+  {
+    "category": "functional",
+    "description": "Refactor Tauri commands to use RecordingCoordinator",
+    "steps": [
+      "Create command channel for IPC -> Coordinator communication",
+      "Refactor recorder_start to send StartRequested command and await response",
+      "Refactor recorder_stop to send StopRequested command and await response",
+      "Refactor recorder_status to query coordinator state",
+      "Remove direct RecorderState access from commands",
+      "Update lib.rs to spawn coordinator task on startup"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Read commands.rs. Commands should no longer manipulate state directly - they send messages to the coordinator."
+  },
+  {
+    "category": "functional",
+    "description": "Implement event-based frontend state sync",
+    "steps": [
+      "Emit 'quickclip:state-change' event on every state transition with full status",
+      "Update useQuickClip.ts to use event listener as primary sync mechanism",
+      "Remove 500ms polling interval (events are sufficient)",
+      "Add 'quickclip:error' event for error notifications",
+      "Include frame_count, elapsed_time, resolution in state-change payload",
+      "Update QuickClipPlugin.tsx to handle new event structure"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Read useQuickClip.ts. Current polling creates 500ms lag. Event-based sync is immediate and eliminates state divergence."
+  },
+  {
+    "category": "functional",
+    "description": "Replace all .unwrap() calls with proper error handling",
+    "steps": [
+      "Find all .lock().unwrap() calls in quickclip module",
+      "Replace with .lock().expect('descriptive context') or handle poisoning",
+      "Find all .expect() calls and ensure they have descriptive messages",
+      "Remove Pod::from_bytes().expect() in stream.rs - use ? operator",
+      "Remove timestamp .expect() in commands.rs - use ? with error conversion",
+      "Ensure no panic paths remain in production code"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Project guidelines prohibit unwrap() in production code. Read CLAUDE.md for conventions. Use grep to find all instances."
+  },
+  {
+    "category": "functional",
+    "description": "Add PipeWire mainloop timeout mechanism",
+    "steps": [
+      "Add maximum recording duration constant (e.g., 4 hours)",
+      "Create timeout check in the 100ms timer callback",
+      "Force mainloop.quit() if maximum duration exceeded",
+      "Return CaptureError::MainloopTimeout when triggered",
+      "Emit appropriate error event to frontend"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Read stream.rs lines 291-312. Currently mainloop.run() has no escape if PipeWire hangs. The timer callback should enforce a hard limit."
   },
   {
     "category": "test",
-    "description": "Test global shortcut recording flow",
+    "description": "Add unit tests for RecordingState state machine",
     "steps": [
-      "Test shortcut starts recording when window is closed",
-      "Test shortcut stops recording when window is closed",
-      "Test tray icon changes to recording state on start",
-      "Test tray icon reverts to normal on stop",
-      "Test error notification appears on failure"
+      "Test Idle + StartRequested -> Starting transition",
+      "Test Starting + PortalReady -> Recording transition",
+      "Test Recording + StopRequested -> Stopping transition",
+      "Test any state + Error -> Failed transition with Cleanup effect",
+      "Test invalid transitions are no-ops (no panic)",
+      "Test all SideEffects are correctly produced"
     ],
-    "shouldCommit": false,
+    "shouldCommit": true,
     "passes": false,
-    "notes": "Manual testing required - close the Jubby window and use the configured shortcut."
+    "notes": "State machine is a pure function - trivial to unit test. No mocking required."
   },
   {
     "category": "test",
-    "description": "Test shortcut customization",
+    "description": "Add unit tests for RAII guards",
     "steps": [
-      "Test changing shortcut in QuickClip settings UI",
-      "Test new shortcut works immediately without restart",
-      "Test conflict validation rejects duplicate of window shortcut",
-      "Test shortcut persists after app restart"
+      "Test WriterGuard deletes partial file on drop when not completed",
+      "Test WriterGuard preserves file when mark_completed() called",
+      "Test WriterGuard kills FFmpeg process on abnormal drop",
+      "Use tempfile crate for test file management",
+      "Test CaptureGuard sends error event on abnormal drop"
     ],
-    "shouldCommit": false,
+    "shouldCommit": true,
     "passes": false,
-    "notes": "Manual testing required for shortcut input and validation."
+    "notes": "Guards can be tested independently of the full recording flow. Use mock Child process if needed."
   },
   {
     "category": "test",
-    "description": "Test frontend sync during recording",
+    "description": "Add unit tests for error recovery logic",
     "steps": [
-      "Start recording via global shortcut with window closed",
-      "Open Jubby and navigate to QuickClip",
-      "Verify UI shows recording in progress",
-      "Stop recording via UI button",
-      "Verify recording saves correctly"
+      "Test PortalError::TokenInvalid.is_recoverable_with_retry() returns true",
+      "Test PortalError::UserCancelled.is_recoverable_with_retry() returns false",
+      "Test token retry logic clears token and retries once",
+      "Test second failure after retry is not retried",
+      "Test error type conversions work correctly (#[from])"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "Error handling is critical - ensure recovery paths work as expected."
+  },
+  {
+    "category": "test",
+    "description": "Add integration test for bounded channel timeout",
+    "steps": [
+      "Create test with bounded(1) channel",
+      "Fill channel with one message",
+      "Verify send_timeout returns Err after timeout",
+      "Verify correct error variant (WriterStalled vs WriterDisconnected)",
+      "Test channel disconnect detection"
+    ],
+    "shouldCommit": true,
+    "passes": false,
+    "notes": "This tests the deadlock prevention mechanism. Use short timeouts (10ms) in tests."
+  },
+  {
+    "category": "test",
+    "description": "Manual test: full recording flow with new architecture",
+    "steps": [
+      "Test start recording via UI",
+      "Test stop recording via UI",
+      "Test start recording via global shortcut",
+      "Test stop recording via global shortcut",
+      "Verify state events are emitted correctly",
+      "Verify cleanup happens on error (kill FFmpeg mid-recording)",
+      "Verify partial files are deleted on error"
     ],
     "shouldCommit": false,
     "passes": false,
-    "notes": "Ensures frontend correctly syncs with backend recording state on mount."
+    "notes": "Manual testing required after all architectural changes are complete. Test error paths by killing FFmpeg process manually."
+  },
+  {
+    "category": "test",
+    "description": "Manual test: verify no resource leaks",
+    "steps": [
+      "Start and stop recording 10 times",
+      "Verify no orphaned FFmpeg processes (ps aux | grep ffmpeg)",
+      "Verify no orphaned portal sessions (check D-Bus)",
+      "Verify no memory growth in Jubby process",
+      "Test error scenarios don't leak resources"
+    ],
+    "shouldCommit": false,
+    "passes": false,
+    "notes": "Resource leak testing requires monitoring system state. Use htop or similar for memory monitoring."
   }
 ]
