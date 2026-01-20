@@ -72,7 +72,7 @@ impl Drop for WriterGuard {
 /// Number of frames to buffer during calibration phase to measure actual framerate.
 const CALIBRATION_FRAMES: usize = 30;
 
-/// Result from the writer thread.
+#[derive(Debug, Clone)]
 pub struct WriterResult {
     pub duration: f64,
     pub width: u32,

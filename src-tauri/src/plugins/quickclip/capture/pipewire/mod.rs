@@ -2,7 +2,7 @@ pub mod session;
 pub mod stream;
 pub mod tokens;
 
-pub use session::{PortalHandle, PortalSession, PortalSessionData, ScreencastSession, spawn_portal_thread};
+pub use session::ScreencastSession;
 pub use stream::run_capture_loop;
 
 use std::time::Duration;
@@ -21,6 +21,7 @@ pub enum CaptureMessage {
 }
 
 /// Statistics from a capture session.
+#[derive(Debug, Clone)]
 pub struct CaptureStats {
     /// Total frames captured.
     pub frame_count: u32,

@@ -22,10 +22,17 @@ pub struct PortalSessionData {
     pub node_id: u32,
 }
 
-/// Dropping signals the portal thread to close and waits for cleanup.
 pub struct PortalHandle {
     close_tx: mpsc::Sender<()>,
     join_handle: Option<JoinHandle<()>>,
+}
+
+impl std::fmt::Debug for PortalHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PortalHandle")
+            .field("join_handle", &self.join_handle.is_some())
+            .finish()
+    }
 }
 
 impl PortalHandle {
@@ -51,7 +58,7 @@ pub struct PortalSession {
     pub handle: PortalHandle,
 }
 
-// TODO(Task 8): Remove ScreencastSession after RecordingCoordinator migration
+#[derive(Debug)]
 pub struct ScreencastSession {
     pub pipewire_fd: OwnedFd,
     pub node_id: u32,

@@ -44,13 +44,13 @@ fn get_data_path() -> Result<PathBuf, QuickClipError> {
     Ok(dir.join("quickclip.json"))
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSettings {
     pub audio_mode: AudioMode,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Recording {
     pub id: String,
