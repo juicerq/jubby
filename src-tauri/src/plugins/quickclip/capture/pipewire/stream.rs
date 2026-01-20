@@ -442,3 +442,84 @@ pub fn run_capture_loop(
 
     Ok(stats)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossbeam_channel::bounded;
+    use std::thread;
+    use std::time::Duration;
+
+    fn test_frame() -> CaptureMessage {
+        CaptureMessage::Frame(vec![0u8; 100])
+    }
+
+    #[test]
+    fn send_frame_succeeds_when_channel_has_capacity() {
+        let (tx, rx) = bounded::<CaptureMessage>(2);
+
+        let result = send_frame(&tx, test_frame());
+        assert!(result.is_ok());
+
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, CaptureMessage::Frame(_)));
+    }
+
+    #[test]
+    fn send_frame_returns_writer_stalled_on_timeout() {
+        let (tx, _rx) = bounded::<CaptureMessage>(1);
+        tx.send(test_frame()).unwrap();
+
+        let result = tx.send_timeout(test_frame(), Duration::from_millis(10));
+
+        match result {
+            Err(SendTimeoutError::Timeout(_)) => {}
+            Err(SendTimeoutError::Disconnected(_)) => {
+                panic!("Expected Timeout, got Disconnected")
+            }
+            Ok(_) => panic!("Expected error, got Ok"),
+        }
+    }
+
+    #[test]
+    fn send_frame_returns_writer_disconnected_on_channel_close() {
+        let (tx, rx) = bounded::<CaptureMessage>(1);
+        drop(rx);
+
+        let result = send_frame(&tx, test_frame());
+        assert!(matches!(result, Err(CaptureError::WriterDisconnected)));
+    }
+
+    #[test]
+    fn send_frame_error_variants_are_correct() {
+        let (tx_timeout, _rx_timeout) = bounded::<CaptureMessage>(0);
+        let timeout_result = tx_timeout.send_timeout(test_frame(), Duration::from_millis(10));
+        assert!(matches!(timeout_result, Err(SendTimeoutError::Timeout(_))));
+
+        let (tx_disconnect, rx_disconnect) = bounded::<CaptureMessage>(1);
+        drop(rx_disconnect);
+        let disconnect_result = send_frame(&tx_disconnect, test_frame());
+        assert!(matches!(
+            disconnect_result,
+            Err(CaptureError::WriterDisconnected)
+        ));
+    }
+
+    #[test]
+    fn send_frame_succeeds_when_receiver_consumes_messages() {
+        let (tx, rx) = bounded::<CaptureMessage>(1);
+
+        let handle = thread::spawn(move || {
+            for _ in 0..5 {
+                let _ = rx.recv();
+            }
+        });
+
+        for _ in 0..5 {
+            let result = send_frame(&tx, test_frame());
+            assert!(result.is_ok());
+        }
+
+        handle.join().unwrap();
+    }
+}
