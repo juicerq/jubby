@@ -73,3 +73,90 @@ pub enum QuickClipError {
     #[error("Event error: {0}")]
     EventError(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_token_invalid_is_recoverable() {
+        assert!(PortalError::TokenInvalid.is_recoverable_with_retry());
+    }
+
+    #[test]
+    fn test_session_failed_is_recoverable() {
+        let error = PortalError::SessionFailed("connection refused".to_string());
+        assert!(error.is_recoverable_with_retry());
+    }
+
+    #[test]
+    fn test_user_cancelled_is_not_recoverable() {
+        assert!(!PortalError::UserCancelled.is_recoverable_with_retry());
+    }
+
+    #[test]
+    fn test_unavailable_is_not_recoverable() {
+        assert!(!PortalError::Unavailable.is_recoverable_with_retry());
+    }
+
+    #[test]
+    fn test_timeout_is_not_recoverable() {
+        assert!(!PortalError::Timeout(Duration::from_secs(30)).is_recoverable_with_retry());
+    }
+
+    #[test]
+    fn test_portal_error_converts_to_quickclip_error() {
+        let portal_err = PortalError::UserCancelled;
+        let quick_err: QuickClipError = portal_err.into();
+        assert!(matches!(quick_err, QuickClipError::Portal(PortalError::UserCancelled)));
+    }
+
+    #[test]
+    fn test_capture_error_converts_to_quickclip_error() {
+        let capture_err = CaptureError::NoFrames;
+        let quick_err: QuickClipError = capture_err.into();
+        assert!(matches!(quick_err, QuickClipError::Capture(CaptureError::NoFrames)));
+    }
+
+    #[test]
+    fn test_encoding_error_converts_to_quickclip_error() {
+        let encoding_err = EncodingError::FfmpegNotFound;
+        let quick_err: QuickClipError = encoding_err.into();
+        assert!(matches!(quick_err, QuickClipError::Encoding(EncodingError::FfmpegNotFound)));
+    }
+
+    #[test]
+    fn test_error_from_conversion_with_question_mark() {
+        fn fallible_portal() -> Result<(), QuickClipError> {
+            let portal_err = PortalError::TokenInvalid;
+            Err(portal_err)?
+        }
+
+        let result = fallible_portal();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            QuickClipError::Portal(PortalError::TokenInvalid)
+        ));
+    }
+
+    #[test]
+    fn test_error_display_messages() {
+        assert_eq!(
+            PortalError::UserCancelled.to_string(),
+            "User cancelled the capture selection"
+        );
+        assert_eq!(
+            CaptureError::WriterStalled.to_string(),
+            "Writer thread stalled (frame send timeout)"
+        );
+        assert_eq!(
+            EncodingError::ProcessFailed {
+                exit_code: 1,
+                stderr: "codec error".to_string()
+            }
+            .to_string(),
+            "FFmpeg process failed with exit code 1: codec error"
+        );
+    }
+}
