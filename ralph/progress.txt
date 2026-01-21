@@ -1,158 +1,83 @@
-# Task Detail View - Progress
+# Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 9 of 10 completed
+Task 1 of 19 completed
 
 ## Tasks
-- [x] 1. Backend - Add tasks_update_text command
-- [x] 2. Frontend Hook - Add updateTaskText function
-- [x] 3. State and Navigation - Add task detail view infrastructure
-- [x] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
-- [x] 5. Create TasksPluginTaskDetail component - Layout structure
-- [x] 6. TasksPluginTaskDetail - Task info section with inline editing
-- [x] 7. TasksPluginTaskDetail - Subtasks section with input on top
-- [x] 8. TasksPluginSubtaskItem - Add inline text editing
-- [x] 9. Wire up TasksPluginTaskDetail in main component
-- [ ] 10. Verify implementation - Manual testing
+- [x] 1. Backend - Update data model types
+- [ ] 2. Backend - Data migration
+- [ ] 3. Backend - CRUD commands for new fields
+- [ ] 4. Backend - OpenCode server management
+- [ ] 5. Backend - Execution orchestration command
+- [ ] 6. Frontend - Update useTasksStorage hook with new types
+- [ ] 7. Frontend - Update useTasksStorage hook with execution functions
+- [ ] 8. Frontend - Task creation flow update
+- [ ] 9. Frontend - Subtask expandable component
+- [ ] 10. Frontend - Running state animation
+- [ ] 11. Frontend - Run/Stop button logic
+- [ ] 12. Frontend - Loop (Run All) button
+- [ ] 13. Frontend - Drag to reorder subtasks
+- [ ] 14. Frontend - History section
+- [ ] 15. Frontend - Execution log detail view in subtask
+- [ ] 16. Frontend - OpenCode server lifecycle
+- [ ] 17. Frontend - AI Generate subtasks feature
+- [ ] 18. Backend - AI Generate subtasks command
+- [ ] 19. Manual testing - Full flow verification
 
 ## Notes
-- Tasks 5, 6, 8 should use the frontend-design skill
+- Tasks 8, 9, 10, 11, 14, 15, 17 should use the frontend-design skill
 - No borders between sections, use headers as separators
-- Edit icons always aligned to the right
-- Subtask input at the top of the list
-- Delete task returns to list automatically
+- Neon border animation: white/gray gradient rotating around border
+- Server starts lazily when entering Tasks plugin
+- Each subtask execution creates a new opencode session
+- AI edits JSON directly, path passed in prompt
+- Learnings from all previous executions included in prompt
+
+## Design Decisions Summary
+- Task = PRD (name, description, workingDirectory, subtasks)
+- Subtask = PRD item (steps, category, shouldCommit, notes, executionLogs)
+- Expand subtask with animation to see all details
+- Run/Stop per subtask, Run All for loop
+- One execution at a time, others disabled
+- History: inline in subtask + aggregated section at bottom
+- OpenCode Server API on port 4096
+- Migration: automatic, preserves old data
 
 ---
 
-## 2026-01-21 12:24 - Task 1: Backend - Add tasks_update_text command
-- Implemented `tasks_update_text` Tauri command in `commands.rs`
-- Validates empty text, finds task by id, updates text, saves to JSON
-- Registered command in `lib.rs` invoke_handler
-- **Files changed:**
-  - `src-tauri/src/plugins/tasks/commands.rs` - Added new command
-  - `src-tauri/src/lib.rs` - Registered command
-- **Learnings for future iterations:**
-  - Pattern for update commands: validate input → get write lock → find entity → update field → save_to_json
-  - `subtasks_update_text` already exists (different from `tasks_update_text`) - naming is plural for the resource, singular action
+## 2026-01-21 15:17 - Task 1: Backend - Update data model types
 
-## 2026-01-21 12:26 - Task 2: Frontend Hook - Add updateTaskText function
-- Added `updateTaskText` to `UseTasksStorageReturn` interface
-- Implemented `updateTaskText(id, text)` with optimistic update pattern: store previous state → update state → invoke backend → rollback on error
-- Added to return object
-- **Files changed:**
-  - `src/plugins/tasks/useTasksStorage.ts` - Added interface entry, implementation, and return value
-- **Learnings for future iterations:**
-  - Optimistic update pattern in this hook: capture `previousTasks` inside `setTasks` callback, invoke backend, rollback on catch
-  - Interface order matches return object order for consistency
-  - Backend command uses snake_case (`tasks_update_text`), frontend uses camelCase (`updateTaskText`)
+### What was implemented
+- Added `TaskStatus` enum (waiting, in_progress, completed) for subtask status
+- Added `SubtaskCategory` enum (functional, test) for categorizing subtasks
+- Added `ExecutionOutcome` enum (success, partial, failed, aborted) for execution results
+- Created `Step` struct (id, text, completed) for subtask checklist items
+- Created `Learnings` struct with patterns/gotchas/context vectors
+- Created `ExecutionLog` struct with all fields (id, startedAt, completedAt, duration, outcome, summary, filesChanged, learnings, committed, commitHash, commitMessage, errorMessage)
+- Updated `Subtask` struct with new fields: status, order, category, steps, shouldCommit, notes, executionLogs
+- Added legacy fields (completed, position) as Option with skip_serializing for migration compatibility
+- Updated `Task` struct with description and workingDirectory fields
+- Updated `TaskWithTags` response struct to include new Task fields
+- Fixed all usages in commands.rs: subtasks_create, subtasks_toggle, subtasks_reorder, tasks_update_status cascade
+- Fixed SQLite migration in storage.rs to include new Task fields
 
-## 2026-01-21 12:27 - Task 3: State and Navigation - Add task detail view infrastructure
-- Expanded `TasksView` type to include `'task'`
-- Added `currentTaskId` state and derived `currentTask` from tasks array
-- Added `handleNavigateToTask(taskId)` and `handleNavigateToList()` navigation handlers
-- Updated `useNavigationLevels` with third level for task detail (shows truncated task text)
-- Added `onNavigate` callback to folder level to return to list view
-- Moved `useNavigationLevels` call after `currentTask` derivation for proper dependency ordering
-- **Files changed:**
-  - `src/plugins/tasks/TasksPlugin.tsx` - Added view type, state, handlers, navigation levels
-- **Learnings for future iterations:**
-  - `useNavigationLevels` must be called after all derived state it depends on is defined
-  - Use `void` statement to satisfy `noUnusedLocals` for infrastructure functions that will be wired up in later tasks
-  - Navigation levels pattern: `[root, parent && {}, child && {}]` - falsy values are filtered out
-  - Task text truncation: `text.length > 20 ? `${text.slice(0, 20)}...` : text` for breadcrumb display
+### Files changed
+- `src-tauri/src/plugins/tasks/types.rs`
+- `src-tauri/src/plugins/tasks/commands.rs`
+- `src-tauri/src/plugins/tasks/storage.rs`
 
-## 2026-01-21 12:31 - Task 4: Modify TasksPluginItem - Remove inline subtasks, add click navigation
-- Removed `isExpanded` state from `TasksPluginItem`
-- Removed `TasksPluginSubtaskSection` component (was only used for inline expand/collapse)
-- Removed subtask-related props from `TasksPluginItemProps`: `onCreateSubtask`, `onToggleSubtask`, `onDeleteSubtask`, `onReorderSubtasks`
-- Kept `TasksPluginProgressBadge` - still shows subtask count (e.g., '2/5')
-- Added `onTaskClick` prop to `TasksPluginItemProps`
-- Made task row clickable with `role="button"`, `tabIndex={0}`, `cursor-pointer`, and proper keyboard support
-- Added `e.stopPropagation()` to checkbox, tags button, and delete button to prevent triggering task click
-- Updated `TasksPluginList` to pass `onTaskClick` prop
-- Connected `onTaskClick` to `handleNavigateToTask` in main component
-- Exported subtask components for reuse in task detail view: `TasksPluginSubtaskInput`, `TasksPluginSubtaskList`, `TasksPluginProgressBadge`, `TasksPluginTagBadge`, `TasksPluginTagEditorPopover`
-- Removed unused `ChevronDown` and `ChevronRight` icon imports
-- **Files changed:**
-  - `src/plugins/tasks/TasksPlugin.tsx` - Simplified TasksPluginItem, added click navigation, exported reusable components
-- **Learnings for future iterations:**
-  - `e.stopPropagation()` is essential on nested interactive elements to prevent bubbling to parent click handlers
-  - Export components that will be reused across files instead of using `void` statements
-  - When removing a wrapper component (TasksPluginSubtaskSection), keep the inner components (TasksPluginSubtaskList, TasksPluginSubtaskInput) if they'll be needed elsewhere
-  - Task item needs `role="button"` and keyboard handlers for accessibility when using div as clickable element
+### Learnings for future iterations
+- **Patterns discovered:**
+  - All types use `#[serde(rename_all = "camelCase")]` for JS interop
+  - Use `#[serde(default)]` for new fields to maintain backward compatibility
+  - Use `#[serde(skip_serializing)]` for deprecated fields that should be read but not written
+  - Enums use `#[serde(rename_all = "snake_case")]` for serialization
+- **Gotchas encountered:**
+  - When changing a field type (e.g., bool → enum), need to update all usages in commands.rs
+  - SQLite migration also constructs Task manually, needs updating when Task fields change
+  - TaskWithTags is a separate response struct that duplicates Task fields - must update both
+- **Useful context:**
+  - Subtask creation is in `subtasks_create` command at line ~384
+  - Subtask toggle (now status change) is in `subtasks_toggle` command at line ~423
+  - Task cascade (mark all subtasks complete) is in `tasks_update_status` command at line ~210
 
-## 2026-01-21 12:37 - Task 5: Create TasksPluginTaskDetail component - Layout structure
-- Created new file `TasksPluginTaskDetail.tsx` for task detail view
-- Implemented layout with two sections: TASK (with delete button) and SUBTASKS
-- Used section header pattern: `text-[12px] font-medium text-white/40 uppercase tracking-wide`
-- Integrated `usePendingDelete` hook for two-click delete confirmation
-- Delete button shows X icon normally, Check icon when pending confirmation
-- After delete confirmed, automatically calls `onNavigateBack` to return to list
-- Reused `TasksPluginSubtaskInput` and `TasksPluginSubtaskList` from TasksPlugin.tsx
-- Added placeholder for task info section (to be implemented in Task 6)
-- **Files changed:**
-  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - New file with component
-- **Learnings for future iterations:**
-  - Create separate files for large component groups that will be imported elsewhere
-  - `usePendingDelete` hook takes a callback that receives the id - wrap async operations in it
-  - Props can be typed inline in interface, no need for separate type file for simple cases
-  - Placeholder components help visualize layout structure before full implementation
-  - Section headers as visual separators (no borders) keeps UI clean and scannable
-
-## 2026-01-21 12:39 - Task 6: TasksPluginTaskDetail - Task info section with inline editing
-- Created `TasksPluginTaskInfo` component replacing the placeholder
-- Implemented 3-state status checkbox (pending → in_progress → completed) with exact styling from TasksPluginItem
-- Added inline text editing with isEditing/editValue states, Enter saves, Escape cancels, blur saves
-- Edit button (Pencil icon) always visible and aligned to the right
-- Tags section below text with `TasksPluginTagBadge` and `TasksPluginTagEditorPopover`
-- Tags area indented with `ml-[30px]` to align with text (after checkbox)
-- Shows "+ Add tags" text when no tags assigned
-- Removed placeholder component and void statements
-- **Files changed:**
-  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added TasksPluginTaskInfo, removed placeholder
-- **Learnings for future iterations:**
-  - Import reusable components from sibling files (TasksPluginTagBadge, TasksPluginTagEditorPopover from TasksPlugin)
-  - Use `useEffect` with task.text dependency to sync editValue when task changes externally
-  - Input needs auto-focus and select-all on edit start: `inputRef.current.focus(); inputRef.current.select()`
-  - `ml-[30px]` = 18px checkbox + 12px gap (gap-3) to align content below text
-  - Container `bg-white/[0.02]` with rounded-lg and padding gives subtle visual grouping
-
-## 2026-01-21 12:42 - Task 7: TasksPluginTaskDetail - Subtasks section with input on top
-- Already implemented in Task 5/6 session - subtasks section structure was complete
-- `TasksPluginSubtaskInput` at TOP of subtasks section
-- `TasksPluginSubtaskList` below the input
-- **Files changed:**
-  - None (already complete)
-- **Learnings for future iterations:**
-  - Check if work was already done before starting - PRD tasks may overlap or be completed together
-
-## 2026-01-21 12:42 - Task 8: TasksPluginSubtaskItem - Add inline text editing
-- Added `onUpdateText` prop to `TasksPluginSubtaskItemProps`
-- Added `isEditing`, `editValue` states and `inputRef` to component
-- Added useEffect hooks for text sync and auto-focus/select on edit
-- Added `handleSave`, `handleCancel`, `handleKeyDown` handlers (same pattern as TasksPluginTaskInfo)
-- Conditional render: input when editing, span when not
-- Added edit button (Pencil icon) visible on hover via `group-hover/subtask:opacity-100`
-- Added `onUpdateSubtaskText` to `TasksPluginSubtaskListProps` and wired to items
-- Updated `TasksPluginTaskDetailProps` to include `onUpdateSubtaskText` and wired through
-- **Files changed:**
-  - `src/plugins/tasks/TasksPlugin.tsx` - Added props, state, handlers, edit button to TasksPluginSubtaskItem
-  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added onUpdateSubtaskText prop and wiring
-- **Learnings for future iterations:**
-  - Inline editing pattern: `isEditing` state, `editValue` state, `inputRef`, useEffect for sync and focus
-  - Edit button styling: `opacity-0 group-hover/subtask:opacity-100` for reveal on hover
-  - Props chain: hook → main component → detail component → list → item
-
-## 2026-01-21 12:42 - Task 9: Wire up TasksPluginTaskDetail in main component
-- Imported `TasksPluginTaskDetail` from `./TasksPluginTaskDetail`
-- Removed underscore prefixes from subtask functions in useTasksStorage destructuring
-- Added `updateTaskText` and `updateSubtaskText` to destructuring
-- Removed `void handleNavigateToList;` statement (now used)
-- Added conditional render block: `if (view === "task" && currentTask)` returning TasksPluginTaskDetail
-- Passed all required props: task, tags, all CRUD operations, navigation callback
-- **Files changed:**
-  - `src/plugins/tasks/TasksPlugin.tsx` - Import, destructuring, conditional render
-- **Learnings for future iterations:**
-  - When wiring up a component that was built incrementally, ensure ALL props are available from the hook
-  - Remove `void` statements when the referenced functions become used
-  - Conditional render pattern: `if (view === "X" && requiredData)` for view switching

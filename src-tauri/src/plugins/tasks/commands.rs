@@ -150,6 +150,8 @@ pub fn tasks_get_by_folder(
             text: t.text.clone(),
             status: t.status.clone(),
             created_at: t.created_at,
+            description: t.description.clone(),
+            working_directory: t.working_directory.clone(),
             tag_ids: t.tag_ids.clone(),
             subtasks: t.subtasks.clone(),
         })
@@ -189,6 +191,8 @@ pub fn tasks_create(
         text: text.clone(),
         status: "pending".to_string(),
         created_at: now_ms(),
+        description: String::new(),
+        working_directory: String::new(),
         tag_ids: tag_ids.clone().unwrap_or_default(),
         subtasks: Vec::new(),
     };
@@ -201,6 +205,8 @@ pub fn tasks_create(
         text: task.text,
         status: task.status,
         created_at: task.created_at,
+        description: task.description,
+        working_directory: task.working_directory,
         tag_ids: task.tag_ids,
         subtasks: task.subtasks,
     })
@@ -225,7 +231,7 @@ pub fn tasks_update_status(store: State<TasksStore>, id: String, status: String)
     // Cascade: when task is completed, mark all subtasks as completed
     if status == "completed" {
         for subtask in &mut task.subtasks {
-            subtask.completed = true;
+            subtask.status = TaskStatus::Completed;
         }
     }
 
@@ -399,19 +405,26 @@ pub fn subtasks_create(
         .find(|t| t.id == task_id)
         .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
-    let position = task
+    let order = task
         .subtasks
         .iter()
-        .map(|s| s.position)
+        .map(|s| s.order)
         .max()
-        .unwrap_or(-1)
-        + 1;
+        .map(|max| max + 1)
+        .unwrap_or(0);
 
     let subtask = Subtask {
         id: Uuid::new_v4().to_string(),
         text,
-        completed: false,
-        position,
+        status: TaskStatus::default(),
+        order,
+        category: SubtaskCategory::default(),
+        steps: Vec::new(),
+        should_commit: true,
+        notes: String::new(),
+        execution_logs: Vec::new(),
+        completed: None,
+        position: None,
     };
 
     task.subtasks.push(subtask.clone());
@@ -440,8 +453,11 @@ pub fn subtasks_toggle(
         .find(|s| s.id == subtask_id)
         .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
 
-    subtask.completed = !subtask.completed;
-    let new_state = subtask.completed;
+    subtask.status = match subtask.status {
+        TaskStatus::Completed => TaskStatus::Waiting,
+        _ => TaskStatus::Completed,
+    };
+    let new_state = matches!(subtask.status, TaskStatus::Completed);
 
     save_to_json(&data).map_err(|e| e.to_string())?;
 
@@ -489,7 +505,7 @@ pub fn subtasks_reorder(
 
     for (index, subtask_id) in subtask_ids.iter().enumerate() {
         if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
-            subtask.position = index as i32;
+            subtask.order = index as u32;
         }
     }
 

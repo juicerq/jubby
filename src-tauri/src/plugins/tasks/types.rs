@@ -1,5 +1,81 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    #[default]
+    Waiting,
+    InProgress,
+    Completed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SubtaskCategory {
+    #[default]
+    Functional,
+    Test,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionOutcome {
+    Success,
+    Partial,
+    Failed,
+    Aborted,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Step {
+    pub id: String,
+    pub text: String,
+    pub completed: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Learnings {
+    #[serde(default)]
+    pub patterns: Vec<String>,
+    #[serde(default)]
+    pub gotchas: Vec<String>,
+    #[serde(default)]
+    pub context: Vec<String>,
+}
+
+impl Default for Learnings {
+    fn default() -> Self {
+        Self {
+            patterns: Vec::new(),
+            gotchas: Vec::new(),
+            context: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionLog {
+    pub id: String,
+    pub started_at: i64,
+    pub completed_at: Option<i64>,
+    pub duration: Option<i64>,
+    pub outcome: ExecutionOutcome,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub files_changed: Vec<String>,
+    #[serde(default)]
+    pub learnings: Learnings,
+    #[serde(default)]
+    pub committed: bool,
+    pub commit_hash: Option<String>,
+    pub commit_message: Option<String>,
+    pub error_message: Option<String>,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
@@ -14,8 +90,29 @@ pub struct Folder {
 pub struct Subtask {
     pub id: String,
     pub text: String,
-    pub completed: bool,
-    pub position: i32,
+    #[serde(default)]
+    pub status: TaskStatus,
+    #[serde(default)]
+    pub order: u32,
+    #[serde(default)]
+    pub category: SubtaskCategory,
+    #[serde(default)]
+    pub steps: Vec<Step>,
+    #[serde(default = "default_should_commit")]
+    pub should_commit: bool,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub execution_logs: Vec<ExecutionLog>,
+    // Legacy field for migration compatibility
+    #[serde(default, skip_serializing)]
+    pub completed: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub position: Option<i32>,
+}
+
+fn default_should_commit() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,6 +123,10 @@ pub struct Task {
     pub text: String,
     pub status: String,
     pub created_at: i64,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub working_directory: String,
     #[serde(default)]
     pub tag_ids: Vec<String>,
     #[serde(default)]
@@ -78,6 +179,8 @@ pub struct TaskWithTags {
     pub text: String,
     pub status: String,
     pub created_at: i64,
+    pub description: String,
+    pub working_directory: String,
     pub tag_ids: Vec<String>,
     pub subtasks: Vec<Subtask>,
 }
