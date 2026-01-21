@@ -144,6 +144,7 @@ pub fn run() {
             plugins::tasks::opencode::opencode_poll_status,
             plugins::tasks::opencode::opencode_abort_session,
             plugins::tasks::opencode::opencode_stop_server,
+            plugins::tasks::opencode::tasks_execute_subtask,
             plugins::tasks::commands::tag_create,
             plugins::tasks::commands::tag_update,
             plugins::tasks::commands::tag_delete,

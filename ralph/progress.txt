@@ -1,14 +1,14 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 5 of 19 completed
+Task 6 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
 - [x] 2. Backend - Data migration
 - [x] 3. Backend - CRUD commands for new fields
 - [x] 4. Backend - OpenCode server management
-- [ ] 5. Backend - Execution orchestration command
+- [x] 5. Backend - Execution orchestration command
 - [x] 6. Frontend - Update useTasksStorage hook with new types
 - [ ] 7. Frontend - Update useTasksStorage hook with execution functions
 - [ ] 8. Frontend - Task creation flow update
@@ -231,3 +231,39 @@ Task 5 of 19 completed
   - All request/response types use camelCase via `#[serde(rename_all = "camelCase")]`
   - State management uses tauri's `State` wrapper with `app.manage()` in setup
   - Commands registered in lib.rs around line 140 (tasks plugin section)
+
+## 2026-01-21 15:37 - Task 5: Backend - Execution orchestration command
+
+### What was implemented
+- Added `tasks_execute_subtask` command in opencode.rs that orchestrates full subtask execution
+- Command parameters: `taskId`, `subtaskId`
+- Execution flow:
+  1. Ensures OpenCode server is running (auto-starts if not)
+  2. Retrieves task and subtask data from TasksStore
+  3. Validates workingDirectory is set
+  4. Builds prompt with PRD file references (@path/prd.json @path/progress.txt)
+  5. Creates OpenCode session with descriptive title (task: subtask)
+  6. Sends prompt asynchronously
+  7. Polls session status until "idle" (success) or timeout (5 min)
+- Added `ExecutionResult` struct for command response (sessionId, outcome, aborted, errorMessage)
+- Added `build_execution_prompt` helper function that generates the standard PRD execution prompt
+- Registered command in lib.rs invoke_handler
+
+### Files changed
+- `src-tauri/src/plugins/tasks/opencode.rs`
+- `src-tauri/src/lib.rs`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Commands that need multiple State types can take them as separate parameters (store, server_state)
+  - Clone task/subtask data out of the read lock scope to avoid holding lock during async operations
+  - Polling loop with timeout pattern: `let start = Instant::now(); loop { if start.elapsed() > timeout { break; } }`
+- **Gotchas encountered:**
+  - Must validate workingDirectory before building prompt - empty path causes invalid file references
+  - Session status "idle" means complete, not "success" - OpenCode uses this terminology
+  - The prompt references files relative to workingDirectory, not absolute paths
+- **Useful context:**
+  - Execution timeout is 5 minutes (EXECUTION_TIMEOUT_SECS = 300)
+  - Poll interval is 500ms (POLL_INTERVAL)
+  - The prompt template instructs AI to work on highest priority task and update progress.txt
+  - Frontend will call this command and handle the ExecutionResult to create ExecutionLog entries
