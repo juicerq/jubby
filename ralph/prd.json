@@ -171,7 +171,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. The animation should feel premium and satisfying. Reference: neon glow effects, but subtle with white/gray palette."
 	},
 	{

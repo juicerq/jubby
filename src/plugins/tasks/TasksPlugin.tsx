@@ -1681,6 +1681,7 @@ function TasksPluginSubtaskExpandable({
 				"group/subtask flex flex-col rounded-md transition-all duration-150 ease-out",
 				isDragging && "opacity-40 scale-[0.98] pointer-events-none",
 				isExpanded && "bg-white/[0.02]",
+				isThisExecuting && "neon-border-executing",
 			)}
 		>
 			<div

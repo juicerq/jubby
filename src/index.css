@@ -168,3 +168,73 @@ body.dragging-subtask * {
   cursor: grabbing !important;
   user-select: none;
 }
+
+/*
+ * Neon border animation for executing subtasks
+ * EXCEPTION: Complex gradient animation with conic-gradient cannot be achieved
+ * with Tailwind utilities. Uses transform for GPU acceleration.
+ */
+@property --neon-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes neon-border-spin {
+  from {
+    --neon-angle: 0deg;
+  }
+  to {
+    --neon-angle: 360deg;
+  }
+}
+
+.neon-border-executing {
+  position: relative;
+  isolation: isolate;
+}
+
+.neon-border-executing::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--neon-angle),
+    rgba(255, 255, 255, 0.03) 0deg,
+    rgba(255, 255, 255, 0.5) 60deg,
+    rgba(255, 255, 255, 0.8) 90deg,
+    rgba(255, 255, 255, 0.5) 120deg,
+    rgba(255, 255, 255, 0.03) 180deg,
+    rgba(255, 255, 255, 0.03) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: neon-border-spin 2s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.neon-border-executing::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--neon-angle),
+    transparent 0deg,
+    rgba(255, 255, 255, 0.08) 60deg,
+    rgba(255, 255, 255, 0.15) 90deg,
+    rgba(255, 255, 255, 0.08) 120deg,
+    transparent 180deg,
+    transparent 360deg
+  );
+  filter: blur(6px);
+  animation: neon-border-spin 2s linear infinite;
+  pointer-events: none;
+  z-index: -2;
+  opacity: 0.6;
+}

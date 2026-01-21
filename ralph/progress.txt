@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 12 of 19 completed
+Task 13 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -13,7 +13,7 @@ Task 12 of 19 completed
 - [x] 7. Frontend - Update useTasksStorage hook with execution functions
 - [x] 8. Frontend - Task creation flow update
 - [x] 9. Frontend - Subtask expandable component
-- [ ] 10. Frontend - Running state animation
+- [x] 10. Frontend - Running state animation
 - [x] 11. Frontend - Run/Stop button logic
 - [ ] 12. Frontend - Loop (Run All) button
 - [ ] 13. Frontend - Drag to reorder subtasks
@@ -435,3 +435,34 @@ Task 12 of 19 completed
   - Server starts lazily when TasksPlugin mounts (not on app start)
   - Health check runs every 30 seconds only when server status is "ready"
   - Server indicator appears in task detail view Breadcrumb (where execution happens)
+
+## 2026-01-21 16:10 - Task 10: Frontend - Running state animation
+
+### What was implemented
+- Created neon border animation effect for executing subtasks
+- Animation uses `conic-gradient` with `@property` for smooth rotation
+- White/gray gradient that rotates around the border (2s linear infinite)
+- Two-layer effect: sharp border gradient + soft outer glow (blur)
+- Applied via `.neon-border-executing` CSS class when `isThisExecuting` is true
+- Uses CSS mask to create border-only gradient (content area transparent)
+- GPU-accelerated with `will-change` implicit via animation
+
+### Files changed
+- `src/index.css` - Added `@property --neon-angle`, `@keyframes neon-border-spin`, and `.neon-border-executing` class with `::before` and `::after` pseudo-elements
+- `src/plugins/tasks/TasksPlugin.tsx` - Added `neon-border-executing` class to `TasksPluginSubtaskExpandable` when `isThisExecuting` is true
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - `@property` CSS feature enables animating custom properties like angles for conic-gradient rotation
+  - `mask-composite: exclude` creates hollow gradient borders (only the border shows, content is transparent)
+  - Two-layer pseudo-element approach: `::before` for sharp border, `::after` with blur for glow effect
+  - `isolation: isolate` creates new stacking context for proper z-index layering with negative z-index pseudo-elements
+- **Gotchas encountered:**
+  - `conic-gradient` angle cannot be animated directly - requires `@property` declaration for the angle
+  - `mask-composite` has vendor prefix difference: `-webkit-mask-composite: xor` vs `mask-composite: exclude`
+  - Pseudo-elements need `border-radius: inherit` to match parent's rounded corners
+  - `inset: -1px` for `::before` and `inset: -3px` for `::after` to position outside the element
+- **Useful context:**
+  - Animation is at lines ~174-228 in src/index.css
+  - Class applied in TasksPluginSubtaskExpandable at line ~1684 in TasksPlugin.tsx
+  - CSS exceptions documented in file (complex gradient animation not achievable with Tailwind)
