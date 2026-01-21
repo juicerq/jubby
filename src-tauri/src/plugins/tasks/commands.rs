@@ -235,6 +235,27 @@ pub fn tasks_update_status(store: State<TasksStore>, id: String, status: String)
 }
 
 #[tauri::command]
+pub fn tasks_update_text(store: State<TasksStore>, id: String, text: String) -> Result<(), String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Task text cannot be empty".to_string());
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| format!("Task not found: {}", id))?;
+
+    task.text = text;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn tasks_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     let mut data = store.write();
 

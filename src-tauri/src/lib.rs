@@ -117,6 +117,7 @@ pub fn run() {
             plugins::tasks::commands::tasks_get_by_folder,
             plugins::tasks::commands::tasks_create,
             plugins::tasks::commands::tasks_update_status,
+            plugins::tasks::commands::tasks_update_text,
             plugins::tasks::commands::tasks_delete,
             plugins::tasks::commands::tasks_set_tags,
             plugins::tasks::commands::subtasks_create,

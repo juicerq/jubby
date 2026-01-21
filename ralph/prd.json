@@ -1,278 +1,184 @@
 [
 	{
 		"category": "functional",
-		"description": "Fase 1.1: Backend - Rename todo module to tasks and update types",
+		"description": "Backend - Add tasks_update_text command",
 		"steps": [
-			"Rename folder src-tauri/src/plugins/todo/ to src-tauri/src/plugins/tasks/",
-			"Update src-tauri/src/plugins/mod.rs: change 'pub mod todo;' to 'pub mod tasks;'",
-			"In types.rs: rename Todo struct to Task",
-			"In types.rs: rename TodoData struct to TasksData",
-			"In types.rs: rename TodoWithTags struct to TaskWithTags",
-			"In types.rs: rename TodoDataResponse struct to TasksDataResponse",
-			"In types.rs: rename RecentTodo struct to RecentTask",
-			"In types.rs: rename FolderWithPreview.todo_count to task_count",
-			"In types.rs: rename FolderWithPreview.recent_todos to recent_tasks",
+			"In commands.rs: create tasks_update_text command that takes id and text parameters",
+			"Validate that text is not empty",
+			"Find task by id, return error if not found",
+			"Update task.text with new value",
+			"Save to JSON and return Ok(())",
+			"In lib.rs: register tasks_update_text in invoke_handler",
 			"Run cargo check to verify compilation"
 		],
 		"shouldCommit": true,
 		"passes": true,
-		"notes": "This is the foundation change. All other backend changes depend on this. Read types.rs first."
+		"notes": "Follow the same pattern as tasks_update_status. This enables editing task names from the frontend."
 	},
 	{
 		"category": "functional",
-		"description": "Fase 1.2: Backend - Update store and storage with data migration",
+		"description": "Frontend Hook - Add updateTaskText function",
 		"steps": [
-			"In mod.rs: rename TodoStore to TasksStore",
-			"In mod.rs: rename TodoData references to TasksData",
-			"In mod.rs: rename init_todo_store() to init_tasks_store()",
-			"In mod.rs: update tracing target from 'todo' to 'tasks'",
-			"In mod.rs: update log message from 'Todo store' to 'Tasks store'",
-			"In storage.rs: rename get_todo_dir() to get_tasks_dir()",
-			"In storage.rs: change get_plugin_dir('todo') to get_plugin_dir('tasks')",
-			"In storage.rs: change data file from 'todo.json' to 'tasks.json'",
-			"In storage.rs: update all tracing targets from 'todo' to 'tasks'",
-			"In storage.rs: implement migration - detect existing todo/todo.json and move to tasks/tasks.json",
-			"In storage.rs: update all TodoData references to TasksData",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "The migration logic is critical - users with existing data must not lose their tasks. Check if todo/todo.json exists, if so, move contents to tasks/tasks.json and optionally remove old directory."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 1.3: Backend - Rename commands and update error messages",
-		"steps": [
-			"In commands.rs: rename todo_get_by_folder to tasks_get_by_folder",
-			"In commands.rs: rename todo_create to tasks_create",
-			"In commands.rs: rename todo_update_status to tasks_update_status",
-			"In commands.rs: rename todo_delete to tasks_delete",
-			"In commands.rs: rename todo_set_tags to tasks_set_tags",
-			"In commands.rs: update all TodoStore references to TasksStore",
-			"In commands.rs: update all internal variable names (folder_todos -> folder_tasks, sorted_todos -> sorted_tasks, etc.)",
-			"In commands.rs: update error messages from 'Todo not found' to 'Task not found'",
-			"In commands.rs: update all type references (Todo -> Task, TodoWithTags -> TaskWithTags, etc.)",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Be thorough with variable renames to maintain consistency. Use find/replace carefully."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 1.4: Backend - Update lib.rs, logging.rs and paths.rs",
-		"steps": [
-			"In lib.rs: update comment from '// Todo plugin' to '// Tasks plugin'",
-			"In lib.rs: change all plugins::todo:: to plugins::tasks::",
-			"In lib.rs: update command registrations (todo_get_by_folder -> tasks_get_by_folder, etc.)",
-			"In lib.rs: rename init_todo_store() call to init_tasks_store()",
-			"In lib.rs: update error message from 'Failed to initialize todo store' to 'Failed to initialize tasks store'",
-			"In logging.rs: change plugins array from ['quickclip', 'todo'] to ['quickclip', 'tasks']",
-			"In logging.rs: update all match cases from ('todo', ...) to ('tasks', ...)",
-			"In shared/paths.rs: update test from get_plugin_dir('todo') to get_plugin_dir('tasks')",
-			"In shared/paths.rs: update assertion from ends_with('todo') to ends_with('tasks')",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "This completes the backend rename. After this, all Rust code should compile and use 'tasks' consistently."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 1.5: Frontend - Rename files and update types",
-		"steps": [
-			"Rename folder src/plugins/todo/ to src/plugins/tasks/",
-			"Rename TodoPlugin.tsx to TasksPlugin.tsx",
-			"Rename useTodoStorage.ts to useTasksStorage.ts",
-			"In types.ts: rename TodoStatus to TaskStatus",
-			"In types.ts: rename Todo interface to Task",
-			"In types.ts: rename RecentTodo interface to RecentTask",
-			"In types.ts: rename Folder.todoCount to Folder.taskCount",
-			"In types.ts: rename Folder.recentTodos to Folder.recentTasks",
-			"Run bun tsc --noEmit to check for errors (will fail until hooks/components updated)"
-		],
-		"shouldCommit": false,
-		"passes": true,
-		"notes": "File renames must happen first. TypeScript will show errors until the next tasks complete the migration."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 1.6: Frontend - Update hook (useTasksStorage.ts)",
-		"steps": [
-			"Rename function useTodoStorage to useTasksStorage",
-			"Rename interface TodoFromBackend to TaskFromBackend",
-			"Rename interface TodoDataFromBackend to TasksDataFromBackend",
-			"Rename interface UseTodoStorageReturn to UseTasksStorageReturn",
-			"Rename function mapBackendTodo to mapBackendTask",
-			"Update all import paths to use new type names (Task, TaskStatus, RecentTask)",
-			"Update all invoke calls: 'todo_get_by_folder' -> 'tasks_get_by_folder', etc.",
-			"Rename all internal variables: todos -> tasks, setTodos -> setTasks, etc.",
-			"Update all toast messages: 'Failed to create todo' -> 'Failed to create task', etc.",
-			"Update useFolderStorage: todoCount -> taskCount, recentTodos -> recentTasks",
-			"Run bun tsc --noEmit to check for errors"
-		],
-		"shouldCommit": false,
-		"passes": true,
-		"notes": "This is a large file with many renames. Be systematic and thorough."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 1.7: Frontend - Update main component (TasksPlugin.tsx)",
-		"steps": [
-			"Rename main component function TodoPlugin to TasksPlugin",
-			"Rename type TodoView to TasksView",
-			"Update import from useTodoStorage to useTasksStorage",
-			"Update import types to use Task, TaskStatus, RecentTask",
-			"Rename all internal variables: todos -> tasks, sortedTodos -> sortedTasks, filteredTodos -> filteredTasks",
-			"Update navigation label from 'Todo' to 'Tasks' in useNavigationLevels",
-			"Rename all TodoPlugin* components to TasksPlugin* (e.g., TodoPluginItem -> TasksPluginItem)",
-			"Rename all TodoPlugin*Props interfaces to TasksPlugin*Props",
-			"Update all references to Todo/todo in comments and aria-labels",
-			"Export TasksPlugin at end of file",
+			"In useTasksStorage.ts: add updateTaskText to UseTasksStorageReturn interface",
+			"Implement updateTaskText(id: string, text: string): optimistic update, invoke 'tasks_update_text', rollback on error",
+			"Follow existing pattern from updateTaskStatus for optimistic updates",
+			"Add updateTaskText to the return object",
 			"Run bun tsc --noEmit to verify"
 		],
-		"shouldCommit": false,
-		"passes": true,
-		"notes": "This is a very large file (~1600 lines). Use find/replace carefully. All component names must be updated consistently."
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Simple addition following existing patterns. The optimistic update pattern is already established in the hook."
 	},
 	{
 		"category": "functional",
-		"description": "Fase 1.8: Frontend - Update manifest, registry and navigation hook",
+		"description": "State and Navigation - Add task detail view infrastructure",
 		"steps": [
-			"In index.tsx: rename TodoManifest to TasksManifest",
-			"In index.tsx: change id from 'todo' to 'tasks'",
-			"In index.tsx: change name from 'Todo' to 'Tasks'",
-			"In index.tsx: update description to 'Manage tasks with subtasks, tags and status tracking'",
-			"In index.tsx: update component from TodoPlugin to TasksPlugin",
-			"In registry.ts: change import from './todo' to './tasks'",
-			"In registry.ts: change TodoManifest to TasksManifest",
-			"In useNavigationLevels.ts: update comment example from 'todo' to 'tasks'",
-			"Run bun tsc --noEmit to verify no errors",
-			"Run cargo check to verify Rust still compiles"
+			"In TasksPlugin.tsx: expand TasksView type to include 'task': type TasksView = 'folders' | 'list' | 'task'",
+			"Add state: const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)",
+			"Derive currentTask from tasks array: const currentTask = currentTaskId ? tasks.find(t => t.id === currentTaskId) : null",
+			"Add handleNavigateToTask(taskId: string): sets currentTaskId, sets view to 'task'",
+			"Add handleNavigateToList(): sets currentTaskId to null, sets view to 'list'",
+			"Update useNavigationLevels to include third level when currentTask exists",
+			"The third level should have id: `task-${currentTaskId}`, label: currentTask.text (truncated if needed)",
+			"Add onNavigate callback to folder level to call handleNavigateToList",
+			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "This completes Fase 1. After this task, the entire codebase should use 'Tasks' consistently and compile without errors."
+		"passes": false,
+		"notes": "This establishes the navigation foundation. The breadcrumb will show: jubby / Tasks / {folderName} / {taskName}. Clicking folder in breadcrumb returns to list view."
+	},
+	{
+		"category": "functional",
+		"description": "Modify TasksPluginItem - Remove inline subtasks, add click navigation",
+		"steps": [
+			"Remove isExpanded state from TasksPluginItem",
+			"Remove TasksPluginSubtaskSection from TasksPluginItem render",
+			"Remove subtask-related props from TasksPluginItemProps: onCreateSubtask, onToggleSubtask, onDeleteSubtask, onReorderSubtasks",
+			"Keep TasksPluginProgressBadge - it shows the subtask count (e.g., '2/5')",
+			"Add onTaskClick prop to TasksPluginItemProps: (taskId: string) => void",
+			"Make the task text/row clickable to trigger onTaskClick(task.id)",
+			"Add cursor-pointer and hover state to indicate clickability",
+			"Update TasksPluginList to pass onTaskClick prop to TasksPluginItem",
+			"Update TasksPluginList props to include onTaskClick",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Subtasks move from inline display to dedicated detail view. The progress badge remains visible to show subtask status at a glance."
+	},
+	{
+		"category": "functional",
+		"description": "Create TasksPluginTaskDetail component - Layout structure",
+		"steps": [
+			"Create TasksPluginTaskDetail component with props: task, tags, all subtask operations, onDeleteTask, onUpdateTaskStatus, onUpdateTaskText, onSetTaskTags",
+			"Layout structure: Breadcrumb at top (already handled by parent), then scrollable content area",
+			"Add 'TASK' section header with delete button aligned to the right",
+			"Delete button uses existing two-click pattern (usePendingDelete hook)",
+			"When delete confirmed: call onDeleteTask, then navigate back to list",
+			"Add 'SUBTASKS' section header below task info",
+			"Use same header styling as existing: text-[12px] font-medium text-white/40 uppercase tracking-wide",
+			"No borders between sections - only headers as visual separators",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Focus on clean layout with headers as separators, not borders. Delete button should be subtle but accessible."
+	},
+	{
+		"category": "functional",
+		"description": "TasksPluginTaskDetail - Task info section with inline editing",
+		"steps": [
+			"Create TasksPluginTaskInfo sub-component for the task details",
+			"Display status checkbox (reuse existing toggle logic with 3 states)",
+			"Display task text with edit icon (Pencil from lucide) always aligned to the right",
+			"Use flex layout: checkbox | text (flex-1 truncate) | edit button (shrink-0)",
+			"Add isEditing state for inline text editing",
+			"Click on edit icon or text: switch to input mode",
+			"Input mode: show input field with current text, auto-focus and select all",
+			"Enter key: save changes via onUpdateTaskText, exit edit mode",
+			"Escape key: cancel edit, restore original text, exit edit mode",
+			"Click outside: save changes and exit edit mode",
+			"Display tags below text (reuse TasksPluginTagBadge components)",
+			"Tags should be clickable to open tag editor popover (reuse existing pattern)",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Edit icon must always be at the far right regardless of text length. Inline editing should feel smooth and responsive."
+	},
+	{
+		"category": "functional",
+		"description": "TasksPluginTaskDetail - Subtasks section with input on top",
+		"steps": [
+			"Place TasksPluginSubtaskInput at the TOP of subtasks section (before the list)",
+			"Reuse existing TasksPluginSubtaskInput component",
+			"Reuse existing TasksPluginSubtaskList component below the input",
+			"Pass all subtask operations: onCreateSubtask, onToggleSubtask, onDeleteSubtask, onReorderSubtasks",
+			"Subtasks appear below input in order (new subtasks will appear at the end of the list)",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Input on top is better UX - always visible without scrolling. Reuse existing subtask components, just reorganize their placement."
+	},
+	{
+		"category": "functional",
+		"description": "TasksPluginSubtaskItem - Add inline text editing",
+		"steps": [
+			"Add onUpdateText prop to TasksPluginSubtaskItemProps: (text: string) => void",
+			"Add isEditing state to TasksPluginSubtaskItem",
+			"Add edit button (Pencil icon) always aligned to the right after delete button",
+			"Use flex layout: drag handle | checkbox | text (flex-1 truncate) | edit button (shrink-0) | delete button (shrink-0)",
+			"Click on edit icon: switch to input mode",
+			"Input mode: replace text span with input field, auto-focus and select all",
+			"Enter key: save changes via onUpdateText, exit edit mode",
+			"Escape key: cancel edit, restore original text, exit edit mode",
+			"Click outside (onBlur): save changes and exit edit mode",
+			"Update TasksPluginSubtaskList to pass onUpdateText to each item",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Edit icon must always be at the far right. Follow same inline editing pattern as task text editing for consistency."
+	},
+	{
+		"category": "functional",
+		"description": "Wire up TasksPluginTaskDetail in main component",
+		"steps": [
+			"In TasksPlugin: add conditional render for view === 'task'",
+			"Render TasksPluginTaskDetail when view is 'task' and currentTask exists",
+			"Pass all required props: task (currentTask), tags, all subtask operations from useTasksStorage",
+			"Pass updateTaskText, updateTaskStatus, setTaskTags, deleteTask from useTasksStorage",
+			"Handle delete: when task is deleted, automatically navigate back to list (handleNavigateToList)",
+			"Update the main list view: pass onTaskClick={handleNavigateToTask} to TasksPluginList",
+			"Ensure Breadcrumb is rendered in task detail view (same pattern as list view)",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "This connects everything together. The navigation flow should be seamless: click task -> detail view -> breadcrumb or delete -> back to list."
 	},
 	{
 		"category": "test",
-		"description": "Fase 1.9: Verify Phase 1 - Manual testing of rename",
+		"description": "Verify implementation - Manual testing",
 		"steps": [
 			"Verify cargo check passes with no errors",
 			"Verify bun tsc --noEmit passes with no errors",
-			"Create a test todo.json file in old location (~/.local/share/jubby/todo/todo.json) with sample data",
-			"Start the app and verify migration moves data to tasks/tasks.json",
-			"Verify old todo/ directory can be deleted after migration",
-			"Verify tasks CRUD operations work (create, update status, delete)",
-			"Verify folder operations work (create, rename, delete, reorder)",
-			"Verify tag operations work (create, update, delete)",
-			"Verify logs go to tasks.log instead of todo.log",
-			"Verify navigation breadcrumb shows 'Tasks' label"
+			"Test clicking a task navigates to detail view",
+			"Test breadcrumb shows correct path: jubby / Tasks / {folder} / {task}",
+			"Test clicking folder in breadcrumb returns to list view",
+			"Test editing task text: click edit icon, modify, press Enter",
+			"Test editing task text: press Escape cancels edit",
+			"Test editing subtask text: same behavior as task text",
+			"Test delete task: two-click confirmation, returns to list",
+			"Test adding subtask: input at top works correctly",
+			"Test subtask operations: toggle, delete, drag reorder all work",
+			"Test status toggle: cycles through pending -> in_progress -> completed",
+			"Test tag editing: click tags opens popover, can add/remove tags",
+			"Test progress badge still shows in list view (e.g., '2/5')"
 		],
 		"shouldCommit": false,
 		"passes": false,
-		"notes": "Manual testing is required to verify the rename is complete. Test with existing data to ensure migration works."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 2.1: Backend - Add Subtask type and update Task struct",
-		"steps": [
-			"In types.rs: create Subtask struct with fields: id (String), text (String), completed (bool), position (i32)",
-			"In types.rs: add #[derive(Clone, Serialize, Deserialize)] and #[serde(rename_all = 'camelCase')] to Subtask",
-			"In types.rs: add 'subtasks: Vec<Subtask>' field to Task struct with #[serde(default)]",
-			"In types.rs: add 'subtasks: Vec<Subtask>' field to TaskWithTags struct",
-			"Update commands.rs tasks_get_by_folder to include subtasks in response",
-			"Update commands.rs tasks_create to initialize empty subtasks vec",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "The Subtask struct is simple - no tags, no complex status. Position field enables drag-and-drop reordering."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 2.2: Backend - Add subtask commands",
-		"steps": [
-			"Create subtasks_create command: takes task_id and text, creates Subtask with uuid, returns Subtask",
-			"Create subtasks_toggle command: takes task_id and subtask_id, toggles completed boolean",
-			"Create subtasks_delete command: takes task_id and subtask_id, removes subtask from task",
-			"Create subtasks_reorder command: takes task_id and subtask_ids array, updates position values",
-			"Create subtasks_update_text command: takes task_id, subtask_id and text, updates subtask text",
-			"Update tasks_update_status: when status becomes 'completed', set all subtasks.completed = true",
-			"Register all new commands in lib.rs invoke_handler",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Commands follow existing patterns. The cascade behavior (parent completed -> subtasks completed) is important for UX."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 2.3: Frontend - Add Subtask types and update Task interface",
-		"steps": [
-			"In types.ts: create Subtask interface with fields: id, text, completed, position",
-			"In types.ts: add 'subtasks: Subtask[]' to Task interface",
-			"In useTasksStorage.ts: add subtasks field to TaskFromBackend interface",
-			"In useTasksStorage.ts: add subtasks to mapBackendTask function",
-			"Run bun tsc --noEmit to verify"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Simple type additions. The hook mapping must include subtasks to pass data to components."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 2.4: Frontend - Add subtask operations to hook",
-		"steps": [
-			"Add createSubtask function: invoke 'subtasks_create', optimistically add to task.subtasks",
-			"Add toggleSubtask function: invoke 'subtasks_toggle', optimistically update completed state",
-			"Add deleteSubtask function: invoke 'subtasks_delete', optimistically remove from task.subtasks",
-			"Add reorderSubtasks function: invoke 'subtasks_reorder', optimistically update positions",
-			"Add updateSubtaskText function: invoke 'subtasks_update_text', optimistically update text",
-			"Add all new functions to UseTasksStorageReturn interface",
-			"Add all new functions to the return object",
-			"Run bun tsc --noEmit to verify"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Follow existing optimistic update patterns. All operations should update local state immediately, then sync with backend."
-	},
-	{
-		"category": "functional",
-		"description": "Fase 2.5: Frontend - Add subtask UI components (use frontend-design skill)",
-		"steps": [
-			"Create TasksPluginProgressBadge component: shows 'X/Y' completed count with checkmark icon",
-			"Create TasksPluginSubtaskItem component: checkbox, text, delete button, drag handle",
-			"Create TasksPluginSubtaskList component: renders subtasks with drag-and-drop reordering",
-			"Create TasksPluginSubtaskInput component: inline input to add new subtask",
-			"Update TasksPluginItem: add expandable section for subtasks below task text",
-			"Update TasksPluginItem: show TasksPluginProgressBadge when task has subtasks",
-			"Add expand/collapse toggle to TasksPluginItem (chevron icon)",
-			"Style subtasks with indentation to show hierarchy",
-			"Implement drag-and-drop for subtask reordering using same pattern as folders",
-			"Run bun tsc --noEmit to verify"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL for this task. Follow existing component patterns (TodoPluginFolderCard, TodoPluginFolderList) for drag-and-drop. Subtasks should feel lightweight - simpler than parent tasks."
-	},
-	{
-		"category": "test",
-		"description": "Fase 2.6: Verify Phase 2 - Manual testing of subtasks",
-		"steps": [
-			"Verify cargo check passes with no errors",
-			"Verify bun tsc --noEmit passes with no errors",
-			"Test creating a subtask on an existing task",
-			"Test toggling subtask completion",
-			"Test deleting a subtask",
-			"Test drag-and-drop reordering of subtasks",
-			"Test progress badge shows correct count (e.g., '2/5')",
-			"Test marking parent task as completed marks all subtasks as completed",
-			"Test subtasks persist after app reload",
-			"Test multiple tasks can each have their own subtasks"
-		],
-		"shouldCommit": false,
-		"passes": false,
-		"notes": "Manual testing required. Test edge cases: empty subtasks, many subtasks, rapid operations."
+		"notes": "Manual testing required. Test the full navigation flow and all editing scenarios. Verify UX is smooth and responsive."
 	}
 ]
