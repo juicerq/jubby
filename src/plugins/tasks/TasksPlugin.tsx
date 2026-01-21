@@ -292,6 +292,9 @@ function TasksPlugin(_props: PluginProps) {
 					selectedTagIds.every((tagId) => task.tagIds?.includes(tagId)),
 				);
 
+	const activeTasks = filteredTasks.filter((t) => t.status !== "completed");
+	const completedTasks = filteredTasks.filter((t) => t.status === "completed");
+
 	const handleToggleTagOnTask = (taskId: string, tagId: string) => {
 		const task = tasks.find((t) => t.id === taskId);
 		if (!task) return;
@@ -426,17 +429,39 @@ function TasksPlugin(_props: PluginProps) {
 				{filteredTasks.length === 0 ? (
 					<TasksPluginEmptyState hasFilter={selectedTagIds.length > 0} />
 				) : (
-					<TasksPluginList
-						tasks={filteredTasks}
-						tags={tags}
-						onToggle={handleToggle}
-						onDeleteClick={handleDeleteClick}
-						pendingDeleteId={pendingDeleteId}
-						editingTagsTaskId={editingTagsTaskId}
-						onEditTags={setEditingTagsTaskId}
-						onToggleTagOnTask={handleToggleTagOnTask}
-						onTaskClick={handleNavigateToTask}
-					/>
+					<div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
+						{activeTasks.length > 0 && (
+							<TasksPluginList
+								tasks={activeTasks}
+								tags={tags}
+								onToggle={handleToggle}
+								onDeleteClick={handleDeleteClick}
+								pendingDeleteId={pendingDeleteId}
+								editingTagsTaskId={editingTagsTaskId}
+								onEditTags={setEditingTagsTaskId}
+								onToggleTagOnTask={handleToggleTagOnTask}
+								onTaskClick={handleNavigateToTask}
+							/>
+						)}
+						{completedTasks.length > 0 && (
+							<>
+								<h2 className="mt-4 text-[12px] font-medium text-white/40 uppercase tracking-wide">
+									Completeds
+								</h2>
+								<TasksPluginList
+									tasks={completedTasks}
+									tags={tags}
+									onToggle={handleToggle}
+									onDeleteClick={handleDeleteClick}
+									pendingDeleteId={pendingDeleteId}
+									editingTagsTaskId={editingTagsTaskId}
+									onEditTags={setEditingTagsTaskId}
+									onToggleTagOnTask={handleToggleTagOnTask}
+									onTaskClick={handleNavigateToTask}
+								/>
+							</>
+						)}
+					</div>
 				)}
 			</div>
 
@@ -619,7 +644,7 @@ function TasksPluginList({
 	onTaskClick,
 }: TasksPluginListProps) {
 	return (
-		<div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
+		<>
 			{tasks.map((task) => (
 				<TasksPluginItem
 					key={task.id}
@@ -635,7 +660,7 @@ function TasksPluginList({
 					onTaskClick={() => onTaskClick(task.id)}
 				/>
 			))}
-		</div>
+		</>
 	);
 }
 
@@ -863,6 +888,12 @@ function TasksPluginSubtaskList({
 	onReorderSubtasks,
 	onUpdateSubtaskText,
 }: TasksPluginSubtaskListProps) {
+	const {
+		pendingId: pendingDeleteId,
+		handleDeleteClick,
+		cancelDelete,
+	} = usePendingDelete(onDeleteSubtask);
+
 	const [draggedId, setDraggedId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
 	const [dropPosition, setDropPosition] = useState<"above" | "below" | null>(
@@ -904,6 +935,7 @@ function TasksPluginSubtaskList({
 
 	const handleMouseDown = (e: React.MouseEvent, subtaskId: string) => {
 		if (e.button !== 0) return;
+		cancelDelete();
 		dragStartPos.current = { x: e.clientX, y: e.clientY };
 		setDraggedId(subtaskId);
 	};
@@ -1102,7 +1134,8 @@ function TasksPluginSubtaskList({
 							<TasksPluginSubtaskItem
 								subtask={item.subtask}
 								onToggle={() => onToggleSubtask(item.subtask.id)}
-								onDelete={() => onDeleteSubtask(item.subtask.id)}
+								onDeleteClick={() => handleDeleteClick(item.subtask.id)}
+								isPendingDelete={pendingDeleteId === item.subtask.id}
 								onUpdateText={(text) =>
 									onUpdateSubtaskText(item.subtask.id, text)
 								}
@@ -1124,7 +1157,8 @@ function TasksPluginSubtaskList({
 interface TasksPluginSubtaskItemProps {
 	subtask: Subtask;
 	onToggle: () => void;
-	onDelete: () => void;
+	onDeleteClick: () => void;
+	isPendingDelete: boolean;
 	onUpdateText: (text: string) => void;
 	isDragging?: boolean;
 	isAnyDragging?: boolean;
@@ -1135,7 +1169,8 @@ interface TasksPluginSubtaskItemProps {
 function TasksPluginSubtaskItem({
 	subtask,
 	onToggle,
-	onDelete,
+	onDeleteClick,
+	isPendingDelete,
 	onUpdateText,
 	isDragging = false,
 	isAnyDragging = false,
@@ -1247,11 +1282,20 @@ function TasksPluginSubtaskItem({
 
 			<button
 				type="button"
-				onClick={onDelete}
-				className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-red-500/15 group-hover/subtask:opacity-100 active:scale-90"
-				aria-label="Delete subtask"
+				onClick={onDeleteClick}
+				className={cn(
+					"flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded transition-all duration-150 ease-out active:scale-90",
+					isPendingDelete
+						? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
+						: "opacity-0 hover:bg-red-500/15 group-hover/subtask:opacity-100",
+				)}
+				aria-label={isPendingDelete ? "Confirm delete" : "Delete subtask"}
 			>
-				<X className="h-3 w-3 text-white/30 transition-colors duration-150 hover:text-red-400" />
+				{isPendingDelete ? (
+					<Check className="h-3 w-3 text-red-500" />
+				) : (
+					<X className="h-3 w-3 text-white/30 transition-colors duration-150 hover:text-red-400" />
+				)}
 			</button>
 		</div>
 	);
@@ -2402,13 +2446,13 @@ function TasksPluginManageTagRow({
 		cancelDelete();
 	};
 
-	const saveEdit = async () => {
+	const saveEdit = useCallback(async () => {
 		if (hasError) return;
 		if (editName.trim() !== tag.name) {
 			await onUpdateTag(tag.id, editName.trim(), tag.color);
 		}
 		setIsEditing(false);
-	};
+	}, [hasError, editName, tag.name, tag.id, tag.color, onUpdateTag]);
 
 	const cancelEdit = () => {
 		setIsEditing(false);
@@ -2443,7 +2487,7 @@ function TasksPluginManageTagRow({
 
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [isEditing, editName, hasError]);
+	}, [isEditing, saveEdit]);
 
 	const handleColorSelect = async (color: string) => {
 		setIsColorPickerOpen(false);
