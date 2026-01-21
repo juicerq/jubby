@@ -1,12 +1,12 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 2 of 10 completed
+Task 3 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
 - [x] 2. Frontend Hook - Add updateTaskText function
-- [ ] 3. State and Navigation - Add task detail view infrastructure
+- [x] 3. State and Navigation - Add task detail view infrastructure
 - [ ] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
 - [ ] 5. Create TasksPluginTaskDetail component - Layout structure
 - [ ] 6. TasksPluginTaskDetail - Task info section with inline editing
@@ -45,3 +45,18 @@ Task 2 of 10 completed
   - Optimistic update pattern in this hook: capture `previousTasks` inside `setTasks` callback, invoke backend, rollback on catch
   - Interface order matches return object order for consistency
   - Backend command uses snake_case (`tasks_update_text`), frontend uses camelCase (`updateTaskText`)
+
+## 2026-01-21 12:27 - Task 3: State and Navigation - Add task detail view infrastructure
+- Expanded `TasksView` type to include `'task'`
+- Added `currentTaskId` state and derived `currentTask` from tasks array
+- Added `handleNavigateToTask(taskId)` and `handleNavigateToList()` navigation handlers
+- Updated `useNavigationLevels` with third level for task detail (shows truncated task text)
+- Added `onNavigate` callback to folder level to return to list view
+- Moved `useNavigationLevels` call after `currentTask` derivation for proper dependency ordering
+- **Files changed:**
+  - `src/plugins/tasks/TasksPlugin.tsx` - Added view type, state, handlers, navigation levels
+- **Learnings for future iterations:**
+  - `useNavigationLevels` must be called after all derived state it depends on is defined
+  - Use `void` statement to satisfy `noUnusedLocals` for infrastructure functions that will be wired up in later tasks
+  - Navigation levels pattern: `[root, parent && {}, child && {}]` - falsy values are filtered out
+  - Task text truncation: `text.length > 20 ? `${text.slice(0, 20)}...` : text` for breadcrumb display

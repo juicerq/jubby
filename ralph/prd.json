@@ -44,7 +44,7 @@
 			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "This establishes the navigation foundation. The breadcrumb will show: jubby / Tasks / {folderName} / {taskName}. Clicking folder in breadcrumb returns to list view."
 	},
 	{

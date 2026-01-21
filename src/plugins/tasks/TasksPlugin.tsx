@@ -50,7 +50,7 @@ const TAG_COLORS = [
 	{ name: "Gray", hex: "#6b7280", contrastText: "white" },
 ] as const;
 
-type TasksView = "folders" | "list";
+type TasksView = "folders" | "list" | "task";
 
 function TasksPlugin(_props: PluginProps) {
 	// Folder management
@@ -68,27 +68,13 @@ function TasksPlugin(_props: PluginProps) {
 	const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 	const [view, setView] = useState<TasksView>("folders");
 
+	// Current task state (null means we're not viewing a specific task)
+	const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+
 	// Get current folder details
 	const currentFolder = currentFolderId
 		? (folders.find((f) => f.id === currentFolderId) ?? null)
 		: null;
-
-	// Declarative navigation: levels derived from state
-	useNavigationLevels([
-		{
-			id: "tasks",
-			label: "Tasks",
-			onNavigate: () => {
-				setCurrentFolderId(null);
-				setView("folders");
-				loadFolders();
-			},
-		},
-		currentFolder && {
-			id: `folder-${currentFolderId}`,
-			label: currentFolder.name,
-		},
-	]);
 
 	// Tasks storage - only loads when we have a folder selected
 	const {
@@ -110,6 +96,39 @@ function TasksPlugin(_props: PluginProps) {
 
 	const isLoading =
 		view === "folders" ? foldersLoading : foldersLoading || tasksLoading;
+
+	const currentTask = currentTaskId
+		? (tasks.find((t) => t.id === currentTaskId) ?? null)
+		: null;
+
+	// Declarative navigation: levels derived from state
+	useNavigationLevels([
+		{
+			id: "tasks",
+			label: "Tasks",
+			onNavigate: () => {
+				setCurrentFolderId(null);
+				setCurrentTaskId(null);
+				setView("folders");
+				loadFolders();
+			},
+		},
+		currentFolder && {
+			id: `folder-${currentFolderId}`,
+			label: currentFolder.name,
+			onNavigate: () => {
+				setCurrentTaskId(null);
+				setView("list");
+			},
+		},
+		currentTask && {
+			id: `task-${currentTaskId}`,
+			label:
+				currentTask.text.length > 20
+					? `${currentTask.text.slice(0, 20)}...`
+					: currentTask.text,
+		},
+	]);
 
 	const [newTaskText, setNewTaskText] = useState("");
 	const {
@@ -156,6 +175,19 @@ function TasksPlugin(_props: PluginProps) {
 		setView("folders");
 		loadFolders();
 	};
+
+	const handleNavigateToTask = (taskId: string) => {
+		setCurrentTaskId(taskId);
+		setView("task");
+	};
+
+	const handleNavigateToList = () => {
+		setCurrentTaskId(null);
+		setView("list");
+	};
+
+	void handleNavigateToTask;
+	void handleNavigateToList;
 
 	const handleCreateFolder = async () => {
 		if (!newFolderName.trim()) return;
