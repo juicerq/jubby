@@ -1,13 +1,13 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 3 of 10 completed
+Task 4 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
 - [x] 2. Frontend Hook - Add updateTaskText function
 - [x] 3. State and Navigation - Add task detail view infrastructure
-- [ ] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
+- [x] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
 - [ ] 5. Create TasksPluginTaskDetail component - Layout structure
 - [ ] 6. TasksPluginTaskDetail - Task info section with inline editing
 - [ ] 7. TasksPluginTaskDetail - Subtasks section with input on top
@@ -60,3 +60,23 @@ Task 3 of 10 completed
   - Use `void` statement to satisfy `noUnusedLocals` for infrastructure functions that will be wired up in later tasks
   - Navigation levels pattern: `[root, parent && {}, child && {}]` - falsy values are filtered out
   - Task text truncation: `text.length > 20 ? `${text.slice(0, 20)}...` : text` for breadcrumb display
+
+## 2026-01-21 12:31 - Task 4: Modify TasksPluginItem - Remove inline subtasks, add click navigation
+- Removed `isExpanded` state from `TasksPluginItem`
+- Removed `TasksPluginSubtaskSection` component (was only used for inline expand/collapse)
+- Removed subtask-related props from `TasksPluginItemProps`: `onCreateSubtask`, `onToggleSubtask`, `onDeleteSubtask`, `onReorderSubtasks`
+- Kept `TasksPluginProgressBadge` - still shows subtask count (e.g., '2/5')
+- Added `onTaskClick` prop to `TasksPluginItemProps`
+- Made task row clickable with `role="button"`, `tabIndex={0}`, `cursor-pointer`, and proper keyboard support
+- Added `e.stopPropagation()` to checkbox, tags button, and delete button to prevent triggering task click
+- Updated `TasksPluginList` to pass `onTaskClick` prop
+- Connected `onTaskClick` to `handleNavigateToTask` in main component
+- Exported subtask components for reuse in task detail view: `TasksPluginSubtaskInput`, `TasksPluginSubtaskList`, `TasksPluginProgressBadge`, `TasksPluginTagBadge`, `TasksPluginTagEditorPopover`
+- Removed unused `ChevronDown` and `ChevronRight` icon imports
+- **Files changed:**
+  - `src/plugins/tasks/TasksPlugin.tsx` - Simplified TasksPluginItem, added click navigation, exported reusable components
+- **Learnings for future iterations:**
+  - `e.stopPropagation()` is essential on nested interactive elements to prevent bubbling to parent click handlers
+  - Export components that will be reused across files instead of using `void` statements
+  - When removing a wrapper component (TasksPluginSubtaskSection), keep the inner components (TasksPluginSubtaskList, TasksPluginSubtaskInput) if they'll be needed elsewhere
+  - Task item needs `role="button"` and keyboard handlers for accessibility when using div as clickable element

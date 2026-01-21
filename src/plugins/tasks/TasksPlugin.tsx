@@ -1,7 +1,5 @@
 import {
 	Check,
-	ChevronDown,
-	ChevronRight,
 	FolderOpen,
 	GripVertical,
 	Minus,
@@ -88,11 +86,16 @@ function TasksPlugin(_props: PluginProps) {
 		createTag,
 		updateTag,
 		deleteTag,
-		createSubtask,
-		toggleSubtask,
-		deleteSubtask,
-		reorderSubtasks,
+		createSubtask: _createSubtask,
+		toggleSubtask: _toggleSubtask,
+		deleteSubtask: _deleteSubtask,
+		reorderSubtasks: _reorderSubtasks,
 	} = useTasksStorage(currentFolderId ?? "");
+
+	void _createSubtask;
+	void _toggleSubtask;
+	void _deleteSubtask;
+	void _reorderSubtasks;
 
 	const isLoading =
 		view === "folders" ? foldersLoading : foldersLoading || tasksLoading;
@@ -186,7 +189,6 @@ function TasksPlugin(_props: PluginProps) {
 		setView("list");
 	};
 
-	void handleNavigateToTask;
 	void handleNavigateToList;
 
 	const handleCreateFolder = async () => {
@@ -415,10 +417,7 @@ function TasksPlugin(_props: PluginProps) {
 						editingTagsTaskId={editingTagsTaskId}
 						onEditTags={setEditingTagsTaskId}
 						onToggleTagOnTask={handleToggleTagOnTask}
-						onCreateSubtask={createSubtask}
-						onToggleSubtask={toggleSubtask}
-						onDeleteSubtask={deleteSubtask}
-						onReorderSubtasks={reorderSubtasks}
+						onTaskClick={handleNavigateToTask}
 					/>
 				)}
 			</div>
@@ -587,10 +586,7 @@ interface TasksPluginListProps {
 	editingTagsTaskId: string | null;
 	onEditTags: (taskId: string | null) => void;
 	onToggleTagOnTask: (taskId: string, tagId: string) => void;
-	onCreateSubtask: (taskId: string, text: string) => Promise<void>;
-	onToggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
-	onDeleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
-	onReorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
+	onTaskClick: (taskId: string) => void;
 }
 
 function TasksPluginList({
@@ -602,10 +598,7 @@ function TasksPluginList({
 	editingTagsTaskId,
 	onEditTags,
 	onToggleTagOnTask,
-	onCreateSubtask,
-	onToggleSubtask,
-	onDeleteSubtask,
-	onReorderSubtasks,
+	onTaskClick,
 }: TasksPluginListProps) {
 	return (
 		<div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
@@ -621,12 +614,7 @@ function TasksPluginList({
 					onEditTags={() => onEditTags(task.id)}
 					onCloseTagEditor={() => onEditTags(null)}
 					onToggleTag={(tagId) => onToggleTagOnTask(task.id, tagId)}
-					onCreateSubtask={(text) => onCreateSubtask(task.id, text)}
-					onToggleSubtask={(subtaskId) => onToggleSubtask(task.id, subtaskId)}
-					onDeleteSubtask={(subtaskId) => onDeleteSubtask(task.id, subtaskId)}
-					onReorderSubtasks={(subtaskIds) =>
-						onReorderSubtasks(task.id, subtaskIds)
-					}
+					onTaskClick={() => onTaskClick(task.id)}
 				/>
 			))}
 		</div>
@@ -643,10 +631,7 @@ interface TasksPluginItemProps {
 	onEditTags: () => void;
 	onCloseTagEditor: () => void;
 	onToggleTag: (tagId: string) => void;
-	onCreateSubtask: (text: string) => void;
-	onToggleSubtask: (subtaskId: string) => void;
-	onDeleteSubtask: (subtaskId: string) => void;
-	onReorderSubtasks: (subtaskIds: string[]) => void;
+	onTaskClick: () => void;
 }
 
 function TasksPluginItem({
@@ -659,29 +644,32 @@ function TasksPluginItem({
 	onEditTags,
 	onCloseTagEditor,
 	onToggleTag,
-	onCreateSubtask,
-	onToggleSubtask,
-	onDeleteSubtask,
-	onReorderSubtasks,
+	onTaskClick,
 }: TasksPluginItemProps) {
-	const [isExpanded, setIsExpanded] = useState(false);
-
 	const taskTags = (task.tagIds ?? [])
 		.map((tagId) => tags.find((t) => t.id === tagId))
 		.filter((t): t is TagType => t !== undefined);
 
 	const hasTags = tags.length > 0;
 	const hasSubtasks = task.subtasks.length > 0;
-	const sortedSubtasks = [...task.subtasks].sort(
-		(a, b) => a.position - b.position,
-	);
 	const completedCount = task.subtasks.filter((s) => s.completed).length;
 	const totalCount = task.subtasks.length;
 
 	return (
 		<div
-			className="group/task flex flex-col rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4"
-			onClick={(e) => e.stopPropagation()}
+			role="button"
+			tabIndex={0}
+			className="group/task flex flex-col rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4 cursor-pointer"
+			onClick={(e) => {
+				e.stopPropagation();
+				onTaskClick();
+			}}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onTaskClick();
+				}
+			}}
 		>
 			<div className="flex items-start gap-3">
 				<button
@@ -696,7 +684,10 @@ function TasksPluginItem({
 						task.status === "pending" &&
 							"border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4",
 					)}
-					onClick={() => onToggle(task.id)}
+					onClick={(e) => {
+						e.stopPropagation();
+						onToggle(task.id);
+					}}
 					aria-label={
 						task.status === "pending"
 							? "Mark as in progress"
@@ -789,7 +780,10 @@ function TasksPluginItem({
 							? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
 							: "opacity-0 hover:bg-red-500/15 group-hover/task:opacity-100",
 					)}
-					onClick={() => onDeleteClick(task.id)}
+					onClick={(e) => {
+						e.stopPropagation();
+						onDeleteClick(task.id);
+					}}
 					aria-label={isPendingDelete ? "Confirm delete" : "Delete task"}
 				>
 					{isPendingDelete ? (
@@ -799,16 +793,6 @@ function TasksPluginItem({
 					)}
 				</button>
 			</div>
-
-			<TasksPluginSubtaskSection
-				subtasks={sortedSubtasks}
-				isExpanded={isExpanded}
-				onToggleExpand={() => setIsExpanded(!isExpanded)}
-				onCreateSubtask={onCreateSubtask}
-				onToggleSubtask={onToggleSubtask}
-				onDeleteSubtask={onDeleteSubtask}
-				onReorderSubtasks={onReorderSubtasks}
-			/>
 		</div>
 	);
 }
@@ -843,73 +827,6 @@ function TasksPluginProgressBadge({
 			/>
 			{completed}/{total}
 		</span>
-	);
-}
-
-interface TasksPluginSubtaskSectionProps {
-	subtasks: Subtask[];
-	isExpanded: boolean;
-	onToggleExpand: () => void;
-	onCreateSubtask: (text: string) => void;
-	onToggleSubtask: (subtaskId: string) => void;
-	onDeleteSubtask: (subtaskId: string) => void;
-	onReorderSubtasks: (subtaskIds: string[]) => void;
-}
-
-function TasksPluginSubtaskSection({
-	subtasks,
-	isExpanded,
-	onToggleExpand,
-	onCreateSubtask,
-	onToggleSubtask,
-	onDeleteSubtask,
-	onReorderSubtasks,
-}: TasksPluginSubtaskSectionProps) {
-	const hasSubtasks = subtasks.length > 0;
-
-	return (
-		<div className="ml-[30px] mt-1">
-			<button
-				type="button"
-				onClick={onToggleExpand}
-				className="flex items-center gap-1 rounded py-1 text-[11px] text-white/40 transition-all duration-150 ease-out hover:text-white/60"
-			>
-				{isExpanded ? (
-					<ChevronDown className="h-3 w-3" />
-				) : (
-					<ChevronRight className="h-3 w-3" />
-				)}
-				<span>
-					{hasSubtasks
-						? `${subtasks.length} subtask${subtasks.length !== 1 ? "s" : ""}`
-						: "Add subtasks"}
-				</span>
-			</button>
-
-			<AnimatePresence initial={false}>
-				{isExpanded && (
-					<motion.div
-						initial={{ height: 0, opacity: 0 }}
-						animate={{ height: "auto", opacity: 1 }}
-						exit={{ height: 0, opacity: 0 }}
-						transition={{ duration: 0.15, ease: "easeOut" }}
-						className="overflow-hidden"
-					>
-						<div className="flex flex-col gap-0.5 pt-1">
-							{hasSubtasks && (
-								<TasksPluginSubtaskList
-									subtasks={subtasks}
-									onToggleSubtask={onToggleSubtask}
-									onDeleteSubtask={onDeleteSubtask}
-									onReorderSubtasks={onReorderSubtasks}
-								/>
-							)}
-							<TasksPluginSubtaskInput onCreateSubtask={onCreateSubtask} />
-						</div>
-					</motion.div>
-				)}
-			</AnimatePresence>
-		</div>
 	);
 }
 
@@ -2609,4 +2526,12 @@ function TasksPluginColorPickerDropdown({
 	);
 }
 
-export { TasksPlugin, TAG_COLORS };
+export {
+	TasksPlugin,
+	TasksPluginProgressBadge,
+	TasksPluginSubtaskInput,
+	TasksPluginSubtaskList,
+	TasksPluginTagBadge,
+	TasksPluginTagEditorPopover,
+	TAG_COLORS,
+};
