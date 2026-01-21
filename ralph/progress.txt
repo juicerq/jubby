@@ -1,7 +1,7 @@
 # Contextual Logging System - PRD
 
 ## Current Status
-Task 12 of 16 completed
+Task 13 of 16 completed
 
 ## Tasks
 - [x] 1. Rust - Create tracing types and data structures
@@ -15,7 +15,7 @@ Task 12 of 16 completed
 - [x] 9. Rust - Create mod.rs and init_tracing()
 - [x] 10. Rust - Add required dependencies (already present)
 - [x] 11. Rust - Integration test with existing command
-- [ ] 12. TypeScript - Create trace types
+- [x] 12. TypeScript - Create trace types
 - [ ] 13. TypeScript - Implement createTrace and Trace class
 - [ ] 14. TypeScript - Add trace propagation to invoke wrapper
 - [ ] 15. TypeScript - Integration test with existing component
@@ -157,3 +157,16 @@ Trace 3 ──┘   └─────────────┘     │ - flus
   - Explicit `drop(trace)` is clearer than relying on implicit drop at end of function
   - Unused warnings in traces module are expected until more commands adopt tracing
   - Command chosen was read-only and simple - good for validating the full flow without side effects
+
+## 2026-01-21 19:57 - Task 12: TypeScript - Create trace types
+- Created `src/lib/trace.ts` with type definitions
+- Defined `TraceContext` as `Record<string, string | number | boolean>`
+- Defined `TraceError` interface with `message` and `code` fields
+- Defined `ContextCleanup` type alias for cleanup functions returned by `push()`
+- Defined `Trace` interface with: `id`, `push()`, `debug()`, `info()`, `warn()`, `error()`, `end()`, `[Symbol.dispose]`
+- Updated `tsconfig.json` lib from ES2020 to ESNext (required for Symbol.dispose)
+- Files changed: `src/lib/trace.ts`, `tsconfig.json`
+- **Learnings for future iterations:**
+  - `Symbol.dispose` requires ESNext lib in tsconfig (ES2020 doesn't have it)
+  - tsconfig.json LSP errors about comments are false positives (JSONC format)
+  - Keep types minimal and self-documenting per CLAUDE.md code philosophy
