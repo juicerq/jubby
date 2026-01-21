@@ -126,6 +126,9 @@ function TasksPlugin(_props: PluginProps) {
 		isLooping,
 		startLoop,
 		stopLoop,
+		generateSubtasks,
+		isGenerating,
+		createSubtaskBatch,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	const isLoading =
@@ -443,6 +446,9 @@ function TasksPlugin(_props: PluginProps) {
 					onStartLoop={startLoop}
 					onStopLoop={stopLoop}
 					onNavigateBack={handleNavigateToList}
+					onGenerateSubtasks={generateSubtasks}
+					onCreateSubtaskBatch={createSubtaskBatch}
+					isGenerating={isGenerating}
 				/>
 			</div>
 		);

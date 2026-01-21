@@ -1,4 +1,17 @@
-import { Check, Minus, Pencil, Play, Square, X } from "lucide-react";
+import {
+	Check,
+	Code2,
+	Loader2,
+	Minus,
+	Pencil,
+	Play,
+	Sparkles,
+	Square,
+	TestTube2,
+	Trash2,
+	X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -14,7 +27,7 @@ import type {
 	Task,
 	TaskStatus,
 } from "./types";
-import { usePendingDelete } from "./useTasksStorage";
+import { type GeneratedSubtask, usePendingDelete } from "./useTasksStorage";
 
 interface TasksPluginTaskDetailProps {
 	task: Task;
@@ -80,6 +93,12 @@ interface TasksPluginTaskDetailProps {
 	onStartLoop: (taskId: string) => void;
 	onStopLoop: () => void;
 	onNavigateBack: () => void;
+	onGenerateSubtasks: (taskId: string) => Promise<GeneratedSubtask[] | null>;
+	onCreateSubtaskBatch: (
+		taskId: string,
+		subtasks: GeneratedSubtask[],
+	) => Promise<void>;
+	isGenerating: boolean;
 }
 
 function TasksPluginTaskDetail({
@@ -109,6 +128,9 @@ function TasksPluginTaskDetail({
 	onStartLoop,
 	onStopLoop,
 	onNavigateBack,
+	onGenerateSubtasks,
+	onCreateSubtaskBatch,
+	isGenerating,
 }: TasksPluginTaskDetailProps) {
 	const {
 		pendingId: pendingDeleteId,
@@ -172,14 +194,15 @@ function TasksPluginTaskDetail({
 				<TasksPluginTaskDetailSectionHeader
 					title="Subtasks"
 					right={
-						<TasksPluginRunAllButton
+						<TasksPluginSubtaskHeaderActions
+							task={task}
 							isLooping={isLooping}
 							isExecuting={isExecuting}
-							hasWaitingSubtasks={task.subtasks.some(
-								(s) => s.status === "waiting",
-							)}
+							isGenerating={isGenerating}
 							onStartLoop={() => onStartLoop(task.id)}
 							onStopLoop={onStopLoop}
+							onGenerateSubtasks={onGenerateSubtasks}
+							onCreateSubtaskBatch={onCreateSubtaskBatch}
 						/>
 					}
 				/>
@@ -437,60 +460,338 @@ function TasksPluginTaskInfo({
 	);
 }
 
-interface TasksPluginRunAllButtonProps {
+interface TasksPluginSubtaskHeaderActionsProps {
+	task: Task;
 	isLooping: boolean;
 	isExecuting: boolean;
-	hasWaitingSubtasks: boolean;
+	isGenerating: boolean;
 	onStartLoop: () => void;
 	onStopLoop: () => void;
+	onGenerateSubtasks: (taskId: string) => Promise<GeneratedSubtask[] | null>;
+	onCreateSubtaskBatch: (
+		taskId: string,
+		subtasks: GeneratedSubtask[],
+	) => Promise<void>;
 }
 
-function TasksPluginRunAllButton({
+function TasksPluginSubtaskHeaderActions({
+	task,
 	isLooping,
 	isExecuting,
-	hasWaitingSubtasks,
+	isGenerating,
 	onStartLoop,
 	onStopLoop,
-}: TasksPluginRunAllButtonProps) {
-	if (isLooping) {
-		return (
-			<button
-				type="button"
-				onClick={onStopLoop}
-				className="flex h-6 items-center gap-1.5 rounded-md bg-red-500/15 px-2 text-[11px] font-medium text-red-400 transition-all duration-150 ease-out hover:bg-red-500/25 active:scale-[0.96]"
-				aria-label="Stop loop"
-			>
-				<Square className="h-3 w-3 fill-red-400" />
-				Stop
-			</button>
-		);
-	}
+	onGenerateSubtasks,
+	onCreateSubtaskBatch,
+}: TasksPluginSubtaskHeaderActionsProps) {
+	const [previewSubtasks, setPreviewSubtasks] = useState<GeneratedSubtask[]>(
+		[],
+	);
+	const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-	const isDisabled = isExecuting || !hasWaitingSubtasks;
+	const handleGenerate = async () => {
+		const result = await onGenerateSubtasks(task.id);
+		if (result && result.length > 0) {
+			setPreviewSubtasks(result);
+			setIsPreviewOpen(true);
+		}
+	};
+
+	const handleConfirmGenerated = async () => {
+		await onCreateSubtaskBatch(task.id, previewSubtasks);
+		setIsPreviewOpen(false);
+		setPreviewSubtasks([]);
+	};
+
+	const handleRemovePreviewSubtask = (index: number) => {
+		setPreviewSubtasks((prev) => prev.filter((_, i) => i !== index));
+	};
+
+	const handleClosePreview = () => {
+		setIsPreviewOpen(false);
+		setPreviewSubtasks([]);
+	};
+
+	const hasWaitingSubtasks = task.subtasks.some((s) => s.status === "waiting");
+	const hasDescription = task.description.trim().length > 0;
 
 	return (
-		<button
-			type="button"
-			onClick={onStartLoop}
-			disabled={isDisabled}
-			className={cn(
-				"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
-				isDisabled
-					? "cursor-not-allowed bg-white/4 text-white/25"
-					: "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
-			)}
-			aria-label="Run all waiting subtasks"
-			title={
-				!hasWaitingSubtasks
-					? "No waiting subtasks"
-					: isExecuting
-						? "Execution in progress"
-						: "Run all waiting subtasks"
-			}
+		<>
+			<div className="flex items-center gap-1.5">
+				<button
+					type="button"
+					onClick={handleGenerate}
+					disabled={isGenerating || isExecuting || !hasDescription}
+					className={cn(
+						"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+						isGenerating || isExecuting || !hasDescription
+							? "cursor-not-allowed bg-white/4 text-white/25"
+							: "bg-violet-500/15 text-violet-400 hover:bg-violet-500/25",
+					)}
+					aria-label="Generate subtasks with AI"
+					title={
+						!hasDescription
+							? "Add a description first"
+							: isGenerating
+								? "Generating..."
+								: isExecuting
+									? "Execution in progress"
+									: "Generate subtasks with AI"
+					}
+				>
+					{isGenerating ? (
+						<Loader2 className="h-3 w-3 animate-spin" />
+					) : (
+						<Sparkles className="h-3 w-3" />
+					)}
+					{isGenerating ? "Generating..." : "Generate"}
+				</button>
+
+				{isLooping ? (
+					<button
+						type="button"
+						onClick={onStopLoop}
+						className="flex h-6 items-center gap-1.5 rounded-md bg-red-500/15 px-2 text-[11px] font-medium text-red-400 transition-all duration-150 ease-out hover:bg-red-500/25 active:scale-[0.96]"
+						aria-label="Stop loop"
+					>
+						<Square className="h-3 w-3 fill-red-400" />
+						Stop
+					</button>
+				) : (
+					<button
+						type="button"
+						onClick={onStartLoop}
+						disabled={isExecuting || !hasWaitingSubtasks}
+						className={cn(
+							"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+							isExecuting || !hasWaitingSubtasks
+								? "cursor-not-allowed bg-white/4 text-white/25"
+								: "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
+						)}
+						aria-label="Run all waiting subtasks"
+						title={
+							!hasWaitingSubtasks
+								? "No waiting subtasks"
+								: isExecuting
+									? "Execution in progress"
+									: "Run all waiting subtasks"
+						}
+					>
+						<Play className="h-3 w-3 fill-current" />
+						Run All
+					</button>
+				)}
+			</div>
+
+			<AnimatePresence>
+				{isPreviewOpen && previewSubtasks.length > 0 && (
+					<TasksPluginGeneratePreviewModal
+						subtasks={previewSubtasks}
+						onConfirm={handleConfirmGenerated}
+						onRemove={handleRemovePreviewSubtask}
+						onClose={handleClosePreview}
+					/>
+				)}
+			</AnimatePresence>
+		</>
+	);
+}
+
+interface TasksPluginGeneratePreviewModalProps {
+	subtasks: GeneratedSubtask[];
+	onConfirm: () => void;
+	onRemove: (index: number) => void;
+	onClose: () => void;
+}
+
+function TasksPluginGeneratePreviewModal({
+	subtasks,
+	onConfirm,
+	onRemove,
+	onClose,
+}: TasksPluginGeneratePreviewModalProps) {
+	return (
+		<motion.div
+			initial={{ opacity: 0 }}
+			animate={{ opacity: 1 }}
+			exit={{ opacity: 0 }}
+			transition={{ duration: 0.15 }}
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+			onClick={onClose}
 		>
-			<Play className="h-3 w-3 fill-current" />
-			Run All
-		</button>
+			<motion.div
+				initial={{ opacity: 0, scale: 0.95, y: 10 }}
+				animate={{ opacity: 1, scale: 1, y: 0 }}
+				exit={{ opacity: 0, scale: 0.95, y: 10 }}
+				transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+				className="mx-4 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0c0c0c] shadow-2xl"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+					<div className="flex items-center gap-3">
+						<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15">
+							<Sparkles className="h-4 w-4 text-violet-400" />
+						</div>
+						<div>
+							<h2 className="text-[14px] font-semibold tracking-tight text-white/90">
+								Generated Subtasks
+							</h2>
+							<p className="text-[11px] text-white/40">
+								{subtasks.length} subtask{subtasks.length > 1 ? "s" : ""} ready
+								to add
+							</p>
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={onClose}
+						className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition-all duration-150 hover:bg-white/8 hover:text-white/70 active:scale-95"
+						aria-label="Close"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				</div>
+
+				<div className="flex-1 overflow-y-auto p-4">
+					<div className="flex flex-col gap-2">
+						{subtasks.map((subtask, index) => (
+							<TasksPluginGeneratePreviewItem
+								key={`${subtask.text}-${index}`}
+								subtask={subtask}
+								onRemove={() => onRemove(index)}
+							/>
+						))}
+					</div>
+				</div>
+
+				<div className="flex items-center justify-end gap-2 border-t border-white/8 px-5 py-4">
+					<button
+						type="button"
+						onClick={onClose}
+						className="h-8 rounded-md px-4 text-[12px] font-medium text-white/50 transition-all duration-150 hover:bg-white/6 hover:text-white/70 active:scale-[0.98]"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={onConfirm}
+						disabled={subtasks.length === 0}
+						className="flex h-8 items-center gap-2 rounded-md bg-violet-500/20 px-4 text-[12px] font-medium text-violet-300 transition-all duration-150 hover:bg-violet-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+					>
+						<Check className="h-3.5 w-3.5" />
+						Add {subtasks.length} Subtask{subtasks.length > 1 ? "s" : ""}
+					</button>
+				</div>
+			</motion.div>
+		</motion.div>
+	);
+}
+
+interface TasksPluginGeneratePreviewItemProps {
+	subtask: GeneratedSubtask;
+	onRemove: () => void;
+}
+
+function TasksPluginGeneratePreviewItem({
+	subtask,
+	onRemove,
+}: TasksPluginGeneratePreviewItemProps) {
+	const [isExpanded, setIsExpanded] = useState(false);
+	const hasDetails =
+		subtask.steps.length > 0 || subtask.notes.trim().length > 0;
+
+	return (
+		<div className="group flex flex-col rounded-lg border border-white/6 bg-white/[0.02] transition-all duration-150 hover:border-white/10 hover:bg-white/[0.03]">
+			<div
+				className={cn(
+					"flex items-start gap-3 p-3",
+					hasDetails && "cursor-pointer",
+				)}
+				onClick={() => hasDetails && setIsExpanded((prev) => !prev)}
+			>
+				<div
+					className={cn(
+						"mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded",
+						subtask.category === "functional"
+							? "bg-sky-500/15 text-sky-400"
+							: "bg-violet-500/15 text-violet-400",
+					)}
+				>
+					{subtask.category === "functional" ? (
+						<Code2 className="h-3 w-3" />
+					) : (
+						<TestTube2 className="h-3 w-3" />
+					)}
+				</div>
+
+				<div className="flex min-w-0 flex-1 flex-col gap-1">
+					<span className="text-[12px] font-medium leading-tight text-white/80">
+						{subtask.text}
+					</span>
+					{subtask.steps.length > 0 && (
+						<span className="text-[10px] text-white/35">
+							{subtask.steps.length} step{subtask.steps.length > 1 ? "s" : ""}
+						</span>
+					)}
+				</div>
+
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onRemove();
+					}}
+					className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-white/25 opacity-0 transition-all duration-150 hover:bg-red-500/15 hover:text-red-400 group-hover:opacity-100 active:scale-90"
+					aria-label="Remove subtask"
+				>
+					<Trash2 className="h-3.5 w-3.5" />
+				</button>
+			</div>
+
+			<AnimatePresence>
+				{isExpanded && hasDetails && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
+						className="overflow-hidden"
+					>
+						<div className="flex flex-col gap-2 border-t border-white/6 px-3 pb-3 pt-2">
+							{subtask.steps.length > 0 && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Steps
+									</span>
+									<ul className="flex flex-col gap-0.5">
+										{subtask.steps.map((step) => (
+											<li
+												key={step.text}
+												className="flex items-center gap-1.5 text-[11px] text-white/50"
+											>
+												<span className="h-1 w-1 shrink-0 rounded-full bg-white/20" />
+												{step.text}
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
+
+							{subtask.notes.trim().length > 0 && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Notes
+									</span>
+									<p className="text-[11px] leading-relaxed text-white/40">
+										{subtask.notes}
+									</p>
+								</div>
+							)}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
 	);
 }
 

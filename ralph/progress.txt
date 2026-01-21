@@ -608,3 +608,43 @@ Task 17 of 19 completed
   - `get_session_last_message` helper at lines ~162-227
   - `extract_json_from_response` at lines ~75-93
   - Frontend will receive subtasks and show preview for user confirmation before creating
+
+## 2026-01-21 16:26 - Task 17: Frontend - AI Generate subtasks feature
+
+### What was implemented
+- Added `generateSubtasks` function to `useTasksStorage` hook that calls backend `tasks_generate_subtasks`
+- Added `createSubtaskBatch` function for creating multiple subtasks sequentially after user confirmation
+- Added `isGenerating` state to track generation in progress
+- Created new types: `GeneratedStep`, `GeneratedSubtask`, `GenerateSubtasksResultFromBackend`
+- Created `TasksPluginSubtaskHeaderActions` component combining Generate and Run All buttons
+- Created `TasksPluginGeneratePreviewModal` - premium modal with backdrop blur for reviewing generated subtasks
+- Created `TasksPluginGeneratePreviewItem` - expandable cards showing subtask details (text, steps, notes, category)
+- Generate button shows sparkle icon (Sparkles from lucide-react), violet/purple theme
+- Loading state shows spinner with "Generating..." text
+- Disabled state when: generating, executing, or no description on task
+- Preview modal allows removing individual subtasks before confirming
+- Confirm button creates all remaining subtasks via batch creation
+- Smooth animations using motion/react AnimatePresence for modal and item expansion
+
+### Files changed
+- `src/plugins/tasks/useTasksStorage.ts` - Added generateSubtasks, createSubtaskBatch, isGenerating, new types
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added SubtaskHeaderActions, GeneratePreviewModal, GeneratePreviewItem components
+- `src/plugins/tasks/TasksPlugin.tsx` - Wired up new props to TasksPluginTaskDetail
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Combine related header actions into a single component (SubtaskHeaderActions) to keep prop drilling manageable
+  - Use AnimatePresence at the parent level for modals to enable smooth exit animations
+  - Generated content preview pattern: generate → show modal → allow edit/remove → confirm batch create
+  - Batch creation sequentially (not Promise.all) to maintain order and avoid race conditions with order field
+- **Gotchas encountered:**
+  - ESLint forbids array index as key even for map within a specific context - use step.text as key instead
+  - Need to import motion from "motion/react" for AnimatePresence to work with exit animations
+  - Modal needs both backdrop (for click-outside close) and inner container (for stopPropagation)
+  - createSubtaskBatch needs unique tempIds per subtask - use timestamp + random string
+- **Useful context:**
+  - TasksPluginSubtaskHeaderActions at lines ~463-590 in TasksPluginTaskDetail.tsx
+  - TasksPluginGeneratePreviewModal at lines ~600-690 in TasksPluginTaskDetail.tsx
+  - TasksPluginGeneratePreviewItem at lines ~700-780 in TasksPluginTaskDetail.tsx
+  - generateSubtasks at lines ~1266-1300 in useTasksStorage.ts
+  - createSubtaskBatch at lines ~1302-1370 in useTasksStorage.ts

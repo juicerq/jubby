@@ -280,7 +280,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. This is a power feature, should feel magical. Preview is important - user must be able to review before accepting."
 	},
 	{

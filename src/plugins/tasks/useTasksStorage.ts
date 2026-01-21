@@ -134,6 +134,37 @@ interface ExecutionResultFromBackend {
 	errorMessage: string | null;
 }
 
+interface GeneratedStepFromBackend {
+	text: string;
+	completed: boolean;
+}
+
+interface GeneratedSubtaskFromBackend {
+	text: string;
+	steps: GeneratedStepFromBackend[];
+	category: string;
+	notes: string;
+	shouldCommit: boolean;
+}
+
+interface GenerateSubtasksResultFromBackend {
+	subtasks: GeneratedSubtaskFromBackend[];
+	sessionId: string;
+}
+
+export interface GeneratedStep {
+	text: string;
+	completed: boolean;
+}
+
+export interface GeneratedSubtask {
+	text: string;
+	steps: GeneratedStep[];
+	category: SubtaskCategory;
+	notes: string;
+	shouldCommit: boolean;
+}
+
 interface UseTasksStorageReturn {
 	tasks: Task[];
 	tags: Tag[];
@@ -230,6 +261,14 @@ interface UseTasksStorageReturn {
 	// Loop functions
 	startLoop: (taskId: string) => Promise<void>;
 	stopLoop: () => void;
+
+	// Generate subtasks
+	generateSubtasks: (taskId: string) => Promise<GeneratedSubtask[] | null>;
+	isGenerating: boolean;
+	createSubtaskBatch: (
+		taskId: string,
+		subtasks: GeneratedSubtask[],
+	) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -364,6 +403,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 
 	const [isLooping, setIsLooping] = useState(false);
 	const loopAbortedRef = useRef(false);
+	const [isGenerating, setIsGenerating] = useState(false);
 
 	useEffect(() => {
 		const loadData = async () => {
@@ -1227,6 +1267,107 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[isExecuting, isLooping, tasks],
 	);
 
+	const generateSubtasks = useCallback(
+		async (taskId: string): Promise<GeneratedSubtask[] | null> => {
+			if (isGenerating) {
+				toast.error("Generation already in progress");
+				return null;
+			}
+
+			setIsGenerating(true);
+
+			try {
+				const result = await invoke<GenerateSubtasksResultFromBackend>(
+					"tasks_generate_subtasks",
+					{ taskId },
+				);
+				return result.subtasks.map((s) => ({
+					text: s.text,
+					steps: s.steps,
+					category: (s.category || "functional") as SubtaskCategory,
+					notes: s.notes,
+					shouldCommit: s.shouldCommit,
+				}));
+			} catch (error) {
+				const errorMsg = String(error);
+				if (errorMsg.includes("description is empty")) {
+					toast.error("Please add a description to the task first");
+				} else {
+					toast.error("Failed to generate subtasks");
+				}
+				return null;
+			} finally {
+				setIsGenerating(false);
+			}
+		},
+		[isGenerating],
+	);
+
+	const createSubtaskBatch = useCallback(
+		async (taskId: string, subtasksToCreate: GeneratedSubtask[]) => {
+			for (const subtask of subtasksToCreate) {
+				const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+				const task = tasks.find((t) => t.id === taskId);
+				const maxOrder =
+					task?.subtasks.reduce((max, s) => Math.max(max, s.order), -1) ?? -1;
+
+				const optimisticSubtask = createDefaultSubtask(
+					tempId,
+					subtask.text,
+					maxOrder + 1,
+				);
+				optimisticSubtask.category = subtask.category;
+				optimisticSubtask.notes = subtask.notes;
+				optimisticSubtask.shouldCommit = subtask.shouldCommit;
+				optimisticSubtask.steps = subtask.steps.map((step, i) => ({
+					id: `temp-step-${i}`,
+					text: step.text,
+					completed: step.completed,
+				}));
+
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? { ...t, subtasks: [...t.subtasks, optimisticSubtask] }
+							: t,
+					),
+				);
+
+				try {
+					const newSubtask = await invoke<SubtaskFromBackend>(
+						"subtasks_create",
+						{
+							taskId,
+							text: subtask.text,
+						},
+					);
+					setTasks((prev) =>
+						prev.map((t) =>
+							t.id === taskId
+								? {
+										...t,
+										subtasks: t.subtasks.map((s) =>
+											s.id === tempId ? mapBackendSubtask(newSubtask) : s,
+										),
+									}
+								: t,
+						),
+					);
+				} catch (error) {
+					setTasks((prev) =>
+						prev.map((t) =>
+							t.id === taskId
+								? { ...t, subtasks: t.subtasks.filter((s) => s.id !== tempId) }
+								: t,
+						),
+					);
+					toast.error("Failed to create subtask");
+				}
+			}
+		},
+		[tasks],
+	);
+
 	return {
 		tasks,
 		tags,
@@ -1264,6 +1405,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		abortExecution,
 		startLoop,
 		stopLoop,
+		generateSubtasks,
+		isGenerating,
+		createSubtaskBatch,
 	};
 }
 
