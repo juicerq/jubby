@@ -156,7 +156,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. Animation should be subtle and satisfying. No borders between sections, only title separators. Expand icon rotates on expand."
 	},
 	{

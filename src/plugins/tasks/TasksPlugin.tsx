@@ -1,13 +1,17 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import {
 	Check,
+	ChevronRight,
+	Code2,
 	FolderOpen,
+	GitCommitHorizontal,
 	GripVertical,
 	Minus,
 	Pencil,
 	Plus,
 	Settings,
 	Tag,
+	TestTube2,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -26,9 +30,12 @@ import type { PluginProps } from "@/core/types";
 import { cn } from "@/lib/utils";
 import { TasksPluginTaskDetail } from "./TasksPluginTaskDetail";
 import type {
+	ExecutionLog,
 	Folder,
 	RecentTask,
+	Step,
 	Subtask,
+	SubtaskCategory,
 	SubtaskStatus,
 	Tag as TagType,
 	Task,
@@ -94,9 +101,16 @@ function TasksPlugin(_props: PluginProps) {
 		deleteTag,
 		createSubtask,
 		updateSubtaskStatus,
+		updateSubtaskCategory,
+		updateSubtaskNotes,
+		updateSubtaskShouldCommit,
 		deleteSubtask,
 		reorderSubtasks,
 		updateSubtaskText,
+		createStep,
+		toggleStep,
+		deleteStep,
+		updateStepText,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	const isLoading =
@@ -391,6 +405,13 @@ function TasksPlugin(_props: PluginProps) {
 					onDeleteSubtask={deleteSubtask}
 					onReorderSubtasks={reorderSubtasks}
 					onUpdateSubtaskText={updateSubtaskText}
+					onUpdateSubtaskCategory={updateSubtaskCategory}
+					onUpdateSubtaskNotes={updateSubtaskNotes}
+					onUpdateSubtaskShouldCommit={updateSubtaskShouldCommit}
+					onCreateStep={createStep}
+					onToggleStep={toggleStep}
+					onDeleteStep={deleteStep}
+					onUpdateStepText={updateStepText}
 					onNavigateBack={handleNavigateToList}
 				/>
 			</div>
@@ -1097,6 +1118,19 @@ interface TasksPluginSubtaskListProps {
 	onDeleteSubtask: (subtaskId: string) => void;
 	onReorderSubtasks: (subtaskIds: string[]) => void;
 	onUpdateSubtaskText: (subtaskId: string, text: string) => void;
+	onUpdateSubtaskCategory: (
+		subtaskId: string,
+		category: SubtaskCategory,
+	) => void;
+	onUpdateSubtaskNotes: (subtaskId: string, notes: string) => void;
+	onUpdateSubtaskShouldCommit: (
+		subtaskId: string,
+		shouldCommit: boolean,
+	) => void;
+	onCreateStep: (subtaskId: string, text: string) => void;
+	onToggleStep: (subtaskId: string, stepId: string) => void;
+	onDeleteStep: (subtaskId: string, stepId: string) => void;
+	onUpdateStepText: (subtaskId: string, stepId: string, text: string) => void;
 }
 
 function TasksPluginSubtaskList({
@@ -1105,6 +1139,13 @@ function TasksPluginSubtaskList({
 	onDeleteSubtask,
 	onReorderSubtasks,
 	onUpdateSubtaskText,
+	onUpdateSubtaskCategory,
+	onUpdateSubtaskNotes,
+	onUpdateSubtaskShouldCommit,
+	onCreateStep,
+	onToggleStep,
+	onDeleteStep,
+	onUpdateStepText,
 }: TasksPluginSubtaskListProps) {
 	const {
 		pendingId: pendingDeleteId,
@@ -1349,7 +1390,7 @@ function TasksPluginSubtaskList({
 								layout: { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] },
 							}}
 						>
-							<TasksPluginSubtaskItem
+							<TasksPluginSubtaskExpandable
 								subtask={item.subtask}
 								onUpdateStatus={(status) =>
 									onUpdateSubtaskStatus(item.subtask.id, status)
@@ -1358,6 +1399,21 @@ function TasksPluginSubtaskList({
 								isPendingDelete={pendingDeleteId === item.subtask.id}
 								onUpdateText={(text) =>
 									onUpdateSubtaskText(item.subtask.id, text)
+								}
+								onUpdateCategory={(category) =>
+									onUpdateSubtaskCategory(item.subtask.id, category)
+								}
+								onUpdateNotes={(notes) =>
+									onUpdateSubtaskNotes(item.subtask.id, notes)
+								}
+								onUpdateShouldCommit={(shouldCommit) =>
+									onUpdateSubtaskShouldCommit(item.subtask.id, shouldCommit)
+								}
+								onCreateStep={(text) => onCreateStep(item.subtask.id, text)}
+								onToggleStep={(stepId) => onToggleStep(item.subtask.id, stepId)}
+								onDeleteStep={(stepId) => onDeleteStep(item.subtask.id, stepId)}
+								onUpdateStepText={(stepId, text) =>
+									onUpdateStepText(item.subtask.id, stepId, text)
 								}
 								isDragging={
 									draggedId === item.subtask.id && isDraggingRef.current
@@ -1370,158 +1426,6 @@ function TasksPluginSubtaskList({
 					);
 				})}
 			</AnimatePresence>
-		</div>
-	);
-}
-
-interface TasksPluginSubtaskItemProps {
-	subtask: Subtask;
-	onUpdateStatus: (status: SubtaskStatus) => void;
-	onDeleteClick: () => void;
-	isPendingDelete: boolean;
-	onUpdateText: (text: string) => void;
-	isDragging?: boolean;
-	isAnyDragging?: boolean;
-	onMouseDown?: (e: React.MouseEvent) => void;
-	itemRef?: (el: HTMLDivElement | null) => void;
-}
-
-function TasksPluginSubtaskItem({
-	subtask,
-	onUpdateStatus,
-	onDeleteClick,
-	isPendingDelete,
-	onUpdateText,
-	isDragging = false,
-	isAnyDragging = false,
-	onMouseDown,
-	itemRef,
-}: TasksPluginSubtaskItemProps) {
-	const isCompleted = subtask.status === "completed";
-
-	const handleToggle = () => {
-		onUpdateStatus(isCompleted ? "waiting" : "completed");
-	};
-	const [isEditing, setIsEditing] = useState(false);
-	const [editValue, setEditValue] = useState(subtask.text);
-	const inputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		setEditValue(subtask.text);
-	}, [subtask.text]);
-
-	useEffect(() => {
-		if (isEditing && inputRef.current) {
-			inputRef.current.focus();
-			inputRef.current.select();
-		}
-	}, [isEditing]);
-
-	const handleSave = () => {
-		const trimmed = editValue.trim();
-		if (trimmed && trimmed !== subtask.text) {
-			onUpdateText(trimmed);
-		} else {
-			setEditValue(subtask.text);
-		}
-		setIsEditing(false);
-	};
-
-	const handleCancel = () => {
-		setEditValue(subtask.text);
-		setIsEditing(false);
-	};
-
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			handleSave();
-		} else if (e.key === "Escape") {
-			e.preventDefault();
-			handleCancel();
-		}
-	};
-
-	return (
-		<div
-			ref={itemRef}
-			className={cn(
-				"group/subtask flex items-center gap-2 rounded py-1 pr-1 transition-all duration-150 ease-out",
-				isDragging && "opacity-40 scale-[0.98] pointer-events-none",
-			)}
-		>
-			<div
-				onMouseDown={onMouseDown}
-				className="flex h-5 w-4 shrink-0 cursor-grab items-center justify-center"
-			>
-				<GripVertical className="h-3 w-3 text-white/15 transition-colors duration-150 group-hover/subtask:text-white/30" />
-			</div>
-
-			<button
-				type="button"
-				onClick={handleToggle}
-				className={cn(
-					"flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center rounded border transition-all duration-150 ease-out active:scale-[0.9]",
-					isCompleted
-						? "border-white/50 bg-white/50"
-						: "border-white/25 bg-transparent hover:border-white/40",
-				)}
-				aria-label={isCompleted ? "Mark incomplete" : "Mark complete"}
-			>
-				{isCompleted && <Check className="h-2 w-2 text-[#0a0a0a]" />}
-			</button>
-
-			{isEditing ? (
-				<input
-					ref={inputRef}
-					type="text"
-					value={editValue}
-					onChange={(e) => setEditValue(e.target.value)}
-					onKeyDown={handleKeyDown}
-					onBlur={handleSave}
-					className="flex-1 bg-transparent text-[12px] leading-tight tracking-[-0.01em] text-white/70 outline-none"
-					autoComplete="off"
-				/>
-			) : (
-				<span
-					className={cn(
-						"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
-						isCompleted
-							? "text-white/30 line-through decoration-white/20"
-							: "text-white/70",
-						isAnyDragging && "select-none",
-					)}
-				>
-					{subtask.text}
-				</span>
-			)}
-
-			<button
-				type="button"
-				onClick={() => setIsEditing(true)}
-				className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-white/8 group-hover/subtask:opacity-100 active:scale-90"
-				aria-label="Edit subtask"
-			>
-				<Pencil className="h-3 w-3 text-white/40 transition-colors duration-150 hover:text-white/60" />
-			</button>
-
-			<button
-				type="button"
-				onClick={onDeleteClick}
-				className={cn(
-					"flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded transition-all duration-150 ease-out active:scale-90",
-					isPendingDelete
-						? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
-						: "opacity-0 hover:bg-red-500/15 group-hover/subtask:opacity-100",
-				)}
-				aria-label={isPendingDelete ? "Confirm delete" : "Delete subtask"}
-			>
-				{isPendingDelete ? (
-					<Check className="h-3 w-3 text-red-500" />
-				) : (
-					<X className="h-3 w-3 text-white/30 transition-colors duration-150 hover:text-red-400" />
-				)}
-			</button>
 		</div>
 	);
 }
@@ -1553,6 +1457,658 @@ function TasksPluginSubtaskGhost({ subtask }: TasksPluginSubtaskGhostProps) {
 			<span className="flex-1 select-none text-[12px] leading-tight tracking-[-0.01em] text-white/40">
 				{subtask.text}
 			</span>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskExpandableProps {
+	subtask: Subtask;
+	onUpdateStatus: (status: SubtaskStatus) => void;
+	onDeleteClick: () => void;
+	isPendingDelete: boolean;
+	onUpdateText: (text: string) => void;
+	onUpdateCategory: (category: SubtaskCategory) => void;
+	onUpdateNotes: (notes: string) => void;
+	onUpdateShouldCommit: (shouldCommit: boolean) => void;
+	onCreateStep: (text: string) => void;
+	onToggleStep: (stepId: string) => void;
+	onDeleteStep: (stepId: string) => void;
+	onUpdateStepText: (stepId: string, text: string) => void;
+	isDragging?: boolean;
+	isAnyDragging?: boolean;
+	onMouseDown?: (e: React.MouseEvent) => void;
+	itemRef?: (el: HTMLDivElement | null) => void;
+}
+
+function TasksPluginSubtaskExpandable({
+	subtask,
+	onUpdateStatus,
+	onDeleteClick,
+	isPendingDelete,
+	onUpdateText,
+	onUpdateCategory,
+	onUpdateNotes,
+	onUpdateShouldCommit,
+	onCreateStep,
+	onToggleStep,
+	onDeleteStep,
+	onUpdateStepText,
+	isDragging = false,
+	isAnyDragging = false,
+	onMouseDown,
+	itemRef,
+}: TasksPluginSubtaskExpandableProps) {
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [isEditing, setIsEditing] = useState(false);
+	const [editValue, setEditValue] = useState(subtask.text);
+	const [newStepValue, setNewStepValue] = useState("");
+	const [editingStepId, setEditingStepId] = useState<string | null>(null);
+	const [editingStepValue, setEditingStepValue] = useState("");
+	const inputRef = useRef<HTMLInputElement>(null);
+	const stepInputRef = useRef<HTMLInputElement>(null);
+	const editStepInputRef = useRef<HTMLInputElement>(null);
+
+	const isCompleted = subtask.status === "completed";
+	const lastLog =
+		subtask.executionLogs.length > 0
+			? subtask.executionLogs[subtask.executionLogs.length - 1]
+			: null;
+
+	useEffect(() => {
+		setEditValue(subtask.text);
+	}, [subtask.text]);
+
+	useEffect(() => {
+		if (isEditing && inputRef.current) {
+			inputRef.current.focus();
+			inputRef.current.select();
+		}
+	}, [isEditing]);
+
+	useEffect(() => {
+		if (editingStepId && editStepInputRef.current) {
+			editStepInputRef.current.focus();
+			editStepInputRef.current.select();
+		}
+	}, [editingStepId]);
+
+	const handleToggle = () => {
+		onUpdateStatus(isCompleted ? "waiting" : "completed");
+	};
+
+	const handleSave = () => {
+		const trimmed = editValue.trim();
+		if (trimmed && trimmed !== subtask.text) {
+			onUpdateText(trimmed);
+		} else {
+			setEditValue(subtask.text);
+		}
+		setIsEditing(false);
+	};
+
+	const handleCancel = () => {
+		setEditValue(subtask.text);
+		setIsEditing(false);
+	};
+
+	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			handleSave();
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			handleCancel();
+		}
+	};
+
+	const handleRowClick = (e: React.MouseEvent) => {
+		const target = e.target as HTMLElement;
+		if (
+			target.closest("button") ||
+			target.closest("input") ||
+			target.closest("textarea")
+		) {
+			return;
+		}
+		setIsExpanded((prev) => !prev);
+	};
+
+	const handleAddStep = () => {
+		const trimmed = newStepValue.trim();
+		if (trimmed) {
+			onCreateStep(trimmed);
+			setNewStepValue("");
+			stepInputRef.current?.focus();
+		}
+	};
+
+	const handleStepKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			handleAddStep();
+		}
+	};
+
+	const handleStartEditStep = (step: Step) => {
+		setEditingStepId(step.id);
+		setEditingStepValue(step.text);
+	};
+
+	const handleSaveStepEdit = () => {
+		if (editingStepId) {
+			const trimmed = editingStepValue.trim();
+			if (trimmed) {
+				onUpdateStepText(editingStepId, trimmed);
+			}
+			setEditingStepId(null);
+			setEditingStepValue("");
+		}
+	};
+
+	const handleCancelStepEdit = () => {
+		setEditingStepId(null);
+		setEditingStepValue("");
+	};
+
+	const handleStepEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			handleSaveStepEdit();
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			handleCancelStepEdit();
+		}
+	};
+
+	const formatLogTime = (timestamp: number) => {
+		const date = new Date(timestamp);
+		return date.toLocaleDateString("en-US", {
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+	};
+
+	return (
+		<div
+			ref={itemRef}
+			className={cn(
+				"group/subtask flex flex-col rounded-md transition-all duration-150 ease-out",
+				isDragging && "opacity-40 scale-[0.98] pointer-events-none",
+				isExpanded && "bg-white/[0.02]",
+			)}
+		>
+			<div
+				className="flex cursor-pointer items-center gap-2 py-1.5 pr-1"
+				onClick={handleRowClick}
+			>
+				<div
+					onMouseDown={onMouseDown}
+					onClick={(e) => e.stopPropagation()}
+					className="flex h-5 w-4 shrink-0 cursor-grab items-center justify-center"
+				>
+					<GripVertical className="h-3 w-3 text-white/15 transition-colors duration-150 group-hover/subtask:text-white/30" />
+				</div>
+
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleToggle();
+					}}
+					className={cn(
+						"flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center rounded border transition-all duration-150 ease-out active:scale-[0.9]",
+						isCompleted
+							? "border-white/50 bg-white/50"
+							: "border-white/25 bg-transparent hover:border-white/40",
+					)}
+					aria-label={isCompleted ? "Mark incomplete" : "Mark complete"}
+				>
+					{isCompleted && <Check className="h-2 w-2 text-[#0a0a0a]" />}
+				</button>
+
+				{isEditing ? (
+					<input
+						ref={inputRef}
+						type="text"
+						value={editValue}
+						onChange={(e) => setEditValue(e.target.value)}
+						onKeyDown={handleKeyDown}
+						onBlur={handleSave}
+						onClick={(e) => e.stopPropagation()}
+						className="flex-1 bg-transparent text-[12px] leading-tight tracking-[-0.01em] text-white/70 outline-none"
+						autoComplete="off"
+					/>
+				) : (
+					<span
+						className={cn(
+							"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
+							isCompleted
+								? "text-white/30 line-through decoration-white/20"
+								: "text-white/70",
+							isAnyDragging && "select-none",
+						)}
+					>
+						{subtask.text}
+					</span>
+				)}
+
+				<TasksPluginSubtaskExpandableStatusBadge status={subtask.status} />
+
+				<TasksPluginSubtaskExpandableCategoryBadge
+					category={subtask.category}
+				/>
+
+				<motion.div
+					animate={{ rotate: isExpanded ? 90 : 0 }}
+					transition={{ duration: 0.15, ease: "easeOut" }}
+					className="flex h-5 w-5 shrink-0 items-center justify-center"
+				>
+					<ChevronRight className="h-3 w-3 text-white/25" />
+				</motion.div>
+
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						setIsEditing(true);
+					}}
+					className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-white/8 group-hover/subtask:opacity-100 active:scale-90"
+					aria-label="Edit subtask"
+				>
+					<Pencil className="h-3 w-3 text-white/40 transition-colors duration-150 hover:text-white/60" />
+				</button>
+
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onDeleteClick();
+					}}
+					className={cn(
+						"flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded transition-all duration-150 ease-out active:scale-90",
+						isPendingDelete
+							? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
+							: "opacity-0 hover:bg-red-500/15 group-hover/subtask:opacity-100",
+					)}
+					aria-label={isPendingDelete ? "Confirm delete" : "Delete subtask"}
+				>
+					{isPendingDelete ? (
+						<Check className="h-3 w-3 text-red-500" />
+					) : (
+						<X className="h-3 w-3 text-white/30 transition-colors duration-150 hover:text-red-400" />
+					)}
+				</button>
+			</div>
+
+			<AnimatePresence>
+				{isExpanded && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+						className="overflow-hidden"
+					>
+						<div className="flex flex-col gap-3 px-6 pb-3 pt-1">
+							<div className="h-px bg-white/8" />
+
+							<TasksPluginSubtaskExpandableSteps
+								steps={subtask.steps}
+								newStepValue={newStepValue}
+								onNewStepValueChange={setNewStepValue}
+								onStepKeyDown={handleStepKeyDown}
+								onToggleStep={onToggleStep}
+								onDeleteStep={onDeleteStep}
+								onStartEditStep={handleStartEditStep}
+								editingStepId={editingStepId}
+								editingStepValue={editingStepValue}
+								onEditingStepValueChange={setEditingStepValue}
+								onSaveStepEdit={handleSaveStepEdit}
+								onStepEditKeyDown={handleStepEditKeyDown}
+								stepInputRef={stepInputRef}
+								editStepInputRef={editStepInputRef}
+							/>
+
+							<div className="h-px bg-white/8" />
+
+							<TasksPluginSubtaskExpandableDetails
+								category={subtask.category}
+								shouldCommit={subtask.shouldCommit}
+								notes={subtask.notes}
+								onUpdateCategory={onUpdateCategory}
+								onUpdateShouldCommit={onUpdateShouldCommit}
+								onUpdateNotes={onUpdateNotes}
+							/>
+
+							{lastLog && (
+								<>
+									<div className="h-px bg-white/8" />
+									<TasksPluginSubtaskExpandableLastRun
+										log={lastLog}
+										totalLogs={subtask.executionLogs.length}
+										formatTime={formatLogTime}
+									/>
+								</>
+							)}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+}
+
+function TasksPluginSubtaskExpandableStatusBadge({
+	status,
+}: {
+	status: SubtaskStatus;
+}) {
+	return (
+		<span
+			className={cn(
+				"shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+				status === "waiting" && "bg-white/8 text-white/40",
+				status === "in_progress" &&
+					"animate-pulse bg-amber-500/20 text-amber-400",
+				status === "completed" && "bg-emerald-500/15 text-emerald-400",
+			)}
+		>
+			{status === "in_progress" ? "running" : status}
+		</span>
+	);
+}
+
+function TasksPluginSubtaskExpandableCategoryBadge({
+	category,
+}: {
+	category: SubtaskCategory;
+}) {
+	return (
+		<span
+			className={cn(
+				"flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+				category === "functional" && "bg-sky-500/15 text-sky-400",
+				category === "test" && "bg-violet-500/15 text-violet-400",
+			)}
+		>
+			{category === "functional" ? (
+				<Code2 className="h-2.5 w-2.5" />
+			) : (
+				<TestTube2 className="h-2.5 w-2.5" />
+			)}
+			{category}
+		</span>
+	);
+}
+
+interface TasksPluginSubtaskExpandableStepsProps {
+	steps: Step[];
+	newStepValue: string;
+	onNewStepValueChange: (value: string) => void;
+	onStepKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	onToggleStep: (stepId: string) => void;
+	onDeleteStep: (stepId: string) => void;
+	onStartEditStep: (step: Step) => void;
+	editingStepId: string | null;
+	editingStepValue: string;
+	onEditingStepValueChange: (value: string) => void;
+	onSaveStepEdit: () => void;
+	onStepEditKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	stepInputRef: React.RefObject<HTMLInputElement | null>;
+	editStepInputRef: React.RefObject<HTMLInputElement | null>;
+}
+
+function TasksPluginSubtaskExpandableSteps({
+	steps,
+	newStepValue,
+	onNewStepValueChange,
+	onStepKeyDown,
+	onToggleStep,
+	onDeleteStep,
+	onStartEditStep,
+	editingStepId,
+	editingStepValue,
+	onEditingStepValueChange,
+	onSaveStepEdit,
+	onStepEditKeyDown,
+	stepInputRef,
+	editStepInputRef,
+}: TasksPluginSubtaskExpandableStepsProps) {
+	return (
+		<div className="flex flex-col gap-2">
+			<span className="text-[10px] font-medium uppercase tracking-wider text-white/35">
+				Steps
+			</span>
+			<div className="flex flex-col gap-1">
+				{steps.map((step) => (
+					<div
+						key={step.id}
+						className="group/step flex items-center gap-2 rounded py-0.5"
+					>
+						<button
+							type="button"
+							onClick={() => onToggleStep(step.id)}
+							className={cn(
+								"flex h-3 w-3 shrink-0 cursor-pointer items-center justify-center rounded-sm border transition-all duration-150 ease-out active:scale-[0.9]",
+								step.completed
+									? "border-white/40 bg-white/40"
+									: "border-white/20 bg-transparent hover:border-white/35",
+							)}
+							aria-label={step.completed ? "Uncheck step" : "Check step"}
+						>
+							{step.completed && <Check className="h-2 w-2 text-[#0a0a0a]" />}
+						</button>
+
+						{editingStepId === step.id ? (
+							<input
+								ref={editStepInputRef}
+								type="text"
+								value={editingStepValue}
+								onChange={(e) => onEditingStepValueChange(e.target.value)}
+								onKeyDown={onStepEditKeyDown}
+								onBlur={onSaveStepEdit}
+								className="flex-1 bg-transparent text-[11px] leading-tight text-white/60 outline-none"
+								autoComplete="off"
+							/>
+						) : (
+							<span
+								onDoubleClick={() => onStartEditStep(step)}
+								className={cn(
+									"flex-1 cursor-text text-[11px] leading-tight transition-all duration-150",
+									step.completed
+										? "text-white/25 line-through decoration-white/15"
+										: "text-white/60",
+								)}
+							>
+								{step.text}
+							</span>
+						)}
+
+						<button
+							type="button"
+							onClick={() => onDeleteStep(step.id)}
+							className="flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-red-500/15 group-hover/step:opacity-100 active:scale-90"
+							aria-label="Delete step"
+						>
+							<X className="h-2.5 w-2.5 text-white/30 transition-colors duration-150 hover:text-red-400" />
+						</button>
+					</div>
+				))}
+
+				<div className="flex items-center gap-2 pt-1">
+					<Plus className="h-3 w-3 shrink-0 text-white/20" />
+					<input
+						ref={stepInputRef}
+						type="text"
+						placeholder="Add step..."
+						value={newStepValue}
+						onChange={(e) => onNewStepValueChange(e.target.value)}
+						onKeyDown={onStepKeyDown}
+						className="flex-1 bg-transparent text-[11px] leading-tight text-white/60 outline-none placeholder:text-white/25"
+						autoComplete="off"
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskExpandableDetailsProps {
+	category: SubtaskCategory;
+	shouldCommit: boolean;
+	notes: string;
+	onUpdateCategory: (category: SubtaskCategory) => void;
+	onUpdateShouldCommit: (shouldCommit: boolean) => void;
+	onUpdateNotes: (notes: string) => void;
+}
+
+function TasksPluginSubtaskExpandableDetails({
+	category,
+	shouldCommit,
+	notes,
+	onUpdateCategory,
+	onUpdateShouldCommit,
+	onUpdateNotes,
+}: TasksPluginSubtaskExpandableDetailsProps) {
+	return (
+		<div className="flex flex-col gap-3">
+			<span className="text-[10px] font-medium uppercase tracking-wider text-white/35">
+				Details
+			</span>
+			<div className="flex flex-col gap-2.5">
+				<div className="flex items-center gap-3">
+					<span className="w-16 text-[11px] text-white/45">Category</span>
+					<div className="flex gap-1">
+						<button
+							type="button"
+							onClick={() => onUpdateCategory("functional")}
+							className={cn(
+								"flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
+								category === "functional"
+									? "bg-sky-500/20 text-sky-400"
+									: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
+							)}
+						>
+							<Code2 className="h-2.5 w-2.5" />
+							Functional
+						</button>
+						<button
+							type="button"
+							onClick={() => onUpdateCategory("test")}
+							className={cn(
+								"flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
+								category === "test"
+									? "bg-violet-500/20 text-violet-400"
+									: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
+							)}
+						>
+							<TestTube2 className="h-2.5 w-2.5" />
+							Test
+						</button>
+					</div>
+				</div>
+
+				<div className="flex items-center gap-3">
+					<span className="w-16 text-[11px] text-white/45">Commit</span>
+					<button
+						type="button"
+						onClick={() => onUpdateShouldCommit(!shouldCommit)}
+						className={cn(
+							"flex h-5 w-9 items-center rounded-full p-0.5 transition-all duration-200 ease-out",
+							shouldCommit ? "bg-emerald-500/30" : "bg-white/10",
+						)}
+						aria-label={
+							shouldCommit ? "Disable auto-commit" : "Enable auto-commit"
+						}
+					>
+						<motion.div
+							layout
+							transition={{ type: "spring", stiffness: 500, damping: 30 }}
+							className={cn(
+								"flex h-4 w-4 items-center justify-center rounded-full shadow-sm",
+								shouldCommit ? "bg-emerald-400" : "bg-white/50",
+							)}
+						>
+							<GitCommitHorizontal
+								className={cn(
+									"h-2.5 w-2.5",
+									shouldCommit ? "text-emerald-950" : "text-white/50",
+								)}
+							/>
+						</motion.div>
+					</button>
+					<span className="text-[10px] text-white/35">
+						{shouldCommit ? "Auto-commit enabled" : "Manual commit"}
+					</span>
+				</div>
+
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[11px] text-white/45">Notes</span>
+					<textarea
+						value={notes}
+						onChange={(e) => onUpdateNotes(e.target.value)}
+						placeholder="Add notes..."
+						className="h-16 resize-none rounded-md bg-white/5 px-2 py-1.5 text-[11px] leading-relaxed text-white/60 outline-none placeholder:text-white/25 focus:bg-white/8"
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskExpandableLastRunProps {
+	log: ExecutionLog;
+	totalLogs: number;
+	formatTime: (timestamp: number) => string;
+}
+
+function TasksPluginSubtaskExpandableLastRun({
+	log,
+	totalLogs,
+	formatTime,
+}: TasksPluginSubtaskExpandableLastRunProps) {
+	return (
+		<div className="flex flex-col gap-2">
+			<div className="flex items-center justify-between">
+				<span className="text-[10px] font-medium uppercase tracking-wider text-white/35">
+					Last Run
+				</span>
+				{totalLogs > 1 && (
+					<span className="cursor-pointer text-[10px] text-white/30 hover:text-white/50">
+						see all ({totalLogs})
+					</span>
+				)}
+			</div>
+			<div className="flex flex-col gap-1.5 rounded-md bg-white/[0.03] px-2.5 py-2">
+				<div className="flex items-center gap-2">
+					<span className="text-[10px] text-white/35">
+						{formatTime(log.startedAt)}
+					</span>
+					<span
+						className={cn(
+							"rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+							log.outcome === "success" && "bg-emerald-500/15 text-emerald-400",
+							log.outcome === "partial" && "bg-amber-500/15 text-amber-400",
+							log.outcome === "failed" && "bg-red-500/15 text-red-400",
+							log.outcome === "aborted" && "bg-white/10 text-white/40",
+						)}
+					>
+						{log.outcome}
+					</span>
+					{log.duration && (
+						<span className="text-[10px] text-white/30">
+							{Math.round(log.duration / 1000)}s
+						</span>
+					)}
+				</div>
+				{log.summary && (
+					<p className="line-clamp-2 text-[11px] leading-relaxed text-white/50">
+						{log.summary}
+					</p>
+				)}
+			</div>
 		</div>
 	);
 }

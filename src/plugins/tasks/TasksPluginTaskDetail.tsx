@@ -7,7 +7,13 @@ import {
 	TasksPluginTagBadge,
 	TasksPluginTagEditorPopover,
 } from "./TasksPlugin";
-import type { SubtaskStatus, Tag as TagType, Task, TaskStatus } from "./types";
+import type {
+	SubtaskCategory,
+	SubtaskStatus,
+	Tag as TagType,
+	Task,
+	TaskStatus,
+} from "./types";
 import { usePendingDelete } from "./useTasksStorage";
 
 interface TasksPluginTaskDetailProps {
@@ -30,6 +36,42 @@ interface TasksPluginTaskDetailProps {
 		subtaskId: string,
 		text: string,
 	) => Promise<void>;
+	onUpdateSubtaskCategory: (
+		taskId: string,
+		subtaskId: string,
+		category: SubtaskCategory,
+	) => Promise<void>;
+	onUpdateSubtaskNotes: (
+		taskId: string,
+		subtaskId: string,
+		notes: string,
+	) => Promise<void>;
+	onUpdateSubtaskShouldCommit: (
+		taskId: string,
+		subtaskId: string,
+		shouldCommit: boolean,
+	) => Promise<void>;
+	onCreateStep: (
+		taskId: string,
+		subtaskId: string,
+		text: string,
+	) => Promise<void>;
+	onToggleStep: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+	) => Promise<void>;
+	onDeleteStep: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+	) => Promise<void>;
+	onUpdateStepText: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+		text: string,
+	) => Promise<void>;
 	onNavigateBack: () => void;
 }
 
@@ -45,6 +87,13 @@ function TasksPluginTaskDetail({
 	onDeleteSubtask,
 	onReorderSubtasks,
 	onUpdateSubtaskText,
+	onUpdateSubtaskCategory,
+	onUpdateSubtaskNotes,
+	onUpdateSubtaskShouldCommit,
+	onCreateStep,
+	onToggleStep,
+	onDeleteStep,
+	onUpdateStepText,
 	onNavigateBack,
 }: TasksPluginTaskDetailProps) {
 	const {
@@ -123,6 +172,27 @@ function TasksPluginTaskDetail({
 						}
 						onUpdateSubtaskText={(subtaskId, text) =>
 							onUpdateSubtaskText(task.id, subtaskId, text)
+						}
+						onUpdateSubtaskCategory={(subtaskId, category) =>
+							onUpdateSubtaskCategory(task.id, subtaskId, category)
+						}
+						onUpdateSubtaskNotes={(subtaskId, notes) =>
+							onUpdateSubtaskNotes(task.id, subtaskId, notes)
+						}
+						onUpdateSubtaskShouldCommit={(subtaskId, shouldCommit) =>
+							onUpdateSubtaskShouldCommit(task.id, subtaskId, shouldCommit)
+						}
+						onCreateStep={(subtaskId, text) =>
+							onCreateStep(task.id, subtaskId, text)
+						}
+						onToggleStep={(subtaskId, stepId) =>
+							onToggleStep(task.id, subtaskId, stepId)
+						}
+						onDeleteStep={(subtaskId, stepId) =>
+							onDeleteStep(task.id, subtaskId, stepId)
+						}
+						onUpdateStepText={(subtaskId, stepId, text) =>
+							onUpdateStepText(task.id, subtaskId, stepId, text)
 						}
 					/>
 				</div>

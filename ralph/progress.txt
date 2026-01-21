@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 8 of 19 completed
+Task 9 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -12,7 +12,7 @@ Task 8 of 19 completed
 - [x] 6. Frontend - Update useTasksStorage hook with new types
 - [x] 7. Frontend - Update useTasksStorage hook with execution functions
 - [x] 8. Frontend - Task creation flow update
-- [ ] 9. Frontend - Subtask expandable component
+- [x] 9. Frontend - Subtask expandable component
 - [ ] 10. Frontend - Running state animation
 - [ ] 11. Frontend - Run/Stop button logic
 - [ ] 12. Frontend - Loop (Run All) button
@@ -330,3 +330,45 @@ Task 8 of 19 completed
   - TasksPluginInputArea now at lines ~513-750 in TasksPlugin.tsx
   - LAST_WORKING_DIR_KEY constant for localStorage key consistency
   - createTask accepts (text, tagIds?, description?, workingDirectory?)
+
+## 2026-01-21 15:51 - Task 9: Frontend - Subtask expandable component
+
+### What was implemented
+- Created `TasksPluginSubtaskExpandable` component replacing `TasksPluginSubtaskItem`
+- **Collapsed state features:**
+  - Grip handle for drag reorder (existing)
+  - Status checkbox (existing toggle between waiting/completed)
+  - Subtask text with inline editing
+  - Status badge: waiting (gray), in_progress (amber pulse), completed (green)
+  - Category badge: functional (sky blue with Code2 icon), test (violet with TestTube2 icon)
+  - Expand chevron that rotates 90° on expand
+  - Edit and Delete buttons
+- **Expanded state features:**
+  - Steps section: checkboxes, double-click to edit, delete on hover, add step input
+  - Details section: category toggle buttons, shouldCommit toggle switch, notes textarea
+  - Last run section: timestamp, outcome badge (success/partial/failed/aborted), duration, summary (truncated)
+  - "see all (N)" placeholder link when multiple execution logs
+- Smooth expand/collapse animation using motion/react AnimatePresence
+- Subtle separators (h-px bg-white/8) between sections
+- Expanded area has elevated background (bg-white/[0.02])
+
+### Files changed
+- `src/plugins/tasks/TasksPlugin.tsx` - New expandable component with 6 sub-components, updated SubtaskList props
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added 7 new callback props for step and subtask field CRUD
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Use motion.div with animate={{ rotate: isExpanded ? 90 : 0 }} for chevron rotation
+  - Use motion.div with layout prop and spring transition for toggle switch animation
+  - Click detection exclusion: check target.closest("button") || target.closest("input") || target.closest("textarea")
+  - ExecutionLog array: last log is at index [length - 1], not [0]
+- **Gotchas encountered:**
+  - New imports needed: ChevronRight, Code2, GitCommitHorizontal, TestTube2 from lucide-react
+  - New type imports needed: ExecutionLog, Step, SubtaskCategory from types
+  - Must destructure all new functions from useTasksStorage in the main component
+  - Callback prop chain: TasksPlugin → TasksPluginTaskDetail → TasksPluginSubtaskList → TasksPluginSubtaskExpandable
+- **Useful context:**
+  - TasksPluginSubtaskExpandable is at lines ~1464-1800 in TasksPlugin.tsx
+  - Sub-components: StatusBadge, CategoryBadge, Steps, Details, LastRun
+  - Notes textarea has onBlur save behavior (debounced would be better for production)
+  - The "see all (N)" link is a placeholder - full execution history view is Task 15
