@@ -1,49 +1,49 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "jubby",
-  "version": "0.2.0",
-  "identifier": "com.jui.jubby",
-  "build": {
-    "beforeDevCommand": "bun dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "Jubby",
-        "label": "main",
-        "width": 900,
-        "height": 600,
-        "x": 100,
-        "y": 100,
-        "decorations": false,
-        "resizable": false,
-        "visible": true,
-        "skipTaskbar": true,
-        "alwaysOnTop": true,
-        "transparent": true,
-        "dragDropEnabled": false
-      }
-    ],
-    "security": {
-      "csp": null,
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["$HOME/.local/share/jubby/**"]
-      }
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
-  }
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "jubby",
+	"version": "0.2.1",
+	"identifier": "com.jui.jubby",
+	"build": {
+		"beforeDevCommand": "bun dev",
+		"devUrl": "http://localhost:1420",
+		"beforeBuildCommand": "bun run build",
+		"frontendDist": "../dist"
+	},
+	"app": {
+		"windows": [
+			{
+				"title": "Jubby",
+				"label": "main",
+				"width": 900,
+				"height": 600,
+				"x": 100,
+				"y": 100,
+				"decorations": false,
+				"resizable": false,
+				"visible": true,
+				"skipTaskbar": true,
+				"alwaysOnTop": true,
+				"transparent": true,
+				"dragDropEnabled": false
+			}
+		],
+		"security": {
+			"csp": null,
+			"assetProtocol": {
+				"enable": true,
+				"scope": ["$HOME/.local/share/jubby/**"]
+			}
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		]
+	}
 }
