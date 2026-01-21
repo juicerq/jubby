@@ -1,689 +1,83 @@
-# Tasks Plugin - PRD Automation Feature
+# Contextual Logging System - PRD
 
 ## Current Status
-Task 18 of 19 completed
+Task 5 of 16 completed
 
 ## Tasks
-- [x] 1. Backend - Update data model types
-- [x] 2. Backend - Data migration
-- [x] 3. Backend - CRUD commands for new fields
-- [x] 4. Backend - OpenCode server management
-- [x] 5. Backend - Execution orchestration command
-- [x] 6. Frontend - Update useTasksStorage hook with new types
-- [x] 7. Frontend - Update useTasksStorage hook with execution functions
-- [x] 8. Frontend - Task creation flow update
-- [x] 9. Frontend - Subtask expandable component
-- [x] 10. Frontend - Running state animation
-- [x] 11. Frontend - Run/Stop button logic
-- [x] 12. Frontend - Loop (Run All) button
-- [x] 13. Frontend - Drag to reorder subtasks
-- [x] 14. Frontend - History section
-- [x] 15. Frontend - Execution log detail view in subtask
-- [x] 16. Frontend - OpenCode server lifecycle
-- [x] 17. Frontend - AI Generate subtasks feature
-- [x] 18. Backend - AI Generate subtasks command
-- [ ] 19. Manual testing - Full flow verification
+- [x] 1. Rust - Create tracing types and data structures
+- [x] 2. Rust - Implement LogWriter with buffered channel
+- [x] 3. Rust - Implement ContextGuard with RAII
+- [x] 4. Rust - Implement Trace struct core
+- [x] 5. Rust - Implement Trace context methods
+- [ ] 6. Rust - Implement Trace logging methods
+- [ ] 7. Rust - Implement Trace Drop for trace_end
+- [ ] 8. Rust - Implement cleanup for old logs
+- [ ] 9. Rust - Create mod.rs and init_tracing()
+- [ ] 10. Rust - Add required dependencies
+- [ ] 11. Rust - Integration test with existing command
+- [ ] 12. TypeScript - Create trace types
+- [ ] 13. TypeScript - Implement createTrace and Trace class
+- [ ] 14. TypeScript - Add trace propagation to invoke wrapper
+- [ ] 15. TypeScript - Integration test with existing component
+- [ ] 16. Manual testing - Full flow verification
 
-## Notes
-- Tasks 8, 9, 10, 11, 14, 15, 17 should use the frontend-design skill
-- No borders between sections, use headers as separators
-- Neon border animation: white/gray gradient rotating around border
-- Server starts lazily when entering Tasks plugin
-- Each subtask execution creates a new opencode session
-- AI edits JSON directly, path passed in prompt
-- Learnings from all previous executions included in prompt
+## Architecture Summary
 
-## Design Decisions Summary
-- Task = PRD (name, description, workingDirectory, subtasks)
-- Subtask = PRD item (steps, category, shouldCommit, notes, executionLogs)
-- Expand subtask with animation to see all details
-- Run/Stop per subtask, Run All for loop
-- One execution at a time, others disabled
-- History: inline in subtask + aggregated section at bottom
-- OpenCode Server API on port 4096
-- Migration: automatic, preserves old data
+### Core Concept
+Contextual logging where logs accumulate context as code executes. Context is added via `trace.push({ key: value })` and removed automatically via RAII guards.
+
+### Key Decisions
+- **Scope**: Stack-based with RAII (context auto-removed when guard drops)
+- **Propagation**: Explicit `Arc<Trace>` parameter passing (async-safe)
+- **Emission**: Logs anytime + automatic trace_end summary on Drop
+- **Storage**: JSON-lines files (one per day: `YYYY-MM-DD.jsonl`)
+- **Retention**: 1 day (cleanup on app startup)
+- **Trace ID**: 8 hex chars (e.g., `a3f8b2c1`)
+- **Error detail**: Medium (message + code, no backtrace)
+- **Granularity**: One trace per Tauri command
+
+### File Structure
+```
+src-tauri/src/tracing/
+├── mod.rs        # pub use, init_tracing(), get_writer()
+├── types.rs      # LogLevel, LogEntry, TraceError
+├── trace.rs      # Trace struct, push/pop, log methods
+├── guard.rs      # ContextGuard with Drop
+├── writer.rs     # LogWriter with buffered channel
+└── cleanup.rs    # cleanup_old_traces()
+
+src/lib/
+└── trace.ts      # createTrace(), Trace class
+```
+
+### Log Format (JSON-lines)
+```jsonl
+{"ts":"2026-01-21T14:32:01.123Z","trace":"a3f8b2c1","level":"info","msg":"Recording started","ctx":{"plugin":"quickclip"}}
+{"ts":"2026-01-21T14:32:01.456Z","trace":"a3f8b2c1","level":"error","msg":"FFmpeg failed","ctx":{"plugin":"quickclip","stage":"encode"},"err":{"message":"Process exited","code":"FFMPEG_EXIT"}}
+{"ts":"2026-01-21T14:32:01.457Z","trace":"a3f8b2c1","level":"trace_end","duration_ms":334,"status":"error","ctx":{"plugin":"quickclip"}}
+```
+
+### Writer Architecture
+```
+Trace 1 ──┐
+          │   ┌─────────────┐     ┌─────────────────────┐
+Trace 2 ──┼──▶│ Log Channel │────▶│ Writer Thread       │
+          │   │ (mpsc)      │     │ - buffer 32 entries │
+Trace 3 ──┘   └─────────────┘     │ - flush every 100ms │
+                                  └──────────┬──────────┘
+                                             │
+                                             ▼
+                                   YYYY-MM-DD.jsonl
+```
 
 ---
 
-## 2026-01-21 15:17 - Task 1: Backend - Update data model types
-
-### What was implemented
-- Added `TaskStatus` enum (waiting, in_progress, completed) for subtask status
-- Added `SubtaskCategory` enum (functional, test) for categorizing subtasks
-- Added `ExecutionOutcome` enum (success, partial, failed, aborted) for execution results
-- Created `Step` struct (id, text, completed) for subtask checklist items
-- Created `Learnings` struct with patterns/gotchas/context vectors
-- Created `ExecutionLog` struct with all fields (id, startedAt, completedAt, duration, outcome, summary, filesChanged, learnings, committed, commitHash, commitMessage, errorMessage)
-- Updated `Subtask` struct with new fields: status, order, category, steps, shouldCommit, notes, executionLogs
-- Added legacy fields (completed, position) as Option with skip_serializing for migration compatibility
-- Updated `Task` struct with description and workingDirectory fields
-- Updated `TaskWithTags` response struct to include new Task fields
-- Fixed all usages in commands.rs: subtasks_create, subtasks_toggle, subtasks_reorder, tasks_update_status cascade
-- Fixed SQLite migration in storage.rs to include new Task fields
-
-### Files changed
-- `src-tauri/src/plugins/tasks/types.rs`
-- `src-tauri/src/plugins/tasks/commands.rs`
-- `src-tauri/src/plugins/tasks/storage.rs`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - All types use `#[serde(rename_all = "camelCase")]` for JS interop
-  - Use `#[serde(default)]` for new fields to maintain backward compatibility
-  - Use `#[serde(skip_serializing)]` for deprecated fields that should be read but not written
-  - Enums use `#[serde(rename_all = "snake_case")]` for serialization
-- **Gotchas encountered:**
-  - When changing a field type (e.g., bool → enum), need to update all usages in commands.rs
-  - SQLite migration also constructs Task manually, needs updating when Task fields change
-  - TaskWithTags is a separate response struct that duplicates Task fields - must update both
-- **Useful context:**
-  - Subtask creation is in `subtasks_create` command at line ~384
-  - Subtask toggle (now status change) is in `subtasks_toggle` command at line ~423
-  - Task cascade (mark all subtasks complete) is in `tasks_update_status` command at line ~210
-
-## 2026-01-21 15:18 - Task 2: Backend - Data migration
-
-### What was implemented
-- Created `migrate_subtask_data` function in storage.rs
-- Migration logic: detects old format via `completed: Option<bool>` field presence
-- Converts `completed: true` → `status: TaskStatus::Completed`, else `TaskStatus::Waiting`
-- Converts `position: Option<i32>` → `order: u32`, falling back to array index
-- Integrated into `load_or_migrate` flow - migrates on load from all sources (JSON, old todo.json)
-- Saves migrated data immediately after migration for persistence
-- Migration is idempotent: legacy fields use `skip_serializing` so they don't appear in output
-
-### Files changed
-- `src-tauri/src/plugins/tasks/storage.rs`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Using `Option::take()` is idiomatic for detecting and consuming legacy fields
-  - Migration in `load_or_migrate` (not `load_from_json`) allows unified handling across all data sources
-  - The `#[serde(default, skip_serializing)]` pattern makes migrations transparent: old data deserializes, new data doesn't include legacy fields
-- **Gotchas encountered:**
-  - Must save migrated data immediately, otherwise migration runs on every load (performance hit + log spam)
-  - The `order` field defaults to 0, so we need to check `index > 0` to avoid false positives for first items
-- **Useful context:**
-  - Data paths: `~/.local/share/jubby/tasks/tasks.json` (current), `~/.local/share/jubby/todo/todo.json` (legacy)
-  - `load_or_migrate` is the single entry point for all data loading in the tasks plugin
-
-## 2026-01-21 15:22 - Task 3: Backend - CRUD commands for new fields
-
-### What was implemented
-- `tasks_update_description`: Updates task.description field
-- `tasks_update_working_directory`: Updates task.workingDirectory with path existence and directory validation
-- `subtasks_update_status`: Updates subtask.status enum (waiting/in_progress/completed)
-- `subtasks_update_order`: Updates subtask.order for drag reorder
-- `subtasks_update_category`: Updates subtask.category enum (functional/test)
-- `subtasks_update_notes`: Updates subtask.notes field
-- `subtasks_update_should_commit`: Toggles subtask.shouldCommit boolean
-- `steps_create`: Creates a new Step in a subtask's steps array
-- `steps_toggle`: Toggles step.completed boolean
-- `steps_delete`: Removes a step from subtask.steps
-- `steps_update_text`: Updates step.text
-- `execution_logs_create`: Creates a new ExecutionLog with all fields (outcome, summary, filesChanged, learnings, commit info)
-- Registered all 12 new commands in lib.rs invoke_handler
-
-### Files changed
-- `src-tauri/src/plugins/tasks/commands.rs`
-- `src-tauri/src/lib.rs`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - All commands follow same pattern: validate input → get write lock → find entity (task → subtask → step) → update → save_to_json
-  - Enum parameters come as strings from frontend, must be parsed with match statement and explicit error for invalid values
-  - Path validation for workingDirectory: check exists() AND is_dir() - a file path passing exists() would be wrong
-- **Gotchas encountered:**
-  - Commands need to be registered in lib.rs invoke_handler - easy to forget
-  - For nested entities (steps inside subtasks inside tasks), need multiple find() calls chained
-  - execution_logs_create has many parameters - consider using a struct input in future for cleaner API
-- **Useful context:**
-  - New commands start at line ~550 in commands.rs
-  - Commands are registered at lines ~127-140 in lib.rs (tasks plugin section)
-  - Frontend will need corresponding invoke() calls with exact parameter names (camelCase from Rust snake_case)
-
-## 2026-01-21 15:24 - Task 6: Frontend - Update useTasksStorage hook with new types
-
-### What was implemented
-- Updated `types.ts` with all new types matching backend:
-  - `SubtaskStatus` enum (waiting, in_progress, completed)
-  - `SubtaskCategory` enum (functional, test)
-  - `ExecutionOutcome` enum (success, partial, failed, aborted)
-  - `Step` interface (id, text, completed)
-  - `Learnings` interface (patterns, gotchas, context)
-  - `ExecutionLog` interface (full execution log with all fields)
-  - Updated `Subtask` interface: replaced `completed: boolean` with `status: SubtaskStatus`, added order, category, steps, shouldCommit, notes, executionLogs
-  - Updated `Task` interface: added description, workingDirectory
-- Updated `useTasksStorage.ts`:
-  - Added backend interfaces for Step, Learnings, ExecutionLog, Subtask, Task
-  - Added mapping functions: mapBackendStep, mapBackendLearnings, mapBackendExecutionLog
-  - Updated mapBackendSubtask and mapBackendTask for new fields
-  - Added helper functions: createDefaultSubtask, createDefaultTask
-  - Added new functions: updateTaskDescription, updateTaskWorkingDirectory
-  - Added subtask functions: updateSubtaskStatus, updateSubtaskOrder, updateSubtaskCategory, updateSubtaskNotes, updateSubtaskShouldCommit
-  - Added step functions: createStep, toggleStep, deleteStep, updateStepText
-  - Added createExecutionLog function
-  - Updated UseTasksStorageReturn interface with all 27 functions
-- Updated `TasksPlugin.tsx`:
-  - Replaced `toggleSubtask` with `updateSubtaskStatus` throughout component chain
-  - Changed `subtask.completed` to `subtask.status === "completed"` in all UI logic
-  - Updated TasksPluginSubtaskList and TasksPluginSubtaskItem interfaces
-  - Added local `isCompleted` and `handleToggle` for cleaner toggle logic
-- Updated `TasksPluginTaskDetail.tsx`:
-  - Changed prop interface from onToggleSubtask to onUpdateSubtaskStatus with SubtaskStatus parameter
-
-### Files changed
-- `src/plugins/tasks/types.ts`
-- `src/plugins/tasks/useTasksStorage.ts`
-- `src/plugins/tasks/TasksPlugin.tsx`
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Frontend interfaces mirror backend types with camelCase (JS convention)
-  - Backend interfaces use `FromBackend` suffix to distinguish raw API data from mapped domain types
-  - All CRUD functions follow optimistic update pattern: update state → invoke backend → rollback on error
-  - Helper functions (createDefaultSubtask, createDefaultTask) centralize default values
-- **Gotchas encountered:**
-  - Changing `completed: boolean` to `status: enum` requires updating entire prop chain (TasksPlugin → TasksPluginSubtaskList → TasksPluginSubtaskItem)
-  - Ghost components (TasksPluginSubtaskGhost) also reference subtask fields, easy to miss
-  - The status toggle logic (waiting ↔ completed) is different from simple boolean flip
-- **Useful context:**
-  - Type imports from types.ts are in lines 27-35 of TasksPlugin.tsx
-  - UseTasksStorageReturn interface documents all available functions
-  - TasksPluginTaskDetail is in a separate file and imports SubtaskStatus for its prop interface
-
-## 2026-01-21 15:31 - Task 4: Backend - OpenCode server management
-
-### What was implemented
-- Created `src-tauri/src/plugins/tasks/opencode.rs` module with full OpenCode server HTTP API integration
-- `OpenCodeServerState` struct for tracking server process PID (RwLock for thread safety)
-- `opencode_ensure_server`: Checks if server is running on port 4096, spawns `opencode serve` if not, polls until ready (max 10s)
-- `opencode_health_check`: GET `/global/health` - returns `{healthy: bool, version: string}`
-- `opencode_create_session`: POST `/session` - creates new session with optional title
-- `opencode_send_prompt`: POST `/session/{id}/prompt_async` - sends prompt asynchronously with optional agent
-- `opencode_poll_status`: GET `/session/status` - polls all sessions status, returns status for specific session
-- `opencode_abort_session`: POST `/session/{id}/abort` - aborts running session
-- `opencode_stop_server`: Sends SIGTERM to server process if started by this app
-- Added `reqwest` dependency for HTTP client
-- Registered all 7 commands in lib.rs invoke_handler
-- Registered `OpenCodeServerState` in app setup
-
-### Files changed
-- `src-tauri/src/plugins/tasks/opencode.rs` (new file)
-- `src-tauri/src/plugins/tasks/mod.rs` (added module export)
-- `src-tauri/src/lib.rs` (registered commands and state)
-- `src-tauri/Cargo.toml` (added reqwest dependency)
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - OpenCode server API uses `/global/health` not `/health`
-  - Session status endpoint returns HashMap<sessionId, status> for all sessions, not single session
-  - Use `prompt_async` endpoint for non-blocking prompt sending (returns 204 immediately)
-  - Server spawning uses tokio::process::Command for async compatibility
-- **Gotchas encountered:**
-  - Health response has `healthy: bool` and `version: string`, not `status: string`
-  - Session creation request body is minimal (just optional title), not path-based
-  - Status types are "idle", "busy", "retry" (not "error")
-  - The kill command needs `.status()` not `.exec()` to actually run
-- **Useful context:**
-  - OpenCode server runs on port 4096 by default
-  - All request/response types use camelCase via `#[serde(rename_all = "camelCase")]`
-  - State management uses tauri's `State` wrapper with `app.manage()` in setup
-  - Commands registered in lib.rs around line 140 (tasks plugin section)
-
-## 2026-01-21 15:37 - Task 5: Backend - Execution orchestration command
-
-### What was implemented
-- Added `tasks_execute_subtask` command in opencode.rs that orchestrates full subtask execution
-- Command parameters: `taskId`, `subtaskId`
-- Execution flow:
-  1. Ensures OpenCode server is running (auto-starts if not)
-  2. Retrieves task and subtask data from TasksStore
-  3. Validates workingDirectory is set
-  4. Builds prompt with PRD file references (@path/prd.json @path/progress.txt)
-  5. Creates OpenCode session with descriptive title (task: subtask)
-  6. Sends prompt asynchronously
-  7. Polls session status until "idle" (success) or timeout (5 min)
-- Added `ExecutionResult` struct for command response (sessionId, outcome, aborted, errorMessage)
-- Added `build_execution_prompt` helper function that generates the standard PRD execution prompt
-- Registered command in lib.rs invoke_handler
-
-### Files changed
-- `src-tauri/src/plugins/tasks/opencode.rs`
-- `src-tauri/src/lib.rs`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Commands that need multiple State types can take them as separate parameters (store, server_state)
-  - Clone task/subtask data out of the read lock scope to avoid holding lock during async operations
-  - Polling loop with timeout pattern: `let start = Instant::now(); loop { if start.elapsed() > timeout { break; } }`
-- **Gotchas encountered:**
-  - Must validate workingDirectory before building prompt - empty path causes invalid file references
-  - Session status "idle" means complete, not "success" - OpenCode uses this terminology
-  - The prompt references files relative to workingDirectory, not absolute paths
-- **Useful context:**
-  - Execution timeout is 5 minutes (EXECUTION_TIMEOUT_SECS = 300)
-  - Poll interval is 500ms (POLL_INTERVAL)
-  - The prompt template instructs AI to work on highest priority task and update progress.txt
-  - Frontend will call this command and handle the ExecutionResult to create ExecutionLog entries
-
-## 2026-01-21 15:40 - Task 7: Frontend - Update useTasksStorage hook with execution functions
-
-### What was implemented
-- Added `ExecutionResultFromBackend` interface matching backend ExecutionResult struct
-- Added execution state to hook: `isExecuting`, `executingSubtaskId`, `currentSessionIdRef` (using useRef to avoid stale closures)
-- Added `ensureOpenCodeServer()` function: calls `opencode_ensure_server` backend command
-- Added `executeSubtask(taskId, subtaskId)` function: invokes `tasks_execute_subtask`, manages execution state (sets isExecuting/executingSubtaskId before, clears in finally block), returns ExecutionResultFromBackend
-- Added `abortExecution()` function: calls `opencode_abort_session` with current session ID from ref
-- Updated `UseTasksStorageReturn` interface with all execution-related state and functions
-- Added `useRef` import from React
-
-### Files changed
-- `src/plugins/tasks/useTasksStorage.ts`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Using `useRef` for session ID avoids stale closure issues in async callbacks (state captured at callback creation time would be stale)
-  - Execution state follows pattern: set before try → clear in finally → this ensures state is always reset even on error
-  - Backend returns camelCase (sessionId, errorMessage) thanks to serde rename_all
-- **Gotchas encountered:**
-  - The `currentSessionId` in return object needs `.current` since it's a ref, but TypeScript interface expects string | null (works because ref.current is the value)
-  - Must guard `executeSubtask` with `isExecuting` check to prevent concurrent executions
-- **Useful context:**
-  - Execution functions are at lines 1090-1146 in useTasksStorage.ts
-  - The hook now exports 30 functions total (27 CRUD + 3 execution)
-  - UI components can use `executingSubtaskId` to show running state per-subtask
-
-## 2026-01-21 15:43 - Task 8: Frontend - Task creation flow update
-
-### What was implemented
-- Transformed TasksPluginInputArea into an expandable mini-form with smooth animations
-- Added description field: optional expandable textarea
-- Added workingDirectory field: input with folder picker button using Tauri's dialog plugin
-- localStorage persistence: saves lastWorkingDirectory (key: "tasks_lastWorkingDirectory"), pre-fills on mount
-- Validation: workingDirectory required before task creation, shows inline error if empty
-- Form behavior: expands on focus/typing, collapses on cancel or successful creation
-- Updated createTask signature to accept description and workingDirectory parameters
-- Updated backend tasks_create command to accept description and working_directory parameters
-
-### Files changed
-- `src/plugins/tasks/TasksPlugin.tsx` - TasksPluginInputArea component transformed into expandable form
-- `src/plugins/tasks/useTasksStorage.ts` - createTask and createDefaultTask updated with new parameters
-- `src-tauri/src/plugins/tasks/commands.rs` - tasks_create now accepts description and working_directory
-- `src-tauri/Cargo.toml` - Added tauri-plugin-dialog
-- `src-tauri/src/lib.rs` - Registered dialog plugin
-- `src-tauri/capabilities/default.json` - Added dialog:default permission
-- `package.json` - Added @tauri-apps/plugin-dialog dependency
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Use `motion/react` AnimatePresence for smooth expand/collapse animations
-  - localStorage can be read in useState initializer: `useState(() => localStorage.getItem(...) ?? "")`
-  - Click-outside detection pattern: useEffect with document.addEventListener("mousedown", handler)
-  - Import Tauri dialog plugin: `import { open } from '@tauri-apps/plugin-dialog'`
-- **Gotchas encountered:**
-  - Tauri plugins need 3 things: Cargo dependency, lib.rs registration, capabilities permission
-  - Backend tasks_create needed updating to accept new optional parameters
-  - Form should not collapse when user has typed text (check value.trim() before cancel)
-- **Useful context:**
-  - TasksPluginInputArea now at lines ~513-750 in TasksPlugin.tsx
-  - LAST_WORKING_DIR_KEY constant for localStorage key consistency
-  - createTask accepts (text, tagIds?, description?, workingDirectory?)
-
-## 2026-01-21 15:51 - Task 9: Frontend - Subtask expandable component
-
-### What was implemented
-- Created `TasksPluginSubtaskExpandable` component replacing `TasksPluginSubtaskItem`
-- **Collapsed state features:**
-  - Grip handle for drag reorder (existing)
-  - Status checkbox (existing toggle between waiting/completed)
-  - Subtask text with inline editing
-  - Status badge: waiting (gray), in_progress (amber pulse), completed (green)
-  - Category badge: functional (sky blue with Code2 icon), test (violet with TestTube2 icon)
-  - Expand chevron that rotates 90° on expand
-  - Edit and Delete buttons
-- **Expanded state features:**
-  - Steps section: checkboxes, double-click to edit, delete on hover, add step input
-  - Details section: category toggle buttons, shouldCommit toggle switch, notes textarea
-  - Last run section: timestamp, outcome badge (success/partial/failed/aborted), duration, summary (truncated)
-  - "see all (N)" placeholder link when multiple execution logs
-- Smooth expand/collapse animation using motion/react AnimatePresence
-- Subtle separators (h-px bg-white/8) between sections
-- Expanded area has elevated background (bg-white/[0.02])
-
-### Files changed
-- `src/plugins/tasks/TasksPlugin.tsx` - New expandable component with 6 sub-components, updated SubtaskList props
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added 7 new callback props for step and subtask field CRUD
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Use motion.div with animate={{ rotate: isExpanded ? 90 : 0 }} for chevron rotation
-  - Use motion.div with layout prop and spring transition for toggle switch animation
-  - Click detection exclusion: check target.closest("button") || target.closest("input") || target.closest("textarea")
-  - ExecutionLog array: last log is at index [length - 1], not [0]
-- **Gotchas encountered:**
-  - New imports needed: ChevronRight, Code2, GitCommitHorizontal, TestTube2 from lucide-react
-  - New type imports needed: ExecutionLog, Step, SubtaskCategory from types
-  - Must destructure all new functions from useTasksStorage in the main component
-  - Callback prop chain: TasksPlugin → TasksPluginTaskDetail → TasksPluginSubtaskList → TasksPluginSubtaskExpandable
-- **Useful context:**
-  - TasksPluginSubtaskExpandable is at lines ~1464-1800 in TasksPlugin.tsx
-  - Sub-components: StatusBadge, CategoryBadge, Steps, Details, LastRun
-  - Notes textarea has onBlur save behavior (debounced would be better for production)
-  - The "see all (N)" link is a placeholder - full execution history view is Task 15
-
-## 2026-01-21 16:00 - Task 11: Frontend - Run/Stop button logic
-
-### What was implemented
-- Added Run/Stop button to each subtask in the collapsed row (between category badge and chevron)
-- Run button: visible on hover, emerald green Play icon, onClick triggers `executeSubtask`
-- Stop button: visible when this subtask is executing, red Square icon with filled background, onClick triggers `abortExecution`
-- Disabled state: when another subtask is executing, Run button is grayed out (opacity-30, cursor-not-allowed)
-- Passed execution state through full prop chain: TasksPlugin → TasksPluginTaskDetail → TasksPluginSubtaskList → TasksPluginSubtaskExpandable
-- Added 4 new props to TasksPluginSubtaskExpandable: onExecute, onAbort, isExecuting, isThisExecuting
-- Added 4 new props to TasksPluginSubtaskList: onExecuteSubtask, onAbortExecution, isExecuting, executingSubtaskId
-- Added 4 new props to TasksPluginTaskDetail: onExecuteSubtask, onAbortExecution, isExecuting, executingSubtaskId
-- Destructured isExecuting, executingSubtaskId, executeSubtask, abortExecution from useTasksStorage in main TasksPlugin
-
-### Files changed
-- `src/plugins/tasks/TasksPlugin.tsx` - Added Run/Stop button UI, updated SubtaskList and SubtaskExpandable interfaces and implementations
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added execution props to interface and passed to SubtaskList
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Prop drilling pattern for execution state: pass `isExecuting` (global) + `executingSubtaskId` down, components determine their own state with `isThisExecuting = executingSubtaskId === subtask.id`
-  - Fill pattern for Play/Square icons: `fill-{color}` + `text-{color}` makes solid icon with clean appearance
-  - Disabled button pattern: `disabled={isExecuting}` + conditional className for visual + `cursor-not-allowed`
-- **Gotchas encountered:**
-  - Play and Square icons need to be imported from lucide-react
-  - When adding props at multiple levels, start from innermost component (where they're used) and work outward to avoid missing intermediate levels
-  - The `onExecuteSubtask` callback needs task.id at TaskDetail level but only subtaskId at SubtaskList level - wrap callback appropriately
-- **Useful context:**
-  - Run/Stop button is located at lines ~1711-1744 in TasksPlugin.tsx (between CategoryBadge and ChevronRight)
-  - Execution state destructured from useTasksStorage at lines ~92-119 in TasksPlugin.tsx
-  - TasksPluginSubtaskExpandableProps interface at line ~1479 includes all execution-related props
-
-## 2026-01-21 16:06 - Task 16: Frontend - OpenCode server lifecycle
-
-### What was implemented
-- Created `useOpenCodeServer` hook in useTasksStorage.ts with full server lifecycle management
-- Server status state machine: `idle` → `starting` → `ready` (or `error`)
-- Auto-start server on TasksPlugin mount via useEffect
-- Subtle "Starting server..." indicator with spinner in Breadcrumb (task detail view only)
-- Health check interval (every 30 seconds) to detect server crashes
-- Auto-restart on crash: attempts once, then shows persistent error toast with Retry button
-- Toast notifications with action buttons for server errors (crash, restart failure)
-- Uses existing backend commands: `opencode_ensure_server`, `opencode_health_check`
-
-### Files changed
-- `src/plugins/tasks/useTasksStorage.ts` - Added `useOpenCodeServer` hook with ServerStatus type, health check interval, auto-restart logic
-- `src/plugins/tasks/TasksPlugin.tsx` - Added hook usage, server start on mount, status indicator in Breadcrumb
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Use `ReturnType<typeof setInterval>` instead of `NodeJS.Timeout` for browser/Tauri compatibility
-  - Toast actions with `{ action: { label, onClick } }` from sonner provide inline retry buttons
-  - Use `useRef` for state that shouldn't trigger re-renders (restartAttemptedRef, healthCheckIntervalRef)
-  - Server lifecycle hooks should be separate from data hooks for cleaner separation of concerns
-- **Gotchas encountered:**
-  - `NodeJS.Timeout` doesn't exist in browser/Tauri context - use ReturnType pattern instead
-  - Health check interval must be cleared when server status changes from "ready" to prevent memory leaks
-  - useCallback dependencies: startServer depends on status, but handleHealthCheckFailure depends on both status and startServer
-- **Useful context:**
-  - `useOpenCodeServer` hook is at lines ~1204-1318 in useTasksStorage.ts
-  - Server starts lazily when TasksPlugin mounts (not on app start)
-  - Health check runs every 30 seconds only when server status is "ready"
-  - Server indicator appears in task detail view Breadcrumb (where execution happens)
-
-## 2026-01-21 16:10 - Task 10: Frontend - Running state animation
-
-### What was implemented
-- Created neon border animation effect for executing subtasks
-- Animation uses `conic-gradient` with `@property` for smooth rotation
-- White/gray gradient that rotates around the border (2s linear infinite)
-- Two-layer effect: sharp border gradient + soft outer glow (blur)
-- Applied via `.neon-border-executing` CSS class when `isThisExecuting` is true
-- Uses CSS mask to create border-only gradient (content area transparent)
-- GPU-accelerated with `will-change` implicit via animation
-
-### Files changed
-- `src/index.css` - Added `@property --neon-angle`, `@keyframes neon-border-spin`, and `.neon-border-executing` class with `::before` and `::after` pseudo-elements
-- `src/plugins/tasks/TasksPlugin.tsx` - Added `neon-border-executing` class to `TasksPluginSubtaskExpandable` when `isThisExecuting` is true
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - `@property` CSS feature enables animating custom properties like angles for conic-gradient rotation
-  - `mask-composite: exclude` creates hollow gradient borders (only the border shows, content is transparent)
-  - Two-layer pseudo-element approach: `::before` for sharp border, `::after` with blur for glow effect
-  - `isolation: isolate` creates new stacking context for proper z-index layering with negative z-index pseudo-elements
-- **Gotchas encountered:**
-  - `conic-gradient` angle cannot be animated directly - requires `@property` declaration for the angle
-  - `mask-composite` has vendor prefix difference: `-webkit-mask-composite: xor` vs `mask-composite: exclude`
-  - Pseudo-elements need `border-radius: inherit` to match parent's rounded corners
-  - `inset: -1px` for `::before` and `inset: -3px` for `::after` to position outside the element
-- **Useful context:**
-  - Animation is at lines ~174-228 in src/index.css
-  - Class applied in TasksPluginSubtaskExpandable at line ~1684 in TasksPlugin.tsx
-  - CSS exceptions documented in file (complex gradient animation not achievable with Tailwind)
-
-## 2026-01-21 16:12 - Task 12: Frontend - Loop (Run All) button
-
-### What was implemented
-- Added `isLooping` state and `loopAbortedRef` ref to `useTasksStorage` hook
-- Created `startLoop(taskId)` function: iterates through subtasks sorted by order, executes each with status "waiting"
-- Created `stopLoop()` function: sets abort flag and clears looping state
-- Loop continues to next subtask even if one fails (non-blocking on failures)
-- Added `TasksPluginRunAllButton` component with two states:
-  - "Run All" button (emerald green Play icon) when not looping
-  - "Stop" button (red Square icon) when looping
-- Button disabled when execution in progress or no waiting subtasks
-- Added button to Subtasks section header in TasksPluginTaskDetail
-- Passed `isLooping`, `startLoop`, `stopLoop` through prop chain: TasksPlugin → TasksPluginTaskDetail
-
-### Files changed
-- `src/plugins/tasks/useTasksStorage.ts` - Added isLooping state, loopAbortedRef, startLoop, stopLoop functions
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added TasksPluginRunAllButton component, updated props interface
-- `src/plugins/tasks/TasksPlugin.tsx` - Destructured loop functions and passed to TasksPluginTaskDetail
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Loop logic uses `loopAbortedRef` to allow breaking out mid-loop (ref doesn't cause re-renders)
-  - Sort subtasks by `order` field before iterating to respect user-defined order
-  - Loop state (`isLooping`) is separate from execution state (`isExecuting`) to track overall loop vs individual subtask
-- **Gotchas encountered:**
-  - Must check `loopAbortedRef.current` BEFORE executing each subtask, not after
-  - Loop needs to reset `loopAbortedRef` both at start and after completing
-  - The `startLoop` callback depends on `tasks` array to find current task data
-- **Useful context:**
-  - Loop logic is at lines ~1175-1227 in useTasksStorage.ts
-  - TasksPluginRunAllButton component is at lines ~423-471 in TasksPluginTaskDetail.tsx
-  - Button placement is in Subtasks section header (right side)
-
-## 2026-01-21 16:16 - Task 13: Frontend - Drag to reorder subtasks
-
-### What was implemented
-- **ALREADY COMPLETE** - Verified existing implementation satisfies all PRD requirements
-- Custom vanilla JavaScript drag-and-drop (no external library like dnd-kit)
-- GripVertical drag handle on each subtask (left side)
-- Ghost element shows insertion point during drag
-- `reorderSubtasks` hook updates `order` field for each subtask
-- Backend `subtasks_reorder` command persists new order to JSON
-
-### Files verified
-- `src/plugins/tasks/TasksPlugin.tsx` (lines 1170-1473 for drag implementation, line 1702 for grip handle)
-- `src/plugins/tasks/useTasksStorage.ts` (lines 832-859 for reorderSubtasks hook)
-- `src-tauri/src/plugins/tasks/commands.rs` (lines 495-517 for subtasks_reorder command)
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - This codebase uses custom vanilla JS for drag-and-drop instead of dnd-kit
-  - Hysteresis (8px threshold) prevents jitter when cursor is near drop zone boundaries
-  - Uses `itemRefs` Map to cache DOM bounding rects for performance
-- **Gotchas encountered:**
-  - PRD marked as `passes: false` but implementation was already complete from earlier task
-  - Always verify implementation status before starting work
-- **Useful context:**
-  - Drag state: draggedId, dragOverId, dropPosition, isActiveDrag
-  - Mouse handlers: handleMouseDown (line 1233), handleMouseMove (line 1240), handleMouseUp (line 1325)
-  - Ghost element rendered at lines 1408-1419
-
-## 2026-01-21 16:18 - Task 15: Frontend - Execution log detail view in subtask
-
-### What was implemented
-- Transformed `TasksPluginSubtaskExpandableLastRun` to accept full logs array instead of just last log
-- Added "see all (N)" toggle that expands to show all execution logs in reverse chronological order
-- Each log entry is now expandable via `TasksPluginExecutionLogCard` component with:
-  - Header: timestamp, outcome badge, duration
-  - Summary: truncated to 2 lines when collapsed, full when expanded
-  - Chevron rotation animation indicating expandable state
-- Expandable details section showing:
-  - Files Changed: file badges showing basename only
-  - Learnings - Patterns: sky blue themed bullet list
-  - Learnings - Gotchas: amber themed bullet list  
-  - Learnings - Context: violet themed bullet list
-  - Commit Info: hash badge + message (when committed)
-  - Error Message: red themed error block (when failed)
-- Created `TasksPluginOutcomeBadge` reusable component for outcome badges
-- Created `TasksPluginLearningsSection` reusable component for learnings display
-- Smooth expand/collapse animations using motion/react AnimatePresence
-
-### Files changed
-- `src/plugins/tasks/TasksPlugin.tsx` - Updated LastRun component, added ExecutionLogCard, OutcomeBadge, LearningsSection components
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - AnimatePresence with `mode="wait"` allows smooth transitions between different content views
-  - Using file path as key works for filesChanged since paths are unique
-  - Using item text as key works for learnings arrays since learning items are typically unique strings
-  - The logs array is in chronological order (oldest first), so reverse() for display
-- **Gotchas encountered:**
-  - Changed from passing single `log` prop to passing full `logs` array to enable "see all" functionality
-  - Had to remove the `lastLog` variable that was unused after refactoring
-  - ESLint forbids array index as key - use unique string identifiers instead
-- **Useful context:**
-  - `TasksPluginSubtaskExpandableLastRun` now at lines ~2139-2218
-  - `TasksPluginExecutionLogCard` at lines ~2220-2380
-  - `TasksPluginLearningsSection` at lines ~2404-2428
-  - ExecutionLog has: id, startedAt, completedAt, duration, outcome, summary, filesChanged, learnings, committed, commitHash, commitMessage, errorMessage
-
-## 2026-01-21 16:22 - Task 18: Backend - AI Generate subtasks command
-
-### What was implemented
-- Added `tasks_generate_subtasks` command in opencode.rs
-- Parameters: `taskId` (to retrieve task description)
-- Validates task has non-empty description before generating
-- Creates OpenCode session with title "Generate subtasks: {task.text}"
-- Builds prompt that instructs AI to:
-  - Analyze task name and description
-  - Generate JSON array of subtasks with: text, steps[], category, notes, shouldCommit
-  - Order subtasks by logical dependency
-  - Include test subtasks where appropriate
-- Polls session until idle (max 2 minutes timeout)
-- Fetches session messages via `get_session_last_message` helper
-- Parses AI response with `extract_json_from_response`:
-  - Strips markdown code block wrappers (```json)
-  - Finds JSON array boundaries
-  - Deserializes to `Vec<GeneratedSubtask>`
-- Returns `GenerateSubtasksResult` with subtasks array and sessionId
-- Created types: `GeneratedStep`, `GeneratedSubtask`, `GenerateSubtasksResult`
-- Registered command in lib.rs invoke_handler
-
-### Files changed
-- `src-tauri/src/plugins/tasks/opencode.rs`
-- `src-tauri/src/lib.rs`
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - OpenCode session messages endpoint: `GET /session/{id}` returns `{messages: [{role, parts: [{type, text}]}]}`
-  - AI responses often include markdown code blocks around JSON - need to strip them before parsing
-  - Use `rfind(']')` to handle JSON that may have extra text after the array
-  - Separate timeout constants for different operations: EXECUTION_TIMEOUT_SECS (5min) vs GENERATE_TIMEOUT_SECS (2min)
-- **Gotchas encountered:**
-  - Session messages response has nested structure: messages[] → parts[] → text
-  - Must filter for `role == "assistant"` and `type == "text"` to get the actual response
-  - The prompt must be very explicit about JSON format - include example with exact structure
-- **Useful context:**
-  - `tasks_generate_subtasks` is at lines ~95-160 in opencode.rs
-  - `get_session_last_message` helper at lines ~162-227
-  - `extract_json_from_response` at lines ~75-93
-  - Frontend will receive subtasks and show preview for user confirmation before creating
-
-## 2026-01-21 16:26 - Task 17: Frontend - AI Generate subtasks feature
-
-### What was implemented
-- Added `generateSubtasks` function to `useTasksStorage` hook that calls backend `tasks_generate_subtasks`
-- Added `createSubtaskBatch` function for creating multiple subtasks sequentially after user confirmation
-- Added `isGenerating` state to track generation in progress
-- Created new types: `GeneratedStep`, `GeneratedSubtask`, `GenerateSubtasksResultFromBackend`
-- Created `TasksPluginSubtaskHeaderActions` component combining Generate and Run All buttons
-- Created `TasksPluginGeneratePreviewModal` - premium modal with backdrop blur for reviewing generated subtasks
-- Created `TasksPluginGeneratePreviewItem` - expandable cards showing subtask details (text, steps, notes, category)
-- Generate button shows sparkle icon (Sparkles from lucide-react), violet/purple theme
-- Loading state shows spinner with "Generating..." text
-- Disabled state when: generating, executing, or no description on task
-- Preview modal allows removing individual subtasks before confirming
-- Confirm button creates all remaining subtasks via batch creation
-- Smooth animations using motion/react AnimatePresence for modal and item expansion
-
-### Files changed
-- `src/plugins/tasks/useTasksStorage.ts` - Added generateSubtasks, createSubtaskBatch, isGenerating, new types
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added SubtaskHeaderActions, GeneratePreviewModal, GeneratePreviewItem components
-- `src/plugins/tasks/TasksPlugin.tsx` - Wired up new props to TasksPluginTaskDetail
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Combine related header actions into a single component (SubtaskHeaderActions) to keep prop drilling manageable
-  - Use AnimatePresence at the parent level for modals to enable smooth exit animations
-  - Generated content preview pattern: generate → show modal → allow edit/remove → confirm batch create
-  - Batch creation sequentially (not Promise.all) to maintain order and avoid race conditions with order field
-- **Gotchas encountered:**
-  - ESLint forbids array index as key even for map within a specific context - use step.text as key instead
-  - Need to import motion from "motion/react" for AnimatePresence to work with exit animations
-  - Modal needs both backdrop (for click-outside close) and inner container (for stopPropagation)
-  - createSubtaskBatch needs unique tempIds per subtask - use timestamp + random string
-- **Useful context:**
-  - TasksPluginSubtaskHeaderActions at lines ~463-590 in TasksPluginTaskDetail.tsx
-  - TasksPluginGeneratePreviewModal at lines ~600-690 in TasksPluginTaskDetail.tsx
-  - TasksPluginGeneratePreviewItem at lines ~700-780 in TasksPluginTaskDetail.tsx
-  - generateSubtasks at lines ~1266-1300 in useTasksStorage.ts
-  - createSubtaskBatch at lines ~1302-1370 in useTasksStorage.ts
-
-## 2026-01-21 16:32 - Task 14: Frontend - History section
-
-### What was implemented
-- Created `AggregatedLog` interface with: log (ExecutionLog), subtaskId, subtaskText
-- Created `aggregateExecutionLogs()` helper function that collects all execution logs from all subtasks and sorts by startedAt descending (most recent first)
-- Created `TasksPluginHistorySection` component with:
-  - Section header using existing `TasksPluginTaskDetailSectionHeader`
-  - Empty state with History icon when no logs exist
-  - Execution count in header right side
-  - List of `TasksPluginHistoryItem` components with AnimatePresence for smooth animations
-  - "Show X more" button when more than 20 logs (HISTORY_LIMIT constant)
-- Created `TasksPluginHistoryItem` component showing:
-  - Timestamp (formatted as "Jan 21, 4:32 PM")
-  - Outcome badge (success/partial/failed/aborted with color coding)
-  - Subtask text (truncated)
-  - Duration in seconds
-  - Expandable details showing: files changed, learnings (patterns/gotchas/context), commit info, error message
-  - Chevron indicator that rotates on expand
-- Created local `TasksPluginOutcomeBadge` and `TasksPluginLearningsSection` components (matching patterns from TasksPlugin.tsx)
-- Added History section after Subtasks section in TasksPluginTaskDetail component
-
-### Files changed
-- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added History section, AggregatedLog interface, aggregateExecutionLogs helper, and 5 new components
-
-### Learnings for future iterations
-- **Patterns discovered:**
-  - Use `AnimatePresence mode="popLayout"` for lists where items can be added/removed with smooth animations
-  - Timeline items: timestamp + badge + text + duration is a scannable pattern
-  - Helper functions for aggregating data across nested structures should be defined near the component that uses them
-- **Gotchas encountered:**
-  - Key for aggregated logs must combine log.id AND subtaskId to ensure uniqueness (same log could theoretically appear in multiple contexts)
-  - ESLint forbids array index as key - use item.text as fallback for learnings arrays
-  - Must add History icon import from lucide-react
-- **Useful context:**
-  - TasksPluginHistorySection at lines ~829-894 in TasksPluginTaskDetail.tsx
-  - TasksPluginHistoryItem at lines ~903-1065 in TasksPluginTaskDetail.tsx
-  - aggregateExecutionLogs helper at lines ~104-120 in TasksPluginTaskDetail.tsx
-  - HISTORY_LIMIT constant = 20 entries before "show more"
+## 2026-01-21 - Task 5: Rust - Implement Trace context methods
+- Implemented `push(self: &Arc<Self>, ctx: Value) -> ContextGuard` method that adds context to stack and returns RAII guard
+- Implemented `merged_context(&self) -> Value` that merges all context stack entries into single object (later values override earlier keys)
+- Added Arc import and ContextGuard import to trace.rs
+- Files changed: `src-tauri/src/traces/trace.rs`
+- **Learnings for future iterations:**
+  - Tasks 1-4 were already implemented in previous sessions but progress.txt wasn't updated
+  - The `push()` method requires `&Arc<Self>` receiver to create the ContextGuard with a cloned Arc
+  - Context merging iterates through stack in order, so later pushes naturally override earlier ones for same keys
