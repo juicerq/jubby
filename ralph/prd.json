@@ -1,270 +1,278 @@
 [
-  {
-    "category": "functional",
-    "description": "Create typed error hierarchy (eliminate string-based error detection)",
-    "steps": [
-      "Create PortalError enum with variants: Unavailable, UserCancelled, TokenInvalid, SessionFailed(String), Timeout(Duration)",
-      "Create CaptureError enum with variants: InitFailed, StreamFailed, NoFrames, FormatNegotiationFailed, MainloopTimeout, WriterStalled, WriterDisconnected",
-      "Create EncodingError enum with variants: FfmpegNotFound, ProcessFailed { exit_code, stderr }, WriteFailed, Timeout(Duration)",
-      "Refactor QuickClipError to use #[from] for automatic conversions from sub-errors",
-      "Add is_recoverable_with_retry() method to PortalError for token retry logic",
-      "Remove all string-based error detection (contains('cancelled')) from session.rs"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read errors.rs and session.rs first. The goal is to make error handling typed and exhaustive. Use thiserror for all enums."
-  },
-  {
-    "category": "functional",
-    "description": "Implement RecordingState enum state machine",
-    "steps": [
-      "Create RecordingState enum with variants: Idle, Starting { started_at }, Recording { started_at, frame_count, resolution }, Stopping { started_at, stop_requested_at }, Failed { error, recoverable }",
-      "Create RecordingEvent enum with all possible events (StartRequested, StopRequested, PortalReady, CaptureFailed, etc.)",
-      "Create SideEffect enum for effects triggered by transitions (InitiatePortal, SignalStop, EmitStateChange, Cleanup, SaveRecording)",
-      "Implement transition() as pure function: (State, Event) -> (NewState, Vec<SideEffect>)",
-      "Ensure invalid transitions return current state with empty effects (no panic)",
-      "Add derive for Debug, Clone, PartialEq on state types"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "This is the core architectural change. The state machine should make invalid states unrepresentable. Place in recorder/state.rs."
-  },
-  {
-    "category": "functional",
-    "description": "Create WriterGuard RAII struct for FFmpeg cleanup",
-    "steps": [
-      "Create WriterGuard struct with fields: ffmpeg_child, output_path, completed flag",
-      "Implement Drop trait that kills FFmpeg and deletes partial file if not completed",
-      "Add mark_completed() method to prevent cleanup on normal exit",
-      "Refactor spawn_writer_thread to use WriterGuard",
-      "Ensure guard is held throughout entire writer thread lifetime",
-      "Test that partial files are deleted on panic/error"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read writer.rs first. The guard pattern ensures cleanup happens even on panic. FFmpeg child should be killed with SIGKILL if not completed."
-  },
-  {
-    "category": "functional",
-    "description": "Create CaptureGuard RAII struct for PipeWire cleanup",
-    "steps": [
-      "Create CaptureGuard struct that ensures mainloop quit and cleanup on drop",
-      "Add event_tx field to send CaptureError on abnormal exit",
-      "Implement Drop to log abnormal termination and notify coordinator",
-      "Refactor run_capture_loop to use CaptureGuard",
-      "Ensure PipeWire resources are released even on panic"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read stream.rs first. The guard should wrap the mainloop run and ensure proper cleanup sequence."
-  },
-  {
-    "category": "functional",
-    "description": "Move portal session to dedicated thread (eliminate unsafe transmute)",
-    "steps": [
-      "Create PortalSessionData struct with owned fields: pipewire_fd (OwnedFd), node_id (u32), resolution_hint",
-      "Create spawn_portal_thread() function that runs portal in dedicated std::thread",
-      "Create own tokio runtime inside portal thread for async operations",
-      "Use oneshot channel to send PortalSessionData back to coordinator",
-      "Use oneshot channel for close signal (session lives until signal received)",
-      "Remove unsafe transmute from session.rs",
-      "Create PortalHandle struct with close_tx and join_handle"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "This is critical for safety. The portal session has lifetime issues - by running it in a dedicated thread that OWNS the session, we eliminate the need for unsafe transmute. Read session.rs lines 145-146."
-  },
-  {
-    "category": "functional",
-    "description": "Implement bounded channels with timeout (deadlock prevention)",
-    "steps": [
-      "Replace std::sync::mpsc::sync_channel with crossbeam_channel::bounded",
-      "Add crossbeam-channel dependency to Cargo.toml",
-      "Create send_frame() helper that uses send_timeout(5s)",
-      "Return CaptureError::WriterStalled on timeout",
-      "Return CaptureError::WriterDisconnected on channel close",
-      "Update stream.rs to use new channel pattern",
-      "Remove channel_open AtomicBool (no longer needed with timeout)"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read stream.rs lines 128-209. The current pattern can deadlock if writer crashes. Timeout-based sends prevent this entirely."
-  },
-  {
-    "category": "functional",
-    "description": "Implement atomic token file persistence",
-    "steps": [
-      "Create TokenStore struct wrapping the token file path",
-      "Implement save() using write-to-temp-then-rename pattern",
-      "Ensure temp file uses .tmp extension",
-      "Use std::fs::rename for atomic replacement (POSIX guarantee)",
-      "Return Result<(), io::Error> instead of silently failing",
-      "Refactor load_tokens/save_token/clear_token to use TokenStore",
-      "Remove silent error swallowing (unwrap_or_default on parse)"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read tokens.rs. Current implementation has TOCTOU race conditions. Atomic rename is the standard solution."
-  },
-  {
-    "category": "functional",
-    "description": "Create RecordingCoordinator actor (single owner pattern)",
-    "steps": [
-      "Create RecordingCoordinator struct owning: state, event channels, handles (PortalHandle, CaptureHandle, WriterHandle)",
-      "Implement run() async method with tokio::select! over event_rx and command_rx",
-      "Implement handle_event() that calls state.transition() and executes side effects",
-      "Implement execute_effect() for each SideEffect variant",
-      "Ensure cleanup drops handles in correct order: writer -> capture -> portal",
-      "Replace RecorderState (shared mutexes) with RecordingCoordinator (single owner)"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "This is the main architectural change. Read recorder/mod.rs and recorder/commands.rs. The coordinator OWNS all resources - no shared mutexes between threads."
-  },
-  {
-    "category": "functional",
-    "description": "Refactor Tauri commands to use RecordingCoordinator",
-    "steps": [
-      "Create command channel for IPC -> Coordinator communication",
-      "Refactor recorder_start to send StartRequested command and await response",
-      "Refactor recorder_stop to send StopRequested command and await response",
-      "Refactor recorder_status to query coordinator state",
-      "Remove direct RecorderState access from commands",
-      "Update lib.rs to spawn coordinator task on startup"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read commands.rs. Commands should no longer manipulate state directly - they send messages to the coordinator."
-  },
-  {
-    "category": "functional",
-    "description": "Implement event-based frontend state sync",
-    "steps": [
-      "Emit 'quickclip:state-change' event on every state transition with full status",
-      "Update useQuickClip.ts to use event listener as primary sync mechanism",
-      "Remove 500ms polling interval (events are sufficient)",
-      "Add 'quickclip:error' event for error notifications",
-      "Include frame_count, elapsed_time, resolution in state-change payload",
-      "Update QuickClipPlugin.tsx to handle new event structure"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read useQuickClip.ts. Current polling creates 500ms lag. Event-based sync is immediate and eliminates state divergence."
-  },
-  {
-    "category": "functional",
-    "description": "Replace all .unwrap() calls with proper error handling",
-    "steps": [
-      "Find all .lock().unwrap() calls in quickclip module",
-      "Replace with .lock().expect('descriptive context') or handle poisoning",
-      "Find all .expect() calls and ensure they have descriptive messages",
-      "Remove Pod::from_bytes().expect() in stream.rs - use ? operator",
-      "Remove timestamp .expect() in commands.rs - use ? with error conversion",
-      "Ensure no panic paths remain in production code"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Project guidelines prohibit unwrap() in production code. Read CLAUDE.md for conventions. Use grep to find all instances."
-  },
-  {
-    "category": "functional",
-    "description": "Add PipeWire mainloop timeout mechanism",
-    "steps": [
-      "Add maximum recording duration constant (e.g., 4 hours)",
-      "Create timeout check in the 100ms timer callback",
-      "Force mainloop.quit() if maximum duration exceeded",
-      "Return CaptureError::MainloopTimeout when triggered",
-      "Emit appropriate error event to frontend"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read stream.rs lines 291-312. Currently mainloop.run() has no escape if PipeWire hangs. The timer callback should enforce a hard limit."
-  },
-  {
-    "category": "test",
-    "description": "Add unit tests for RecordingState state machine",
-    "steps": [
-      "Test Idle + StartRequested -> Starting transition",
-      "Test Starting + PortalReady -> Recording transition",
-      "Test Recording + StopRequested -> Stopping transition",
-      "Test any state + Error -> Failed transition with Cleanup effect",
-      "Test invalid transitions are no-ops (no panic)",
-      "Test all SideEffects are correctly produced"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "State machine is a pure function - trivial to unit test. No mocking required."
-  },
-  {
-    "category": "test",
-    "description": "Add unit tests for RAII guards",
-    "steps": [
-      "Test WriterGuard deletes partial file on drop when not completed",
-      "Test WriterGuard preserves file when mark_completed() called",
-      "Test WriterGuard kills FFmpeg process on abnormal drop",
-      "Use tempfile crate for test file management",
-      "Test CaptureGuard sends error event on abnormal drop"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Guards can be tested independently of the full recording flow. Use mock Child process if needed."
-  },
-  {
-    "category": "test",
-    "description": "Add unit tests for error recovery logic",
-    "steps": [
-      "Test PortalError::TokenInvalid.is_recoverable_with_retry() returns true",
-      "Test PortalError::UserCancelled.is_recoverable_with_retry() returns false",
-      "Test token retry logic clears token and retries once",
-      "Test second failure after retry is not retried",
-      "Test error type conversions work correctly (#[from])"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Error handling is critical - ensure recovery paths work as expected."
-  },
-  {
-    "category": "test",
-    "description": "Add integration test for bounded channel timeout",
-    "steps": [
-      "Create test with bounded(1) channel",
-      "Fill channel with one message",
-      "Verify send_timeout returns Err after timeout",
-      "Verify correct error variant (WriterStalled vs WriterDisconnected)",
-      "Test channel disconnect detection"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "This tests the deadlock prevention mechanism. Use short timeouts (10ms) in tests."
-  },
-  {
-    "category": "test",
-    "description": "Manual test: full recording flow with new architecture",
-    "steps": [
-      "Test start recording via UI",
-      "Test stop recording via UI",
-      "Test start recording via global shortcut",
-      "Test stop recording via global shortcut",
-      "Verify state events are emitted correctly",
-      "Verify cleanup happens on error (kill FFmpeg mid-recording)",
-      "Verify partial files are deleted on error"
-    ],
-    "shouldCommit": false,
-    "passes": false,
-    "notes": "Manual testing required after all architectural changes are complete. Test error paths by killing FFmpeg process manually."
-  },
-  {
-    "category": "test",
-    "description": "Manual test: verify no resource leaks",
-    "steps": [
-      "Start and stop recording 10 times",
-      "Verify no orphaned FFmpeg processes (ps aux | grep ffmpeg)",
-      "Verify no orphaned portal sessions (check D-Bus)",
-      "Verify no memory growth in Jubby process",
-      "Test error scenarios don't leak resources"
-    ],
-    "shouldCommit": false,
-    "passes": false,
-    "notes": "Resource leak testing requires monitoring system state. Use htop or similar for memory monitoring."
-  }
+	{
+		"category": "functional",
+		"description": "Fase 1.1: Backend - Rename todo module to tasks and update types",
+		"steps": [
+			"Rename folder src-tauri/src/plugins/todo/ to src-tauri/src/plugins/tasks/",
+			"Update src-tauri/src/plugins/mod.rs: change 'pub mod todo;' to 'pub mod tasks;'",
+			"In types.rs: rename Todo struct to Task",
+			"In types.rs: rename TodoData struct to TasksData",
+			"In types.rs: rename TodoWithTags struct to TaskWithTags",
+			"In types.rs: rename TodoDataResponse struct to TasksDataResponse",
+			"In types.rs: rename RecentTodo struct to RecentTask",
+			"In types.rs: rename FolderWithPreview.todo_count to task_count",
+			"In types.rs: rename FolderWithPreview.recent_todos to recent_tasks",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "This is the foundation change. All other backend changes depend on this. Read types.rs first."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.2: Backend - Update store and storage with data migration",
+		"steps": [
+			"In mod.rs: rename TodoStore to TasksStore",
+			"In mod.rs: rename TodoData references to TasksData",
+			"In mod.rs: rename init_todo_store() to init_tasks_store()",
+			"In mod.rs: update tracing target from 'todo' to 'tasks'",
+			"In mod.rs: update log message from 'Todo store' to 'Tasks store'",
+			"In storage.rs: rename get_todo_dir() to get_tasks_dir()",
+			"In storage.rs: change get_plugin_dir('todo') to get_plugin_dir('tasks')",
+			"In storage.rs: change data file from 'todo.json' to 'tasks.json'",
+			"In storage.rs: update all tracing targets from 'todo' to 'tasks'",
+			"In storage.rs: implement migration - detect existing todo/todo.json and move to tasks/tasks.json",
+			"In storage.rs: update all TodoData references to TasksData",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "The migration logic is critical - users with existing data must not lose their tasks. Check if todo/todo.json exists, if so, move contents to tasks/tasks.json and optionally remove old directory."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.3: Backend - Rename commands and update error messages",
+		"steps": [
+			"In commands.rs: rename todo_get_by_folder to tasks_get_by_folder",
+			"In commands.rs: rename todo_create to tasks_create",
+			"In commands.rs: rename todo_update_status to tasks_update_status",
+			"In commands.rs: rename todo_delete to tasks_delete",
+			"In commands.rs: rename todo_set_tags to tasks_set_tags",
+			"In commands.rs: update all TodoStore references to TasksStore",
+			"In commands.rs: update all internal variable names (folder_todos -> folder_tasks, sorted_todos -> sorted_tasks, etc.)",
+			"In commands.rs: update error messages from 'Todo not found' to 'Task not found'",
+			"In commands.rs: update all type references (Todo -> Task, TodoWithTags -> TaskWithTags, etc.)",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "Be thorough with variable renames to maintain consistency. Use find/replace carefully."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.4: Backend - Update lib.rs, logging.rs and paths.rs",
+		"steps": [
+			"In lib.rs: update comment from '// Todo plugin' to '// Tasks plugin'",
+			"In lib.rs: change all plugins::todo:: to plugins::tasks::",
+			"In lib.rs: update command registrations (todo_get_by_folder -> tasks_get_by_folder, etc.)",
+			"In lib.rs: rename init_todo_store() call to init_tasks_store()",
+			"In lib.rs: update error message from 'Failed to initialize todo store' to 'Failed to initialize tasks store'",
+			"In logging.rs: change plugins array from ['quickclip', 'todo'] to ['quickclip', 'tasks']",
+			"In logging.rs: update all match cases from ('todo', ...) to ('tasks', ...)",
+			"In shared/paths.rs: update test from get_plugin_dir('todo') to get_plugin_dir('tasks')",
+			"In shared/paths.rs: update assertion from ends_with('todo') to ends_with('tasks')",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "This completes the backend rename. After this, all Rust code should compile and use 'tasks' consistently."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.5: Frontend - Rename files and update types",
+		"steps": [
+			"Rename folder src/plugins/todo/ to src/plugins/tasks/",
+			"Rename TodoPlugin.tsx to TasksPlugin.tsx",
+			"Rename useTodoStorage.ts to useTasksStorage.ts",
+			"In types.ts: rename TodoStatus to TaskStatus",
+			"In types.ts: rename Todo interface to Task",
+			"In types.ts: rename RecentTodo interface to RecentTask",
+			"In types.ts: rename Folder.todoCount to Folder.taskCount",
+			"In types.ts: rename Folder.recentTodos to Folder.recentTasks",
+			"Run bun tsc --noEmit to check for errors (will fail until hooks/components updated)"
+		],
+		"shouldCommit": false,
+		"passes": true,
+		"notes": "File renames must happen first. TypeScript will show errors until the next tasks complete the migration."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.6: Frontend - Update hook (useTasksStorage.ts)",
+		"steps": [
+			"Rename function useTodoStorage to useTasksStorage",
+			"Rename interface TodoFromBackend to TaskFromBackend",
+			"Rename interface TodoDataFromBackend to TasksDataFromBackend",
+			"Rename interface UseTodoStorageReturn to UseTasksStorageReturn",
+			"Rename function mapBackendTodo to mapBackendTask",
+			"Update all import paths to use new type names (Task, TaskStatus, RecentTask)",
+			"Update all invoke calls: 'todo_get_by_folder' -> 'tasks_get_by_folder', etc.",
+			"Rename all internal variables: todos -> tasks, setTodos -> setTasks, etc.",
+			"Update all toast messages: 'Failed to create todo' -> 'Failed to create task', etc.",
+			"Update useFolderStorage: todoCount -> taskCount, recentTodos -> recentTasks",
+			"Run bun tsc --noEmit to check for errors"
+		],
+		"shouldCommit": false,
+		"passes": true,
+		"notes": "This is a large file with many renames. Be systematic and thorough."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.7: Frontend - Update main component (TasksPlugin.tsx)",
+		"steps": [
+			"Rename main component function TodoPlugin to TasksPlugin",
+			"Rename type TodoView to TasksView",
+			"Update import from useTodoStorage to useTasksStorage",
+			"Update import types to use Task, TaskStatus, RecentTask",
+			"Rename all internal variables: todos -> tasks, sortedTodos -> sortedTasks, filteredTodos -> filteredTasks",
+			"Update navigation label from 'Todo' to 'Tasks' in useNavigationLevels",
+			"Rename all TodoPlugin* components to TasksPlugin* (e.g., TodoPluginItem -> TasksPluginItem)",
+			"Rename all TodoPlugin*Props interfaces to TasksPlugin*Props",
+			"Update all references to Todo/todo in comments and aria-labels",
+			"Export TasksPlugin at end of file",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": false,
+		"passes": true,
+		"notes": "This is a very large file (~1600 lines). Use find/replace carefully. All component names must be updated consistently."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 1.8: Frontend - Update manifest, registry and navigation hook",
+		"steps": [
+			"In index.tsx: rename TodoManifest to TasksManifest",
+			"In index.tsx: change id from 'todo' to 'tasks'",
+			"In index.tsx: change name from 'Todo' to 'Tasks'",
+			"In index.tsx: update description to 'Manage tasks with subtasks, tags and status tracking'",
+			"In index.tsx: update component from TodoPlugin to TasksPlugin",
+			"In registry.ts: change import from './todo' to './tasks'",
+			"In registry.ts: change TodoManifest to TasksManifest",
+			"In useNavigationLevels.ts: update comment example from 'todo' to 'tasks'",
+			"Run bun tsc --noEmit to verify no errors",
+			"Run cargo check to verify Rust still compiles"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "This completes Fase 1. After this task, the entire codebase should use 'Tasks' consistently and compile without errors."
+	},
+	{
+		"category": "test",
+		"description": "Fase 1.9: Verify Phase 1 - Manual testing of rename",
+		"steps": [
+			"Verify cargo check passes with no errors",
+			"Verify bun tsc --noEmit passes with no errors",
+			"Create a test todo.json file in old location (~/.local/share/jubby/todo/todo.json) with sample data",
+			"Start the app and verify migration moves data to tasks/tasks.json",
+			"Verify old todo/ directory can be deleted after migration",
+			"Verify tasks CRUD operations work (create, update status, delete)",
+			"Verify folder operations work (create, rename, delete, reorder)",
+			"Verify tag operations work (create, update, delete)",
+			"Verify logs go to tasks.log instead of todo.log",
+			"Verify navigation breadcrumb shows 'Tasks' label"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Manual testing is required to verify the rename is complete. Test with existing data to ensure migration works."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 2.1: Backend - Add Subtask type and update Task struct",
+		"steps": [
+			"In types.rs: create Subtask struct with fields: id (String), text (String), completed (bool), position (i32)",
+			"In types.rs: add #[derive(Clone, Serialize, Deserialize)] and #[serde(rename_all = 'camelCase')] to Subtask",
+			"In types.rs: add 'subtasks: Vec<Subtask>' field to Task struct with #[serde(default)]",
+			"In types.rs: add 'subtasks: Vec<Subtask>' field to TaskWithTags struct",
+			"Update commands.rs tasks_get_by_folder to include subtasks in response",
+			"Update commands.rs tasks_create to initialize empty subtasks vec",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "The Subtask struct is simple - no tags, no complex status. Position field enables drag-and-drop reordering."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 2.2: Backend - Add subtask commands",
+		"steps": [
+			"Create subtasks_create command: takes task_id and text, creates Subtask with uuid, returns Subtask",
+			"Create subtasks_toggle command: takes task_id and subtask_id, toggles completed boolean",
+			"Create subtasks_delete command: takes task_id and subtask_id, removes subtask from task",
+			"Create subtasks_reorder command: takes task_id and subtask_ids array, updates position values",
+			"Create subtasks_update_text command: takes task_id, subtask_id and text, updates subtask text",
+			"Update tasks_update_status: when status becomes 'completed', set all subtasks.completed = true",
+			"Register all new commands in lib.rs invoke_handler",
+			"Run cargo check to verify compilation"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "Commands follow existing patterns. The cascade behavior (parent completed -> subtasks completed) is important for UX."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 2.3: Frontend - Add Subtask types and update Task interface",
+		"steps": [
+			"In types.ts: create Subtask interface with fields: id, text, completed, position",
+			"In types.ts: add 'subtasks: Subtask[]' to Task interface",
+			"In useTasksStorage.ts: add subtasks field to TaskFromBackend interface",
+			"In useTasksStorage.ts: add subtasks to mapBackendTask function",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "Simple type additions. The hook mapping must include subtasks to pass data to components."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 2.4: Frontend - Add subtask operations to hook",
+		"steps": [
+			"Add createSubtask function: invoke 'subtasks_create', optimistically add to task.subtasks",
+			"Add toggleSubtask function: invoke 'subtasks_toggle', optimistically update completed state",
+			"Add deleteSubtask function: invoke 'subtasks_delete', optimistically remove from task.subtasks",
+			"Add reorderSubtasks function: invoke 'subtasks_reorder', optimistically update positions",
+			"Add updateSubtaskText function: invoke 'subtasks_update_text', optimistically update text",
+			"Add all new functions to UseTasksStorageReturn interface",
+			"Add all new functions to the return object",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "Follow existing optimistic update patterns. All operations should update local state immediately, then sync with backend."
+	},
+	{
+		"category": "functional",
+		"description": "Fase 2.5: Frontend - Add subtask UI components (use frontend-design skill)",
+		"steps": [
+			"Create TasksPluginProgressBadge component: shows 'X/Y' completed count with checkmark icon",
+			"Create TasksPluginSubtaskItem component: checkbox, text, delete button, drag handle",
+			"Create TasksPluginSubtaskList component: renders subtasks with drag-and-drop reordering",
+			"Create TasksPluginSubtaskInput component: inline input to add new subtask",
+			"Update TasksPluginItem: add expandable section for subtasks below task text",
+			"Update TasksPluginItem: show TasksPluginProgressBadge when task has subtasks",
+			"Add expand/collapse toggle to TasksPluginItem (chevron icon)",
+			"Style subtasks with indentation to show hierarchy",
+			"Implement drag-and-drop for subtask reordering using same pattern as folders",
+			"Run bun tsc --noEmit to verify"
+		],
+		"shouldCommit": true,
+		"passes": true,
+		"notes": "USE THE frontend-design SKILL for this task. Follow existing component patterns (TodoPluginFolderCard, TodoPluginFolderList) for drag-and-drop. Subtasks should feel lightweight - simpler than parent tasks."
+	},
+	{
+		"category": "test",
+		"description": "Fase 2.6: Verify Phase 2 - Manual testing of subtasks",
+		"steps": [
+			"Verify cargo check passes with no errors",
+			"Verify bun tsc --noEmit passes with no errors",
+			"Test creating a subtask on an existing task",
+			"Test toggling subtask completion",
+			"Test deleting a subtask",
+			"Test drag-and-drop reordering of subtasks",
+			"Test progress badge shows correct count (e.g., '2/5')",
+			"Test marking parent task as completed marks all subtasks as completed",
+			"Test subtasks persist after app reload",
+			"Test multiple tasks can each have their own subtasks"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Manual testing required. Test edge cases: empty subtasks, many subtasks, rapid operations."
+	}
 ]

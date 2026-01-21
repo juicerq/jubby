@@ -40,6 +40,7 @@ interface RecordingStatus {
 	elapsedSeconds: number;
 	resolution: [number, number] | null;
 	error: string | null;
+	startedAtTimestamp: number | null;
 }
 
 interface UseQuickClipReturn {
@@ -47,6 +48,7 @@ interface UseQuickClipReturn {
 	isPreparing: boolean;
 	isEncoding: boolean;
 	recordingStatus: RecordingStatus | null;
+	displayElapsedSeconds: number;
 	monitors: MonitorInfo[];
 	ffmpegAvailable: boolean | null;
 
@@ -72,6 +74,7 @@ export function useQuickClip(): UseQuickClipReturn {
 		useState<RecordingStatus | null>(null);
 	const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
 	const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null);
+	const [displayElapsedSeconds, setDisplayElapsedSeconds] = useState(0);
 
 	const {
 		recordings,
@@ -192,10 +195,41 @@ export function useQuickClip(): UseQuickClipReturn {
 		};
 	}, []);
 
-	// Check FFmpeg on mount
+	// Local timer calculation based on startedAtTimestamp
+	useEffect(() => {
+		if (!recordingStatus?.startedAtTimestamp || !isRecording) {
+			setDisplayElapsedSeconds(0);
+			return;
+		}
+
+		const updateElapsed = () => {
+			const now = Date.now() / 1000;
+			const elapsed = now - recordingStatus.startedAtTimestamp!;
+			setDisplayElapsedSeconds(Math.max(0, elapsed));
+		};
+
+		updateElapsed();
+		const interval = setInterval(updateElapsed, 1000);
+
+		return () => clearInterval(interval);
+	}, [recordingStatus?.startedAtTimestamp, isRecording]);
+
+	// Check FFmpeg and sync recording state on mount
 	useEffect(() => {
 		checkFfmpeg();
 		refreshSources();
+
+		// Sync recording state in case a recording is already in progress
+		invoke<RecordingStatus>("recorder_status")
+			.then((status) => {
+				setRecordingStatus(status);
+				setIsRecording(status.isRecording);
+				setIsPreparing(status.isStarting);
+				setIsEncoding(status.isStopping);
+			})
+			.catch((error) => {
+				log.error("Failed to get recorder status", { error: String(error) });
+			});
 	}, [checkFfmpeg, refreshSources]);
 
 	// Refresh recordings list when recording stops (triggered by legacy event)
@@ -219,6 +253,7 @@ export function useQuickClip(): UseQuickClipReturn {
 		isPreparing,
 		isEncoding,
 		recordingStatus,
+		displayElapsedSeconds,
 		monitors,
 		ffmpegAvailable,
 

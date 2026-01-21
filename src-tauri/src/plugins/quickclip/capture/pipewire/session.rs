@@ -7,6 +7,13 @@ use ashpd::enumflags2::BitFlags;
 use std::os::fd::OwnedFd;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
+use std::time::Duration;
+
+const PORTAL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for portal session creation when using a restore token.
+/// If the token is valid, the portal responds almost instantly.
+/// A short timeout ensures we quickly fall back to showing the dialog if the token is stale.
+const TOKEN_RESTORE_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn classify_portal_error<E: std::fmt::Display>(e: E) -> PortalError {
     let msg = e.to_string();
@@ -32,15 +39,6 @@ impl std::fmt::Debug for PortalHandle {
         f.debug_struct("PortalHandle")
             .field("join_handle", &self.join_handle.is_some())
             .finish()
-    }
-}
-
-impl PortalHandle {
-    pub fn close(mut self) {
-        let _ = self.close_tx.send(());
-        if let Some(handle) = self.join_handle.take() {
-            let _ = handle.join();
-        }
     }
 }
 
@@ -96,8 +94,13 @@ pub fn spawn_portal_thread(source: CaptureSource) -> Result<PortalSession, Quick
     });
 
     let data = data_rx
-        .recv()
-        .map_err(|_| PortalError::SessionFailed("Portal thread died".to_string()))??;
+        .recv_timeout(PORTAL_TIMEOUT)
+        .map_err(|e| match e {
+            mpsc::RecvTimeoutError::Timeout => PortalError::Timeout(PORTAL_TIMEOUT),
+            mpsc::RecvTimeoutError::Disconnected => {
+                PortalError::SessionFailed("Portal thread died".to_string())
+            }
+        })??;
 
     Ok(PortalSession {
         data,
@@ -133,16 +136,44 @@ async fn create_portal_session(source: CaptureSource) -> Result<PortalResources,
     let had_token = restore_token.is_some();
 
     if had_token {
-        tracing::debug!(target: "quickclip", "[PORTAL] Using restore token to skip dialog");
+        tracing::info!(target: "quickclip", "[PORTAL] Attempting restore with saved token ({}s timeout)", TOKEN_RESTORE_TIMEOUT.as_secs());
     }
 
-    match create_portal_session_internal(source, restore_token.as_deref()).await {
+    // When using a restore token, apply a short timeout.
+    // If the token is valid, the portal responds almost instantly.
+    // If it hangs (stale token), we quickly fall back to showing the dialog.
+    let result = if had_token {
+        match tokio::time::timeout(
+            TOKEN_RESTORE_TIMEOUT,
+            create_portal_session_internal(source, restore_token.as_deref()),
+        )
+        .await
+        {
+            Ok(inner_result) => inner_result,
+            Err(_elapsed) => {
+                tracing::warn!(target: "quickclip", "[PORTAL] Token restore timed out after {}s, will retry without token", TOKEN_RESTORE_TIMEOUT.as_secs());
+                Err(PortalError::Timeout(TOKEN_RESTORE_TIMEOUT).into())
+            }
+        }
+    } else {
+        create_portal_session_internal(source, None).await
+    };
+
+    match result {
         Ok(result) => Ok(result),
         Err(QuickClipError::Portal(PortalError::UserCancelled)) => {
             Err(PortalError::UserCancelled.into())
         }
         Err(QuickClipError::Portal(e)) if had_token && e.is_recoverable_with_retry() => {
             tracing::warn!(target: "quickclip", "[PORTAL] Token invalid, clearing and retrying: {}", e);
+            clear_token(source);
+            *RESTORE_TOKEN
+                .lock()
+                .expect("RESTORE_TOKEN mutex poisoned") = None;
+            create_portal_session_internal(source, None).await
+        }
+        Err(QuickClipError::Portal(PortalError::Timeout(_))) if had_token => {
+            tracing::info!(target: "quickclip", "[PORTAL] Clearing stale token and retrying with dialog");
             clear_token(source);
             *RESTORE_TOKEN
                 .lock()

@@ -1,75 +1,75 @@
 [
-  {
-    "category": "functional",
-    "description": "Implement creation of Todo task",
-    "steps": [
-      "Add input field for new task",
-      "Create logic to add task to state/list",
-      "Display task in the interface after creation"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read the file responsible for list state before starting implementation."
-  },
-  {
-    "category": "functional",
-    "description": "Allow marking task as completed",
-    "steps": [
-      "Add checkbox or complete button",
-      "Update task state when marked as completed",
-      "Update task appearance for completed state"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Check how tasks are rendered in the interface before implementing the completed feature."
-  },
-  {
-    "category": "functional",
-    "description": "Edit a task's name or description",
-    "steps": [
-      "Add edit function for task",
-      "Update task in state/list after edit",
-      "Ensure changes appear in the interface"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Read this documentation: https://react.dev/reference/react/useState before starting implementation."
-  },
-  {
-    "category": "functional",
-    "description": "Delete task from Todo list",
-    "steps": [
-      "Add delete button to each task",
-      "Remove task from state/list when deleted",
-      "Remove task from interface after deletion"
-    ],
-    "shouldCommit": true,
-    "passes": false,
-    "notes": "Check the state update flow when removing items from the task array."
-  },
-  {
-    "category": "test",
-    "description": "Create automated test script for adding a task",
-    "steps": [
-      "Simulate filling in the task input",
-      "Simulate click to add",
-      "Ensure task appears in the interface"
-    ],
-    "shouldCommit": false,
-    "passes": false,
-    "notes": "Read documentation for the testing framework being used (e.g., Jest or Testing Library) before starting."
-  },
-  {
-    "category": "test",
-    "description": "Add unit tests for full Todo list flow",
-    "steps": [
-      "Test adding a task",
-      "Test editing a task",
-      "Test marking as completed",
-      "Test deleting a task"
-    ],
-    "shouldCommit": false,
-    "passes": false,
-    "notes": "Check existing test examples in the project before writing new tests."
-  }
+	{
+		"category": "functional",
+		"description": "Implement creation of Todo task",
+		"steps": [
+			"Add input field for new task",
+			"Create logic to add task to state/list",
+			"Display task in the interface after creation"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Read the file responsible for list state before starting implementation."
+	},
+	{
+		"category": "functional",
+		"description": "Allow marking task as completed",
+		"steps": [
+			"Add checkbox or complete button",
+			"Update task state when marked as completed",
+			"Update task appearance for completed state"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Check how tasks are rendered in the interface before implementing the completed feature."
+	},
+	{
+		"category": "functional",
+		"description": "Edit a task's name or description",
+		"steps": [
+			"Add edit function for task",
+			"Update task in state/list after edit",
+			"Ensure changes appear in the interface"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Read this documentation: https://react.dev/reference/react/useState before starting implementation."
+	},
+	{
+		"category": "functional",
+		"description": "Delete task from Todo list",
+		"steps": [
+			"Add delete button to each task",
+			"Remove task from state/list when deleted",
+			"Remove task from interface after deletion"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Check the state update flow when removing items from the task array."
+	},
+	{
+		"category": "test",
+		"description": "Create automated test script for adding a task",
+		"steps": [
+			"Simulate filling in the task input",
+			"Simulate click to add",
+			"Ensure task appears in the interface"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Read documentation for the testing framework being used (e.g., Jest or Testing Library) before starting."
+	},
+	{
+		"category": "test",
+		"description": "Add unit tests for full Todo list flow",
+		"steps": [
+			"Test adding a task",
+			"Test editing a task",
+			"Test marking as completed",
+			"Test deleting a task"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Check existing test examples in the project before writing new tests."
+	}
 ]

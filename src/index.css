@@ -162,7 +162,9 @@
  * which cannot be controlled via JavaScript or Tailwind during drag operations.
  */
 body.dragging-folder,
-body.dragging-folder * {
+body.dragging-folder *,
+body.dragging-subtask,
+body.dragging-subtask * {
   cursor: grabbing !important;
   user-select: none;
 }

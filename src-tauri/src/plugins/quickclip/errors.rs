@@ -8,6 +8,9 @@ pub enum PortalError {
     Unavailable,
     #[error("User cancelled the capture selection")]
     UserCancelled,
+    /// Note: Matched in is_recoverable() but never constructed in production.
+    /// Would be constructed when portal rejects an invalid stored token.
+    #[allow(dead_code)]
     #[error("Stored restore token is invalid or expired")]
     TokenInvalid,
     #[error("Portal session failed: {0}")]

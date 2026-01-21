@@ -7,9 +7,10 @@ const HYPRLAND_CONF: &str = ".config/hypr/hyprland.conf";
 const JUBBY_CONF: &str = ".config/hypr/jubby.conf";
 
 const JUBBY_WINDOW_RULES: &str = r#"# Jubby window rules (auto-generated)
-windowrulev2 = workspace special:jubby silent, class:^(Jubby)$
 windowrulev2 = float, class:^(Jubby)$
 windowrulev2 = size 400 350, class:^(Jubby)$
+windowrulev2 = pin, class:^(Jubby)$
+windowrulev2 = stayfocused, class:^(Jubby)$
 
 # Prevent cursor from warping when focusing Jubby
 cursor {

@@ -65,6 +65,16 @@ impl RecordingState {
             _ => None,
         }
     }
+
+    /// Returns the instant when recording started, if applicable.
+    pub fn started_at(&self) -> Option<&Instant> {
+        match self {
+            RecordingState::Starting { started_at }
+            | RecordingState::Recording { started_at, .. }
+            | RecordingState::Stopping { started_at, .. } => Some(started_at),
+            _ => None,
+        }
+    }
 }
 
 /// Events that can trigger state transitions.
@@ -80,10 +90,17 @@ pub enum RecordingEvent {
     PortalReady { resolution: (u32, u32) },
 
     /// A frame was captured (for frame count tracking).
+    /// Note: Currently only exercised in tests. Production use would require
+    /// passing event_tx to the capture loop.
+    #[allow(dead_code)]
     FrameCaptured,
 
     /// Capture completed successfully.
-    CaptureCompleted { frame_count: u32 },
+    /// Note: frame_count field is captured but not read downstream.
+    CaptureCompleted {
+        #[allow(dead_code)]
+        frame_count: u32,
+    },
 
     /// Encoding/writing completed successfully.
     EncodingCompleted,
@@ -98,6 +115,9 @@ pub enum RecordingEvent {
     PortalFailed { error: QuickClipError },
 
     /// Reset to idle state (after error acknowledgment or cleanup).
+    /// Note: Currently only exercised in tests. Production use would require
+    /// a new IPC command for frontend.
+    #[allow(dead_code)]
     Reset,
 }
 
@@ -147,9 +167,9 @@ pub fn transition(state: RecordingState, event: RecordingEvent) -> (RecordingSta
         }
 
         // Starting + PortalReady -> Recording
-        (RecordingState::Starting { started_at }, RecordingEvent::PortalReady { resolution }) => {
+        (RecordingState::Starting { .. }, RecordingEvent::PortalReady { resolution }) => {
             let new_state = RecordingState::Recording {
-                started_at: *started_at,
+                started_at: Instant::now(),
                 frame_count: 0,
                 resolution,
             };

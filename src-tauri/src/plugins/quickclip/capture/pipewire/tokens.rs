@@ -69,15 +69,6 @@ impl TokenStore {
         Ok(())
     }
 
-    /// Get token for a specific capture source.
-    pub fn get(&self, source: CaptureSource) -> Result<Option<String>, TokenStoreError> {
-        let tokens = self.load()?;
-        Ok(match source {
-            CaptureSource::Fullscreen => tokens.fullscreen,
-            CaptureSource::Area => tokens.area,
-        })
-    }
-
     /// Set token for a specific capture source (atomic).
     pub fn set(&self, source: CaptureSource, token: &str) -> Result<(), TokenStoreError> {
         let mut tokens = self.load().unwrap_or_default();

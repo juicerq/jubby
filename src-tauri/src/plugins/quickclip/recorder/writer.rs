@@ -4,8 +4,12 @@ use super::super::types::{AudioMode, Framerate, ResolutionScale, ENCODING_CRF, E
 use crossbeam_channel::Receiver;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread::JoinHandle;
+use std::time::Duration;
+
+/// Maximum time to wait for FFmpeg to finish encoding (2 minutes default per CLAUDE.md)
+const FFMPEG_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// RAII guard ensuring FFmpeg process cleanup and partial file deletion on abnormal exit.
 ///
@@ -75,9 +79,33 @@ const CALIBRATION_FRAMES: usize = 30;
 #[derive(Debug, Clone)]
 pub struct WriterResult {
     pub duration: f64,
-    pub width: u32,
-    pub height: u32,
+    /// Frame count is captured for logging/debugging but not read downstream.
+    #[allow(dead_code)]
     pub frame_count: u32,
+}
+
+/// Waits for a child process to complete with a timeout.
+///
+/// Uses a separate thread to perform the blocking wait and a channel to
+/// receive the result with a timeout.
+fn wait_with_timeout(child: Child, timeout: Duration) -> Result<Output, EncodingError> {
+    let (tx, rx) = crossbeam_channel::bounded(1);
+
+    std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result.map_err(|e| EncodingError::WriteFailed(format!("FFmpeg wait failed: {}", e))),
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+            tracing::error!(target: "quickclip", "[WRITER] FFmpeg timed out after {:?}", timeout);
+            Err(EncodingError::Timeout(timeout))
+        }
+        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+            Err(EncodingError::WriteFailed("FFmpeg wait thread panicked".to_string()))
+        }
+    }
 }
 
 /// Gets the default PulseAudio/PipeWire monitor source for system audio capture.
@@ -423,10 +451,8 @@ pub fn spawn_writer_thread(
 
         let child = guard.take_child()
             .ok_or_else(|| EncodingError::WriteFailed("FFmpeg child already taken".to_string()))?;
-        
-        let output = child
-            .wait_with_output()
-            .map_err(|e| EncodingError::WriteFailed(format!("FFmpeg wait failed: {}", e)))?;
+
+        let output = wait_with_timeout(child, FFMPEG_TIMEOUT)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -457,8 +483,6 @@ pub fn spawn_writer_thread(
 
         Ok(WriterResult {
             duration,
-            width,
-            height,
             frame_count,
         })
     })

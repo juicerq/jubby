@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
@@ -83,6 +83,7 @@ pub struct RecordingStatus {
     pub elapsed_seconds: f64,
     pub resolution: Option<(u32, u32)>,
     pub error: Option<String>,
+    pub started_at_timestamp: Option<f64>,
 }
 
 /// Session data for an active recording.
@@ -393,8 +394,6 @@ impl RecordingCoordinator {
                     });
                     Ok(WriterResult {
                         duration: 0.0,
-                        width: 0,
-                        height: 0,
                         frame_count: 0,
                     })
                 }
@@ -474,6 +473,17 @@ impl RecordingCoordinator {
     }
 
     fn build_status_from_state(&self, state: &RecordingState) -> RecordingStatus {
+        let elapsed_seconds = state.elapsed().map_or(0.0, |d| d.as_secs_f64());
+
+        let started_at_timestamp = state.started_at().map(|instant| {
+            let elapsed = instant.elapsed();
+            let start_system_time = SystemTime::now() - elapsed;
+            start_system_time
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64()
+        });
+
         match state {
             RecordingState::Idle => RecordingStatus {
                 is_recording: false,
@@ -483,40 +493,41 @@ impl RecordingCoordinator {
                 elapsed_seconds: 0.0,
                 resolution: None,
                 error: None,
+                started_at_timestamp: None,
             },
-            RecordingState::Starting { started_at } => RecordingStatus {
+            RecordingState::Starting { .. } => RecordingStatus {
                 is_recording: false,
                 is_starting: true,
                 is_stopping: false,
                 frame_count: 0,
-                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                elapsed_seconds,
                 resolution: None,
                 error: None,
+                started_at_timestamp,
             },
             RecordingState::Recording {
-                started_at,
                 frame_count,
                 resolution,
+                ..
             } => RecordingStatus {
                 is_recording: true,
                 is_starting: false,
                 is_stopping: false,
                 frame_count: *frame_count,
-                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                elapsed_seconds,
                 resolution: Some(*resolution),
                 error: None,
+                started_at_timestamp,
             },
-            RecordingState::Stopping {
-                started_at,
-                stop_requested_at: _,
-            } => RecordingStatus {
+            RecordingState::Stopping { .. } => RecordingStatus {
                 is_recording: false,
                 is_starting: false,
                 is_stopping: true,
                 frame_count: 0,
-                elapsed_seconds: started_at.elapsed().as_secs_f64(),
+                elapsed_seconds,
                 resolution: None,
                 error: None,
+                started_at_timestamp,
             },
             RecordingState::Failed { error, .. } => RecordingStatus {
                 is_recording: false,
@@ -526,6 +537,7 @@ impl RecordingCoordinator {
                 elapsed_seconds: 0.0,
                 resolution: None,
                 error: Some(error.clone()),
+                started_at_timestamp: None,
             },
         }
     }
@@ -720,6 +732,7 @@ impl CoordinatorHandle {
                 elapsed_seconds: 0.0,
                 resolution: None,
                 error: Some("Coordinator not running".to_string()),
+                started_at_timestamp: None,
             };
         }
 
@@ -731,6 +744,7 @@ impl CoordinatorHandle {
             elapsed_seconds: 0.0,
             resolution: None,
             error: Some("Coordinator not responding".to_string()),
+            started_at_timestamp: None,
         })
     }
 }

@@ -143,6 +143,8 @@ pub fn run_capture_loop(
     })?;
 
     let state_param = Arc::clone(&state);
+    let capture_error_param = Arc::clone(&capture_error);
+    let mainloop_quit_param = guard.mainloop().clone();
     let state_process = Arc::clone(&state);
     let stop_signal_process = Arc::clone(&stop_signal);
     let capture_error_process = Arc::clone(&capture_error);
@@ -163,6 +165,11 @@ pub fn run_capture_loop(
 
             if let Err(e) = state_guard.format.parse(param) {
                 tracing::error!(target: "quickclip", "[PIPEWIRE] Failed to parse video format: {}", e);
+                *capture_error_param
+                    .lock()
+                    .expect("capture_error mutex poisoned in param_changed callback") =
+                    Some(CaptureError::FormatNegotiationFailed);
+                mainloop_quit_param.quit();
                 return;
             }
 

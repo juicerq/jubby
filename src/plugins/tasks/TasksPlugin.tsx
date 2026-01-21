@@ -1056,6 +1056,7 @@ function TasksPluginSubtaskList({
 		originalPositions.current.clear();
 		lastDropTarget.current = null;
 		document.body.classList.remove("dragging-subtask");
+		window.getSelection()?.removeAllRanges();
 	}, [draggedId, dragOverId, dropPosition, subtasks, onReorderSubtasks]);
 
 	useEffect(() => {
@@ -1136,6 +1137,7 @@ function TasksPluginSubtaskList({
 								isDragging={
 									draggedId === item.subtask.id && isDraggingRef.current
 								}
+								isAnyDragging={isActiveDrag}
 								onMouseDown={(e) => handleMouseDown(e, item.subtask.id)}
 								itemRef={(el) => setItemRef(item.subtask.id, el)}
 							/>
@@ -1152,6 +1154,7 @@ interface TasksPluginSubtaskItemProps {
 	onToggle: () => void;
 	onDelete: () => void;
 	isDragging?: boolean;
+	isAnyDragging?: boolean;
 	onMouseDown?: (e: React.MouseEvent) => void;
 	itemRef?: (el: HTMLDivElement | null) => void;
 }
@@ -1161,6 +1164,7 @@ function TasksPluginSubtaskItem({
 	onToggle,
 	onDelete,
 	isDragging = false,
+	isAnyDragging = false,
 	onMouseDown,
 	itemRef,
 }: TasksPluginSubtaskItemProps) {
@@ -1199,6 +1203,7 @@ function TasksPluginSubtaskItem({
 					subtask.completed
 						? "text-white/30 line-through decoration-white/20"
 						: "text-white/70",
+					isAnyDragging && "select-none",
 				)}
 			>
 				{subtask.text}
@@ -1238,7 +1243,7 @@ function TasksPluginSubtaskGhost({ subtask }: TasksPluginSubtaskGhostProps) {
 				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]/50" />}
 			</div>
 
-			<span className="flex-1 text-[12px] leading-tight tracking-[-0.01em] text-white/40">
+			<span className="flex-1 select-none text-[12px] leading-tight tracking-[-0.01em] text-white/40">
 				{subtask.text}
 			</span>
 		</div>

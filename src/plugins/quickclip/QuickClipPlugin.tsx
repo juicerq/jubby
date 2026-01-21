@@ -32,7 +32,7 @@ function QuickClipPlugin(_props: PluginProps) {
     isRecording,
     isPreparing,
     isEncoding,
-    recordingStatus,
+    displayElapsedSeconds,
     ffmpegAvailable,
     recordings,
     isLoadingRecordings,
@@ -114,7 +114,7 @@ function QuickClipPlugin(_props: PluginProps) {
         isRecording={isRecording}
         isPreparing={isPreparing}
         isEncoding={isEncoding}
-        elapsedSeconds={recordingStatus?.elapsedSeconds ?? 0}
+        elapsedSeconds={displayElapsedSeconds}
         onToggleRecording={handleToggleRecording}
         onDeleteRecording={deleteRecording}
       />

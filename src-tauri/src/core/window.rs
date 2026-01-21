@@ -14,31 +14,26 @@ fn get_main_window(app: &AppHandle) -> Option<WebviewWindow> {
 
 fn hyprland_show_window() {
     let _ = std::process::Command::new("hyprctl")
-        .args(["--batch", "dispatch movetoworkspace e+0,class:Jubby ; dispatch focuswindow class:Jubby"])
+        .args(["dispatch", "focuswindow", "class:Jubby"])
         .status();
 }
 
 fn hyprland_hide_window() {
     let _ = std::process::Command::new("hyprctl")
-        .args(["dispatch", "movetoworkspacesilent", "special:jubby,class:Jubby"])
+        .args(["dispatch", "focuscurrentorlast"])
         .status();
 }
 
-fn hyprland_is_window_visible() -> bool {
+fn hyprland_is_window_focused() -> bool {
     let output = std::process::Command::new("hyprctl")
-        .args(["clients", "-j"])
+        .args(["activewindow", "-j"])
         .output()
         .ok();
     
     if let Some(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Ok(clients) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
-            for client in clients {
-                if client.get("class").and_then(|c| c.as_str()) == Some("Jubby") {
-                    let workspace = client.get("workspace").and_then(|w| w.get("name")).and_then(|n| n.as_str());
-                    return workspace.map(|w| !w.starts_with("special:")).unwrap_or(false);
-                }
-            }
+        if let Ok(window) = serde_json::from_str::<serde_json::Value>(&stdout) {
+            return window.get("class").and_then(|c| c.as_str()) == Some("Jubby");
         }
     }
     false
@@ -46,7 +41,7 @@ fn hyprland_is_window_visible() -> bool {
 
 pub fn toggle(app: &AppHandle) {
     if crate::core::hyprland::is_hyprland() {
-        if hyprland_is_window_visible() {
+        if hyprland_is_window_focused() {
             hyprland_hide_window();
         } else {
             hyprland_show_window();
