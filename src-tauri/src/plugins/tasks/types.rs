@@ -11,7 +11,7 @@ pub struct Folder {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Todo {
+pub struct Task {
     pub id: String,
     pub folder_id: String,
     pub text: String,
@@ -32,18 +32,18 @@ pub struct Tag {
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct TodoData {
+pub struct TasksData {
     #[serde(default)]
     pub folders: Vec<Folder>,
     #[serde(default)]
-    pub todos: Vec<Todo>,
+    pub tasks: Vec<Task>,
     #[serde(default)]
     pub tags: Vec<Tag>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RecentTodo {
+pub struct RecentTask {
     pub id: String,
     pub text: String,
     pub status: String,
@@ -56,13 +56,13 @@ pub struct FolderWithPreview {
     pub name: String,
     pub position: i32,
     pub created_at: i64,
-    pub todo_count: i32,
-    pub recent_todos: Vec<RecentTodo>,
+    pub task_count: i32,
+    pub recent_tasks: Vec<RecentTask>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TodoWithTags {
+pub struct TaskWithTags {
     pub id: String,
     pub text: String,
     pub status: String,
@@ -78,7 +78,7 @@ pub struct TagResponse {
 }
 
 #[derive(Serialize)]
-pub struct TodoDataResponse {
-    pub todos: Vec<TodoWithTags>,
+pub struct TasksDataResponse {
+    pub tasks: Vec<TaskWithTags>,
     pub tags: Vec<TagResponse>,
 }

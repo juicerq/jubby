@@ -1,42 +1,45 @@
-# Recording Architecture 100/100 Implementation Progress
+# Tasks Plugin - PRD Progress
 
 ## Overview
-Refactoring QuickClip recording from 62/100 to 100/100 architecture.
+- **Total tasks**: 15
+- **Completed**: 1
+- **In Progress**: 0
+- **Remaining**: 14
 
-**Key Changes:**
-- State machine (enum) instead of boolean flags
-- Single owner (coordinator) instead of shared mutexes  
-- RAII guards for automatic cleanup
-- Typed errors instead of string matching
-- Bounded channels with timeout (deadlock prevention)
-- Portal session in dedicated thread (eliminates unsafe transmute)
+## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
+- [x] 1.1: Backend - Rename todo module to tasks and update types
+- [ ] 1.2: Backend - Update store and storage with data migration
+- [ ] 1.3: Backend - Rename commands and update error messages
+- [ ] 1.4: Backend - Update lib.rs, logging.rs and paths.rs
+- [ ] 1.5: Frontend - Rename files and update types
+- [ ] 1.6: Frontend - Update hook (useTasksStorage.ts)
+- [ ] 1.7: Frontend - Update main component (TasksPlugin.tsx)
+- [ ] 1.8: Frontend - Update manifest, registry and navigation hook
+- [ ] 1.9: Verify Phase 1 - Manual testing of rename
 
-## Task Progress
-
-### Functional Tasks
-- [ ] 1. Create typed error hierarchy
-- [ ] 2. Implement RecordingState state machine
-- [ ] 3. Create WriterGuard RAII struct
-- [ ] 4. Create CaptureGuard RAII struct
-- [ ] 5. Move portal session to dedicated thread
-- [ ] 6. Implement bounded channels with timeout
-- [ ] 7. Implement atomic token file persistence
-- [ ] 8. Create RecordingCoordinator actor
-- [ ] 9. Refactor Tauri commands to use coordinator
-- [ ] 10. Implement event-based frontend sync
-- [ ] 11. Replace all .unwrap() calls
-- [ ] 12. Add PipeWire mainloop timeout
-
-### Test Tasks
-- [ ] 13. Unit tests for state machine
-- [ ] 14. Unit tests for RAII guards
-- [ ] 15. Unit tests for error recovery
-- [ ] 16. Integration test for channel timeout
-- [ ] 17. Manual test: full recording flow
-- [ ] 18. Manual test: resource leak verification
+## Fase 2: Implement Subtasks (6 tasks)
+- [ ] 2.1: Backend - Add Subtask type and update Task struct
+- [ ] 2.2: Backend - Add subtask commands
+- [ ] 2.3: Frontend - Add Subtask types and update Task interface
+- [ ] 2.4: Frontend - Add subtask operations to hook
+- [ ] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
+- [ ] 2.6: Verify Phase 2 - Manual testing of subtasks
 
 ## Notes
-- Do NOT commit prd.json or progress.txt to remote
-- Each functional task should be committed separately
-- Run `cargo check` after each Rust change
-- Run `bun tsc --noEmit` after frontend changes
+- Fase 1 must be completed before starting Fase 2
+- Tasks 1.5-1.7 don't commit individually (batch commit at 1.8)
+- Tasks 2.5 requires frontend-design skill for UI implementation
+- Test tasks (1.9, 2.6) are manual verification steps
+
+---
+
+## 2026-01-21 06:45 - Fase 1.1
+- What was implemented: Renamed todo module folder to tasks, updated mod.rs, renamed all types in types.rs (Todo→Task, TodoData→TasksData, TodoWithTags→TaskWithTags, TodoDataResponse→TasksDataResponse, RecentTodo→RecentTask, todo_count→task_count, recent_todos→recent_tasks)
+- Files changed:
+  - src-tauri/src/plugins/todo/ → src-tauri/src/plugins/tasks/ (folder rename)
+  - src-tauri/src/plugins/mod.rs
+  - src-tauri/src/plugins/tasks/types.rs
+- **Learnings for future iterations:**
+  - Patterns discovered: Rust serde uses camelCase for JSON serialization via `#[serde(rename_all = "camelCase")]`
+  - Gotchas encountered: The TasksData struct now uses `tasks: Vec<Task>` instead of `todos: Vec<Todo>` - storage.rs and commands.rs need to be updated to use `.tasks` field access
+  - Useful context: The backend rename is split into 4 tasks (1.1-1.4) to allow incremental commits; cargo check will fail until all 4 are done
