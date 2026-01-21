@@ -1,11 +1,11 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 1 of 19 completed
+Task 2 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
-- [ ] 2. Backend - Data migration
+- [x] 2. Backend - Data migration
 - [ ] 3. Backend - CRUD commands for new fields
 - [ ] 4. Backend - OpenCode server management
 - [ ] 5. Backend - Execution orchestration command
@@ -80,4 +80,30 @@ Task 1 of 19 completed
   - Subtask creation is in `subtasks_create` command at line ~384
   - Subtask toggle (now status change) is in `subtasks_toggle` command at line ~423
   - Task cascade (mark all subtasks complete) is in `tasks_update_status` command at line ~210
+
+## 2026-01-21 15:18 - Task 2: Backend - Data migration
+
+### What was implemented
+- Created `migrate_subtask_data` function in storage.rs
+- Migration logic: detects old format via `completed: Option<bool>` field presence
+- Converts `completed: true` → `status: TaskStatus::Completed`, else `TaskStatus::Waiting`
+- Converts `position: Option<i32>` → `order: u32`, falling back to array index
+- Integrated into `load_or_migrate` flow - migrates on load from all sources (JSON, old todo.json)
+- Saves migrated data immediately after migration for persistence
+- Migration is idempotent: legacy fields use `skip_serializing` so they don't appear in output
+
+### Files changed
+- `src-tauri/src/plugins/tasks/storage.rs`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Using `Option::take()` is idiomatic for detecting and consuming legacy fields
+  - Migration in `load_or_migrate` (not `load_from_json`) allows unified handling across all data sources
+  - The `#[serde(default, skip_serializing)]` pattern makes migrations transparent: old data deserializes, new data doesn't include legacy fields
+- **Gotchas encountered:**
+  - Must save migrated data immediately, otherwise migration runs on every load (performance hit + log spam)
+  - The `order` field defaults to 0, so we need to check `index > 0` to avoid false positives for first items
+- **Useful context:**
+  - Data paths: `~/.local/share/jubby/tasks/tasks.json` (current), `~/.local/share/jubby/todo/todo.json` (legacy)
+  - `load_or_migrate` is the single entry point for all data loading in the tasks plugin
 

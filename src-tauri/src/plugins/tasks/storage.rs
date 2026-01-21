@@ -1,5 +1,5 @@
 use crate::shared::paths::{ensure_dir, get_plugin_dir};
-use super::types::{Folder, Tag, Task, TasksData};
+use super::types::{Folder, Tag, Task, TasksData, TaskStatus};
 use std::path::PathBuf;
 
 fn get_tasks_dir() -> PathBuf {
@@ -32,12 +32,18 @@ pub fn load_or_migrate() -> Result<TasksData, Box<dyn std::error::Error>> {
     let sqlite_path = get_sqlite_path();
 
     if json_path.exists() {
-        return load_from_json(&json_path);
+        let mut data = load_from_json(&json_path)?;
+        if migrate_subtask_data(&mut data) {
+            tracing::info!(target: "tasks", "Migrated subtask data to new format");
+            save_to_json(&data)?;
+        }
+        return Ok(data);
     }
 
     if old_json_path.exists() {
         tracing::info!(target: "tasks", "Found old todo/todo.json, migrating to tasks/tasks.json...");
-        let data = load_from_json(&old_json_path)?;
+        let mut data = load_from_json(&old_json_path)?;
+        migrate_subtask_data(&mut data);
         save_to_json(&data)?;
 
         if let Err(e) = std::fs::remove_dir_all(get_old_todo_dir()) {
@@ -68,6 +74,33 @@ fn load_from_json(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::Error
     let content = std::fs::read_to_string(path)?;
     let data: TasksData = serde_json::from_str(&content)?;
     Ok(data)
+}
+
+fn migrate_subtask_data(data: &mut TasksData) -> bool {
+    let mut migrated = false;
+    
+    for task in &mut data.tasks {
+        for (index, subtask) in task.subtasks.iter_mut().enumerate() {
+            if let Some(completed) = subtask.completed.take() {
+                subtask.status = if completed {
+                    TaskStatus::Completed
+                } else {
+                    TaskStatus::Waiting
+                };
+                migrated = true;
+            }
+            
+            if let Some(position) = subtask.position.take() {
+                subtask.order = position as u32;
+                migrated = true;
+            } else if subtask.order == 0 && index > 0 {
+                subtask.order = index as u32;
+                migrated = true;
+            }
+        }
+    }
+    
+    migrated
 }
 
 pub fn save_to_json(data: &TasksData) -> Result<(), Box<dyn std::error::Error>> {
