@@ -2,9 +2,9 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 10
+- **Completed**: 11
 - **In Progress**: 0
-- **Remaining**: 5
+- **Remaining**: 4
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
@@ -20,7 +20,7 @@
 ## Fase 2: Implement Subtasks (6 tasks)
 - [x] 2.1: Backend - Add Subtask type and update Task struct
 - [x] 2.2: Backend - Add subtask commands
-- [ ] 2.3: Frontend - Add Subtask types and update Task interface
+- [x] 2.3: Frontend - Add Subtask types and update Task interface
 - [ ] 2.4: Frontend - Add subtask operations to hook
 - [ ] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
 - [ ] 2.6: Verify Phase 2 - Manual testing of subtasks
@@ -114,3 +114,13 @@
   - Patterns discovered: Commands follow State<TasksStore> → find task → mutate → save_to_json() → return Result pattern consistently
   - Gotchas encountered: subtasks_toggle returns the new boolean state (not void) to allow frontend to optimistically update without re-querying
   - Useful context: Position calculation for new subtasks follows same max+1 pattern as folders - ensures new items appear at end of list
+
+## 2026-01-21 07:08 - Fase 2.3
+- What was implemented: Added frontend Subtask interface with id, text, completed, position fields, added subtasks field to Task interface, added SubtaskFromBackend interface to hook, created mapBackendSubtask function, updated mapBackendTask to include subtasks mapping, added subtasks: [] to optimistic task creation
+- Files changed:
+  - src/plugins/tasks/types.ts (added Subtask interface, added subtasks to Task)
+  - src/plugins/tasks/useTasksStorage.ts (added SubtaskFromBackend, mapBackendSubtask, updated mapBackendTask, updated optimistic createTask)
+- **Learnings for future iterations:**
+  - Patterns discovered: Frontend type mapping follows pattern: XFromBackend interface → mapBackendX function → X interface from types.ts
+  - Gotchas encountered: When adding new fields to Task interface, must also update optimistic task creation in createTask callback (line 174)
+  - Useful context: The Subtask import was added but mapBackendSubtask creates the Subtask object directly, so the import is used for type annotation

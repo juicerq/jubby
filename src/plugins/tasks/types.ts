@@ -6,12 +6,20 @@ export interface Tag {
 
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
+export interface Subtask {
+	id: string;
+	text: string;
+	completed: boolean;
+	position: number;
+}
+
 export interface Task {
 	id: string;
 	text: string;
 	status: TaskStatus;
 	createdAt: number;
 	tagIds?: string[];
+	subtasks: Subtask[];
 }
 
 export interface RecentTask {

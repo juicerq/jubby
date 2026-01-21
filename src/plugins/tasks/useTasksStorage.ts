@@ -1,7 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { Folder, RecentTask, Tag, Task, TaskStatus } from "./types";
+import type {
+	Folder,
+	RecentTask,
+	Subtask,
+	Tag,
+	Task,
+	TaskStatus,
+} from "./types";
 
 const PENDING_DELETE_TIMEOUT_MS = 1500;
 
@@ -50,12 +57,20 @@ export function usePendingDelete(
 	return { pendingId, handleDeleteClick, cancelDelete };
 }
 
+interface SubtaskFromBackend {
+	id: string;
+	text: string;
+	completed: boolean;
+	position: number;
+}
+
 interface TaskFromBackend {
 	id: string;
 	text: string;
 	status: string;
 	createdAt: number;
 	tagIds: string[];
+	subtasks: SubtaskFromBackend[];
 }
 
 interface TasksDataFromBackend {
@@ -98,6 +113,15 @@ interface UseFolderStorageReturn {
 	reorderFolders: (folderIds: string[]) => Promise<void>;
 }
 
+function mapBackendSubtask(subtask: SubtaskFromBackend): Subtask {
+	return {
+		id: subtask.id,
+		text: subtask.text,
+		completed: subtask.completed,
+		position: subtask.position,
+	};
+}
+
 function mapBackendTask(task: TaskFromBackend): Task {
 	return {
 		id: task.id,
@@ -105,6 +129,7 @@ function mapBackendTask(task: TaskFromBackend): Task {
 		status: task.status as TaskStatus,
 		createdAt: task.createdAt,
 		tagIds: task.tagIds,
+		subtasks: task.subtasks.map(mapBackendSubtask),
 	};
 }
 
@@ -152,6 +177,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				status: "pending",
 				createdAt: Date.now(),
 				tagIds: tagIds ?? [],
+				subtasks: [],
 			};
 
 			setTasks((prev) => [optimisticTask, ...prev]);
