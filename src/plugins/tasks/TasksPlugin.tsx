@@ -45,6 +45,7 @@ import type {
 } from "./types";
 import {
 	useFolderStorage,
+	useOpenCodeServer,
 	usePendingDelete,
 	useTasksStorage,
 } from "./useTasksStorage";
@@ -65,7 +66,12 @@ const TAG_COLORS = [
 type TasksView = "folders" | "list" | "task";
 
 function TasksPlugin(_props: PluginProps) {
-	// Folder management
+	const { status: serverStatus, startServer } = useOpenCodeServer();
+
+	useEffect(() => {
+		startServer();
+	}, [startServer]);
+
 	const {
 		folders,
 		isLoading: foldersLoading,
@@ -395,10 +401,18 @@ function TasksPlugin(_props: PluginProps) {
 		);
 	}
 
+	const serverStatusIndicator =
+		serverStatus === "starting" ? (
+			<div className="flex items-center gap-1.5 text-white/40">
+				<span className="h-3 w-3 animate-spin rounded-full border border-white/20 border-t-white/50" />
+				<span className="text-[11px]">Starting server...</span>
+			</div>
+		) : null;
+
 	if (view === "task" && currentTask) {
 		return (
 			<div className="flex h-full flex-col overflow-hidden">
-				<Breadcrumb />
+				<Breadcrumb right={serverStatusIndicator} />
 				<TasksPluginTaskDetail
 					task={currentTask}
 					tags={tags}

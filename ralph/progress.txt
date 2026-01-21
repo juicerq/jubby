@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 11 of 19 completed
+Task 12 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -19,7 +19,7 @@ Task 11 of 19 completed
 - [ ] 13. Frontend - Drag to reorder subtasks
 - [ ] 14. Frontend - History section
 - [ ] 15. Frontend - Execution log detail view in subtask
-- [ ] 16. Frontend - OpenCode server lifecycle
+- [x] 16. Frontend - OpenCode server lifecycle
 - [ ] 17. Frontend - AI Generate subtasks feature
 - [ ] 18. Backend - AI Generate subtasks command
 - [ ] 19. Manual testing - Full flow verification
@@ -403,3 +403,35 @@ Task 11 of 19 completed
   - Run/Stop button is located at lines ~1711-1744 in TasksPlugin.tsx (between CategoryBadge and ChevronRight)
   - Execution state destructured from useTasksStorage at lines ~92-119 in TasksPlugin.tsx
   - TasksPluginSubtaskExpandableProps interface at line ~1479 includes all execution-related props
+
+## 2026-01-21 16:06 - Task 16: Frontend - OpenCode server lifecycle
+
+### What was implemented
+- Created `useOpenCodeServer` hook in useTasksStorage.ts with full server lifecycle management
+- Server status state machine: `idle` → `starting` → `ready` (or `error`)
+- Auto-start server on TasksPlugin mount via useEffect
+- Subtle "Starting server..." indicator with spinner in Breadcrumb (task detail view only)
+- Health check interval (every 30 seconds) to detect server crashes
+- Auto-restart on crash: attempts once, then shows persistent error toast with Retry button
+- Toast notifications with action buttons for server errors (crash, restart failure)
+- Uses existing backend commands: `opencode_ensure_server`, `opencode_health_check`
+
+### Files changed
+- `src/plugins/tasks/useTasksStorage.ts` - Added `useOpenCodeServer` hook with ServerStatus type, health check interval, auto-restart logic
+- `src/plugins/tasks/TasksPlugin.tsx` - Added hook usage, server start on mount, status indicator in Breadcrumb
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Use `ReturnType<typeof setInterval>` instead of `NodeJS.Timeout` for browser/Tauri compatibility
+  - Toast actions with `{ action: { label, onClick } }` from sonner provide inline retry buttons
+  - Use `useRef` for state that shouldn't trigger re-renders (restartAttemptedRef, healthCheckIntervalRef)
+  - Server lifecycle hooks should be separate from data hooks for cleaner separation of concerns
+- **Gotchas encountered:**
+  - `NodeJS.Timeout` doesn't exist in browser/Tauri context - use ReturnType pattern instead
+  - Health check interval must be cleared when server status changes from "ready" to prevent memory leaks
+  - useCallback dependencies: startServer depends on status, but handleHealthCheckFailure depends on both status and startServer
+- **Useful context:**
+  - `useOpenCodeServer` hook is at lines ~1204-1318 in useTasksStorage.ts
+  - Server starts lazily when TasksPlugin mounts (not on app start)
+  - Health check runs every 30 seconds only when server status is "ready"
+  - Server indicator appears in task detail view Breadcrumb (where execution happens)

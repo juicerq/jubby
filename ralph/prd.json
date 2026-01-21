@@ -263,7 +263,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "Server management should be invisible when working. Only show UI on errors. Don't block plugin usage while server starts."
 	},
 	{
