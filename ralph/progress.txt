@@ -2,9 +2,9 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 11
+- **Completed**: 12
 - **In Progress**: 0
-- **Remaining**: 4
+- **Remaining**: 3
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
@@ -22,7 +22,7 @@
 - [x] 2.2: Backend - Add subtask commands
 - [x] 2.3: Frontend - Add Subtask types and update Task interface
 - [x] 2.4: Frontend - Add subtask operations to hook
-- [ ] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
+- [x] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
 - [ ] 2.6: Verify Phase 2 - Manual testing of subtasks
 
 ## Notes
@@ -133,3 +133,23 @@
   - Patterns discovered: All optimistic update operations follow the same pattern: capture previousTasks, setTasks() to optimistically update, try invoke() then catch and rollback with setTasks(previousTasks)
   - Gotchas encountered: createSubtask needs access to `tasks` state to calculate maxPosition, so it has `[tasks]` in dependency array unlike other operations that use `[]`
   - Useful context: Subtask operations target nested state (task.subtasks), so all setTasks() calls use nested .map() to find the right task then modify its subtasks array
+
+## 2026-01-21 07:12 - Fase 2.5
+- What was implemented: Added 6 new subtask UI components to TasksPlugin.tsx:
+  - TasksPluginProgressBadge: Shows "X/Y" completed count with checkmark icon, turns emerald green when all complete
+  - TasksPluginSubtaskSection: Expandable wrapper with chevron toggle, AnimatePresence height animation
+  - TasksPluginSubtaskList: Renders subtasks with mouse-event-based drag-and-drop reordering (same pattern as folders)
+  - TasksPluginSubtaskItem: Small checkbox, text with completed styling, delete button on hover, drag handle
+  - TasksPluginSubtaskGhost: Dashed border ghost shown at drop position during drag
+  - TasksPluginSubtaskInput: Inline input with Plus icon, submit on Enter, blur submits if has content
+- Updated existing components:
+  - TasksPlugin: Destructures subtask functions from useTasksStorage and passes to TasksPluginList
+  - TasksPluginList: Props interface expanded, passes task-scoped handlers to each TasksPluginItem
+  - TasksPluginItem: Added isExpanded state, progress badge display, TasksPluginSubtaskSection integration
+- Files changed:
+  - src/plugins/tasks/TasksPlugin.tsx (added ~530 lines of new subtask components and updated existing components)
+- **Learnings for future iterations:**
+  - Patterns discovered: Drag-and-drop uses mouse events (mousedown/mousemove/mouseup) NOT HTML5 drag API - important because HTML5 drag is broken in Tauri/WebKitGTK on Linux
+  - Patterns discovered: Ghost element pattern - items stay in place during drag, ghost inserted at drop position via useMemo computed renderItems array
+  - Gotchas encountered: The expanded state lives in TasksPluginItem (not lifted to parent) so each task independently tracks its expand/collapse state
+  - Useful context: TasksPluginItem now uses `group/task` for nested group hover targeting (delete button visibility)

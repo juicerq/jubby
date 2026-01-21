@@ -1,5 +1,7 @@
 import {
 	Check,
+	ChevronDown,
+	ChevronRight,
 	FolderOpen,
 	GripVertical,
 	Minus,
@@ -26,6 +28,7 @@ import { cn } from "@/lib/utils";
 import type {
 	Folder,
 	RecentTask,
+	Subtask,
 	Tag as TagType,
 	Task,
 	TaskStatus,
@@ -99,6 +102,10 @@ function TasksPlugin(_props: PluginProps) {
 		createTag,
 		updateTag,
 		deleteTag,
+		createSubtask,
+		toggleSubtask,
+		deleteSubtask,
+		reorderSubtasks,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	const isLoading =
@@ -376,6 +383,10 @@ function TasksPlugin(_props: PluginProps) {
 						editingTagsTaskId={editingTagsTaskId}
 						onEditTags={setEditingTagsTaskId}
 						onToggleTagOnTask={handleToggleTagOnTask}
+						onCreateSubtask={createSubtask}
+						onToggleSubtask={toggleSubtask}
+						onDeleteSubtask={deleteSubtask}
+						onReorderSubtasks={reorderSubtasks}
 					/>
 				)}
 			</div>
@@ -544,6 +555,10 @@ interface TasksPluginListProps {
 	editingTagsTaskId: string | null;
 	onEditTags: (taskId: string | null) => void;
 	onToggleTagOnTask: (taskId: string, tagId: string) => void;
+	onCreateSubtask: (taskId: string, text: string) => Promise<void>;
+	onToggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	onDeleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	onReorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
 }
 
 function TasksPluginList({
@@ -555,6 +570,10 @@ function TasksPluginList({
 	editingTagsTaskId,
 	onEditTags,
 	onToggleTagOnTask,
+	onCreateSubtask,
+	onToggleSubtask,
+	onDeleteSubtask,
+	onReorderSubtasks,
 }: TasksPluginListProps) {
 	return (
 		<div className="-mx-2 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2">
@@ -570,6 +589,12 @@ function TasksPluginList({
 					onEditTags={() => onEditTags(task.id)}
 					onCloseTagEditor={() => onEditTags(null)}
 					onToggleTag={(tagId) => onToggleTagOnTask(task.id, tagId)}
+					onCreateSubtask={(text) => onCreateSubtask(task.id, text)}
+					onToggleSubtask={(subtaskId) => onToggleSubtask(task.id, subtaskId)}
+					onDeleteSubtask={(subtaskId) => onDeleteSubtask(task.id, subtaskId)}
+					onReorderSubtasks={(subtaskIds) =>
+						onReorderSubtasks(task.id, subtaskIds)
+					}
 				/>
 			))}
 		</div>
@@ -586,6 +611,10 @@ interface TasksPluginItemProps {
 	onEditTags: () => void;
 	onCloseTagEditor: () => void;
 	onToggleTag: (tagId: string) => void;
+	onCreateSubtask: (text: string) => void;
+	onToggleSubtask: (subtaskId: string) => void;
+	onDeleteSubtask: (subtaskId: string) => void;
+	onReorderSubtasks: (subtaskIds: string[]) => void;
 }
 
 function TasksPluginItem({
@@ -598,125 +627,689 @@ function TasksPluginItem({
 	onEditTags,
 	onCloseTagEditor,
 	onToggleTag,
+	onCreateSubtask,
+	onToggleSubtask,
+	onDeleteSubtask,
+	onReorderSubtasks,
 }: TasksPluginItemProps) {
+	const [isExpanded, setIsExpanded] = useState(false);
+
 	const taskTags = (task.tagIds ?? [])
 		.map((tagId) => tags.find((t) => t.id === tagId))
 		.filter((t): t is TagType => t !== undefined);
 
 	const hasTags = tags.length > 0;
+	const hasSubtasks = task.subtasks.length > 0;
+	const sortedSubtasks = [...task.subtasks].sort(
+		(a, b) => a.position - b.position,
+	);
+	const completedCount = task.subtasks.filter((s) => s.completed).length;
+	const totalCount = task.subtasks.length;
 
 	return (
 		<div
-			className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4"
+			className="group/task flex flex-col rounded-lg px-2 py-2.5 transition-[background] duration-150 ease-out hover:bg-white/4"
 			onClick={(e) => e.stopPropagation()}
 		>
-			<button
-				type="button"
-				className={cn(
-					"mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]",
-					"active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
-					task.status === "completed" &&
-						"border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75",
-					task.status === "in_progress" &&
-						"border-amber-500 bg-amber-500/20 hover:border-amber-400 hover:bg-amber-500/30",
-					task.status === "pending" &&
-						"border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4",
-				)}
-				onClick={() => onToggle(task.id)}
-				aria-label={
-					task.status === "pending"
-						? "Mark as in progress"
-						: task.status === "in_progress"
-							? "Mark as complete"
-							: "Mark as pending"
-				}
-			>
-				{task.status === "completed" && (
-					<Check className="h-3 w-3 text-[#0a0a0a]" />
-				)}
-				{task.status === "in_progress" && (
-					<Minus className="h-3 w-3 text-amber-500" />
-				)}
-			</button>
-
-			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-				<span
+			<div className="flex items-start gap-3">
+				<button
+					type="button"
 					className={cn(
-						"text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out",
+						"mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]",
+						"active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
 						task.status === "completed" &&
-							"text-white/35 line-through decoration-white/25",
-						task.status === "in_progress" && "text-amber-200/90",
-						task.status === "pending" && "text-white/90",
+							"border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75",
+						task.status === "in_progress" &&
+							"border-amber-500 bg-amber-500/20 hover:border-amber-400 hover:bg-amber-500/30",
+						task.status === "pending" &&
+							"border-white/25 bg-transparent hover:border-white/45 hover:bg-white/4",
 					)}
+					onClick={() => onToggle(task.id)}
+					aria-label={
+						task.status === "pending"
+							? "Mark as in progress"
+							: task.status === "in_progress"
+								? "Mark as complete"
+								: "Mark as pending"
+					}
 				>
-					{task.text}
-				</span>
+					{task.status === "completed" && (
+						<Check className="h-3 w-3 text-[#0a0a0a]" />
+					)}
+					{task.status === "in_progress" && (
+						<Minus className="h-3 w-3 text-amber-500" />
+					)}
+				</button>
 
-				{hasTags && (
-					<div className="relative">
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								if (isEditingTags) {
-									onCloseTagEditor();
-								} else {
-									onEditTags();
-								}
-							}}
-							className={`flex flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
-								isEditingTags
-									? "border-white/15 bg-white/4"
-									: "hover:border-white/10 hover:bg-white/4"
-							}`}
-							aria-label="Edit tags"
-						>
-							{taskTags.length > 0 ? (
-								taskTags.map((tag) => (
-									<TasksPluginTagBadge
-										key={tag.id}
-										tag={tag}
-										isCompleted={task.status === "completed"}
-									/>
-								))
-							) : (
-								<span className="px-1 text-[11px] text-white/25">
-									+ Add tags
-								</span>
+				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+					<div className="flex items-center gap-2">
+						<span
+							className={cn(
+								"flex-1 text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out",
+								task.status === "completed" &&
+									"text-white/35 line-through decoration-white/25",
+								task.status === "in_progress" && "text-amber-200/90",
+								task.status === "pending" && "text-white/90",
 							)}
-						</button>
+						>
+							{task.text}
+						</span>
 
-						{isEditingTags && (
-							<TasksPluginTagEditorPopover
-								tags={tags}
-								selectedTagIds={task.tagIds ?? []}
-								onToggleTag={onToggleTag}
-								onClose={onCloseTagEditor}
+						{hasSubtasks && (
+							<TasksPluginProgressBadge
+								completed={completedCount}
+								total={totalCount}
 							/>
 						)}
 					</div>
+
+					{hasTags && (
+						<div className="relative">
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									if (isEditingTags) {
+										onCloseTagEditor();
+									} else {
+										onEditTags();
+									}
+								}}
+								className={`flex flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
+									isEditingTags
+										? "border-white/15 bg-white/4"
+										: "hover:border-white/10 hover:bg-white/4"
+								}`}
+								aria-label="Edit tags"
+							>
+								{taskTags.length > 0 ? (
+									taskTags.map((tag) => (
+										<TasksPluginTagBadge
+											key={tag.id}
+											tag={tag}
+											isCompleted={task.status === "completed"}
+										/>
+									))
+								) : (
+									<span className="px-1 text-[11px] text-white/25">
+										+ Add tags
+									</span>
+								)}
+							</button>
+
+							{isEditingTags && (
+								<TasksPluginTagEditorPopover
+									tags={tags}
+									selectedTagIds={task.tagIds ?? []}
+									onToggleTag={onToggleTag}
+									onClose={onCloseTagEditor}
+								/>
+							)}
+						</div>
+					)}
+				</div>
+
+				<button
+					type="button"
+					className={cn(
+						"mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent transition-all duration-150 ease-out active:scale-90 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+						isPendingDelete
+							? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
+							: "opacity-0 hover:bg-red-500/15 group-hover/task:opacity-100",
+					)}
+					onClick={() => onDeleteClick(task.id)}
+					aria-label={isPendingDelete ? "Confirm delete" : "Delete task"}
+				>
+					{isPendingDelete ? (
+						<Check className="h-3.5 w-3.5 text-red-500" />
+					) : (
+						<X className="h-3.5 w-3.5 text-white/40 transition-colors duration-150 ease-out group-hover/delete:text-red-500" />
+					)}
+				</button>
+			</div>
+
+			<TasksPluginSubtaskSection
+				subtasks={sortedSubtasks}
+				isExpanded={isExpanded}
+				onToggleExpand={() => setIsExpanded(!isExpanded)}
+				onCreateSubtask={onCreateSubtask}
+				onToggleSubtask={onToggleSubtask}
+				onDeleteSubtask={onDeleteSubtask}
+				onReorderSubtasks={onReorderSubtasks}
+			/>
+		</div>
+	);
+}
+
+// --- Subtask Components ---
+
+interface TasksPluginProgressBadgeProps {
+	completed: number;
+	total: number;
+}
+
+function TasksPluginProgressBadge({
+	completed,
+	total,
+}: TasksPluginProgressBadgeProps) {
+	const isAllComplete = completed === total && total > 0;
+
+	return (
+		<span
+			className={cn(
+				"inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium tracking-tight transition-all duration-150 ease-out",
+				isAllComplete
+					? "bg-emerald-500/15 text-emerald-400"
+					: "bg-white/6 text-white/45",
+			)}
+		>
+			<Check
+				className={cn(
+					"h-2.5 w-2.5",
+					isAllComplete ? "text-emerald-400" : "text-white/35",
 				)}
+			/>
+			{completed}/{total}
+		</span>
+	);
+}
+
+interface TasksPluginSubtaskSectionProps {
+	subtasks: Subtask[];
+	isExpanded: boolean;
+	onToggleExpand: () => void;
+	onCreateSubtask: (text: string) => void;
+	onToggleSubtask: (subtaskId: string) => void;
+	onDeleteSubtask: (subtaskId: string) => void;
+	onReorderSubtasks: (subtaskIds: string[]) => void;
+}
+
+function TasksPluginSubtaskSection({
+	subtasks,
+	isExpanded,
+	onToggleExpand,
+	onCreateSubtask,
+	onToggleSubtask,
+	onDeleteSubtask,
+	onReorderSubtasks,
+}: TasksPluginSubtaskSectionProps) {
+	const hasSubtasks = subtasks.length > 0;
+
+	return (
+		<div className="ml-[30px] mt-1">
+			<button
+				type="button"
+				onClick={onToggleExpand}
+				className="flex items-center gap-1 rounded py-1 text-[11px] text-white/40 transition-all duration-150 ease-out hover:text-white/60"
+			>
+				{isExpanded ? (
+					<ChevronDown className="h-3 w-3" />
+				) : (
+					<ChevronRight className="h-3 w-3" />
+				)}
+				<span>
+					{hasSubtasks
+						? `${subtasks.length} subtask${subtasks.length !== 1 ? "s" : ""}`
+						: "Add subtasks"}
+				</span>
+			</button>
+
+			<AnimatePresence initial={false}>
+				{isExpanded && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
+						className="overflow-hidden"
+					>
+						<div className="flex flex-col gap-0.5 pt-1">
+							{hasSubtasks && (
+								<TasksPluginSubtaskList
+									subtasks={subtasks}
+									onToggleSubtask={onToggleSubtask}
+									onDeleteSubtask={onDeleteSubtask}
+									onReorderSubtasks={onReorderSubtasks}
+								/>
+							)}
+							<TasksPluginSubtaskInput onCreateSubtask={onCreateSubtask} />
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskListProps {
+	subtasks: Subtask[];
+	onToggleSubtask: (subtaskId: string) => void;
+	onDeleteSubtask: (subtaskId: string) => void;
+	onReorderSubtasks: (subtaskIds: string[]) => void;
+}
+
+function TasksPluginSubtaskList({
+	subtasks,
+	onToggleSubtask,
+	onDeleteSubtask,
+	onReorderSubtasks,
+}: TasksPluginSubtaskListProps) {
+	const [draggedId, setDraggedId] = useState<string | null>(null);
+	const [dragOverId, setDragOverId] = useState<string | null>(null);
+	const [dropPosition, setDropPosition] = useState<"above" | "below" | null>(
+		null,
+	);
+	const [isActiveDrag, setIsActiveDrag] = useState(false);
+	const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+	const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+	const isDraggingRef = useRef(false);
+	const originalPositions = useRef<
+		Map<string, { top: number; bottom: number; midY: number }>
+	>(new Map());
+	const lastDropTarget = useRef<{
+		id: string;
+		position: "above" | "below";
+	} | null>(null);
+
+	const draggedSubtask = useMemo(() => {
+		if (!draggedId) return null;
+		return subtasks.find((s) => s.id === draggedId) ?? null;
+	}, [subtasks, draggedId]);
+
+	const ghostInsertIndex = useMemo(() => {
+		if (!isActiveDrag || !draggedId || !dragOverId || !dropPosition) return -1;
+
+		const draggedIndex = subtasks.findIndex((s) => s.id === draggedId);
+		const targetIndex = subtasks.findIndex((s) => s.id === dragOverId);
+		if (draggedIndex === -1 || targetIndex === -1) return -1;
+
+		const insertIndex =
+			dropPosition === "above" ? targetIndex : targetIndex + 1;
+
+		if (insertIndex === draggedIndex || insertIndex === draggedIndex + 1) {
+			return -1;
+		}
+
+		return insertIndex;
+	}, [subtasks, isActiveDrag, draggedId, dragOverId, dropPosition]);
+
+	const handleMouseDown = (e: React.MouseEvent, subtaskId: string) => {
+		if (e.button !== 0) return;
+		dragStartPos.current = { x: e.clientX, y: e.clientY };
+		setDraggedId(subtaskId);
+	};
+
+	const handleMouseMove = useCallback(
+		(e: MouseEvent) => {
+			if (!draggedId || !dragStartPos.current) return;
+
+			const dx = e.clientX - dragStartPos.current.x;
+			const dy = e.clientY - dragStartPos.current.y;
+			if (!isDraggingRef.current && Math.sqrt(dx * dx + dy * dy) < 5) return;
+
+			if (!isDraggingRef.current) {
+				isDraggingRef.current = true;
+				setIsActiveDrag(true);
+				document.body.classList.add("dragging-subtask");
+
+				originalPositions.current.clear();
+				for (const [subtaskId, itemEl] of itemRefs.current.entries()) {
+					const rect = itemEl.getBoundingClientRect();
+					originalPositions.current.set(subtaskId, {
+						top: rect.top,
+						bottom: rect.bottom,
+						midY: rect.top + rect.height / 2,
+					});
+				}
+			}
+
+			let foundTarget = false;
+			const cursorY = e.clientY;
+
+			const sortedItems = Array.from(originalPositions.current.entries())
+				.filter(([id]) => id !== draggedId)
+				.sort((a, b) => a[1].top - b[1].top);
+
+			const hysteresis = lastDropTarget.current ? 8 : 0;
+
+			for (let i = 0; i < sortedItems.length; i++) {
+				const [subtaskId, pos] = sortedItems[i];
+				const isCurrentTarget = lastDropTarget.current?.id === subtaskId;
+
+				const prevItem = i > 0 ? sortedItems[i - 1][1] : null;
+				const nextItem =
+					i < sortedItems.length - 1 ? sortedItems[i + 1][1] : null;
+
+				const aboveZoneTop = prevItem ? prevItem.midY : pos.top - 50;
+				const aboveZoneBottom = pos.midY;
+				const belowZoneTop = pos.midY;
+				const belowZoneBottom = nextItem ? nextItem.midY : pos.bottom + 50;
+
+				const aboveTopThreshold =
+					isCurrentTarget && lastDropTarget.current?.position === "above"
+						? aboveZoneTop - hysteresis
+						: aboveZoneTop;
+				const belowBottomThreshold =
+					isCurrentTarget && lastDropTarget.current?.position === "below"
+						? belowZoneBottom + hysteresis
+						: belowZoneBottom;
+
+				if (cursorY >= aboveTopThreshold && cursorY < aboveZoneBottom) {
+					if (dragOverId !== subtaskId || dropPosition !== "above") {
+						setDragOverId(subtaskId);
+						setDropPosition("above");
+						lastDropTarget.current = { id: subtaskId, position: "above" };
+					}
+					foundTarget = true;
+					break;
+				}
+
+				if (cursorY >= belowZoneTop && cursorY <= belowBottomThreshold) {
+					if (dragOverId !== subtaskId || dropPosition !== "below") {
+						setDragOverId(subtaskId);
+						setDropPosition("below");
+						lastDropTarget.current = { id: subtaskId, position: "below" };
+					}
+					foundTarget = true;
+					break;
+				}
+			}
+
+			if (!foundTarget) {
+				setDragOverId(null);
+				setDropPosition(null);
+				lastDropTarget.current = null;
+			}
+		},
+		[draggedId, dragOverId, dropPosition],
+	);
+
+	const handleMouseUp = useCallback(() => {
+		if (draggedId && isDraggingRef.current && dragOverId && dropPosition) {
+			const newOrder = [...subtasks];
+			const draggedIndex = newOrder.findIndex((s) => s.id === draggedId);
+			const targetIndex = newOrder.findIndex((s) => s.id === dragOverId);
+
+			if (draggedIndex !== -1 && targetIndex !== -1) {
+				const [draggedItem] = newOrder.splice(draggedIndex, 1);
+
+				let insertIndex = targetIndex;
+				if (dropPosition === "below") {
+					insertIndex =
+						draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+				} else {
+					insertIndex =
+						draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+				}
+
+				newOrder.splice(insertIndex, 0, draggedItem);
+				onReorderSubtasks(newOrder.map((s) => s.id));
+			}
+		}
+
+		setDraggedId(null);
+		setDragOverId(null);
+		setDropPosition(null);
+		setIsActiveDrag(false);
+		dragStartPos.current = null;
+		isDraggingRef.current = false;
+		originalPositions.current.clear();
+		lastDropTarget.current = null;
+		document.body.classList.remove("dragging-subtask");
+	}, [draggedId, dragOverId, dropPosition, subtasks, onReorderSubtasks]);
+
+	useEffect(() => {
+		if (draggedId) {
+			document.addEventListener("mousemove", handleMouseMove);
+			document.addEventListener("mouseup", handleMouseUp);
+			return () => {
+				document.removeEventListener("mousemove", handleMouseMove);
+				document.removeEventListener("mouseup", handleMouseUp);
+			};
+		}
+	}, [draggedId, handleMouseMove, handleMouseUp]);
+
+	const setItemRef = useCallback(
+		(subtaskId: string, el: HTMLDivElement | null) => {
+			if (el) {
+				itemRefs.current.set(subtaskId, el);
+			} else {
+				itemRefs.current.delete(subtaskId);
+			}
+		},
+		[],
+	);
+
+	const renderItems = useMemo(() => {
+		const items: Array<{
+			type: "subtask" | "ghost";
+			subtask: Subtask;
+			key: string;
+		}> = [];
+
+		subtasks.forEach((subtask, index) => {
+			if (ghostInsertIndex === index && draggedSubtask) {
+				items.push({ type: "ghost", subtask: draggedSubtask, key: "ghost" });
+			}
+
+			items.push({ type: "subtask", subtask, key: subtask.id });
+		});
+
+		if (ghostInsertIndex === subtasks.length && draggedSubtask) {
+			items.push({ type: "ghost", subtask: draggedSubtask, key: "ghost" });
+		}
+
+		return items;
+	}, [subtasks, ghostInsertIndex, draggedSubtask]);
+
+	return (
+		<div className="flex flex-col">
+			<AnimatePresence mode="popLayout">
+				{renderItems.map((item) => {
+					if (item.type === "ghost") {
+						return (
+							<motion.div
+								key="ghost"
+								initial={{ opacity: 0, scale: 0.95, height: 0 }}
+								animate={{ opacity: 1, scale: 1, height: "auto" }}
+								exit={{ opacity: 0, scale: 0.95, height: 0 }}
+								transition={{ duration: 0.15, ease: "easeOut" }}
+							>
+								<TasksPluginSubtaskGhost subtask={item.subtask} />
+							</motion.div>
+						);
+					}
+
+					return (
+						<motion.div
+							key={item.key}
+							layout
+							layoutId={item.subtask.id}
+							transition={{
+								layout: { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] },
+							}}
+						>
+							<TasksPluginSubtaskItem
+								subtask={item.subtask}
+								onToggle={() => onToggleSubtask(item.subtask.id)}
+								onDelete={() => onDeleteSubtask(item.subtask.id)}
+								isDragging={
+									draggedId === item.subtask.id && isDraggingRef.current
+								}
+								onMouseDown={(e) => handleMouseDown(e, item.subtask.id)}
+								itemRef={(el) => setItemRef(item.subtask.id, el)}
+							/>
+						</motion.div>
+					);
+				})}
+			</AnimatePresence>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskItemProps {
+	subtask: Subtask;
+	onToggle: () => void;
+	onDelete: () => void;
+	isDragging?: boolean;
+	onMouseDown?: (e: React.MouseEvent) => void;
+	itemRef?: (el: HTMLDivElement | null) => void;
+}
+
+function TasksPluginSubtaskItem({
+	subtask,
+	onToggle,
+	onDelete,
+	isDragging = false,
+	onMouseDown,
+	itemRef,
+}: TasksPluginSubtaskItemProps) {
+	return (
+		<div
+			ref={itemRef}
+			className={cn(
+				"group/subtask flex items-center gap-2 rounded py-1 pr-1 transition-all duration-150 ease-out",
+				isDragging && "opacity-40 scale-[0.98] pointer-events-none",
+			)}
+		>
+			<div
+				onMouseDown={onMouseDown}
+				className="flex h-5 w-4 shrink-0 cursor-grab items-center justify-center"
+			>
+				<GripVertical className="h-3 w-3 text-white/15 transition-colors duration-150 group-hover/subtask:text-white/30" />
 			</div>
 
 			<button
 				type="button"
-				className={`mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent transition-all duration-150 ease-out active:scale-90 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
-					isPendingDelete
-						? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
-						: "opacity-0 hover:bg-red-500/15 group-hover:opacity-100"
-				}`}
-				onClick={() => onDeleteClick(task.id)}
-				aria-label={isPendingDelete ? "Confirm delete" : "Delete task"}
-			>
-				{isPendingDelete ? (
-					<Check className="h-3.5 w-3.5 text-red-500" />
-				) : (
-					<X className="h-3.5 w-3.5 text-white/40 transition-colors duration-150 ease-out group-hover/delete:text-red-500" />
+				onClick={onToggle}
+				className={cn(
+					"flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center rounded border transition-all duration-150 ease-out active:scale-[0.9]",
+					subtask.completed
+						? "border-white/50 bg-white/50"
+						: "border-white/25 bg-transparent hover:border-white/40",
 				)}
+				aria-label={subtask.completed ? "Mark incomplete" : "Mark complete"}
+			>
+				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]" />}
+			</button>
+
+			<span
+				className={cn(
+					"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
+					subtask.completed
+						? "text-white/30 line-through decoration-white/20"
+						: "text-white/70",
+				)}
+			>
+				{subtask.text}
+			</span>
+
+			<button
+				type="button"
+				onClick={onDelete}
+				className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-red-500/15 group-hover/subtask:opacity-100 active:scale-90"
+				aria-label="Delete subtask"
+			>
+				<X className="h-3 w-3 text-white/30 transition-colors duration-150 hover:text-red-400" />
 			</button>
 		</div>
 	);
 }
+
+interface TasksPluginSubtaskGhostProps {
+	subtask: Subtask;
+}
+
+function TasksPluginSubtaskGhost({ subtask }: TasksPluginSubtaskGhostProps) {
+	return (
+		<div className="flex items-center gap-2 rounded border border-dashed border-white/20 bg-white/[0.03] py-1 pr-1">
+			<div className="flex h-5 w-4 shrink-0 items-center justify-center">
+				<GripVertical className="h-3 w-3 text-white/20" />
+			</div>
+
+			<div
+				className={cn(
+					"flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+					subtask.completed
+						? "border-white/30 bg-white/30"
+						: "border-white/15 bg-transparent",
+				)}
+			>
+				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]/50" />}
+			</div>
+
+			<span className="flex-1 text-[12px] leading-tight tracking-[-0.01em] text-white/40">
+				{subtask.text}
+			</span>
+		</div>
+	);
+}
+
+interface TasksPluginSubtaskInputProps {
+	onCreateSubtask: (text: string) => void;
+}
+
+function TasksPluginSubtaskInput({
+	onCreateSubtask,
+}: TasksPluginSubtaskInputProps) {
+	const [value, setValue] = useState("");
+	const [isFocused, setIsFocused] = useState(false);
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	const handleSubmit = () => {
+		if (!value.trim()) return;
+		onCreateSubtask(value.trim());
+		setValue("");
+	};
+
+	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			handleSubmit();
+		} else if (e.key === "Escape") {
+			setValue("");
+			inputRef.current?.blur();
+		}
+	};
+
+	return (
+		<div
+			className={cn(
+				"flex items-center gap-2 rounded py-1 transition-all duration-150 ease-out",
+				isFocused && "bg-white/[0.02]",
+			)}
+		>
+			<div className="flex h-5 w-4 shrink-0 items-center justify-center">
+				<Plus
+					className={cn(
+						"h-3 w-3 transition-colors duration-150",
+						isFocused ? "text-white/40" : "text-white/20",
+					)}
+				/>
+			</div>
+
+			<input
+				ref={inputRef}
+				type="text"
+				placeholder="Add subtask..."
+				value={value}
+				onChange={(e) => setValue(e.target.value)}
+				onKeyDown={handleKeyDown}
+				onFocus={() => setIsFocused(true)}
+				onBlur={() => {
+					setIsFocused(false);
+					if (value.trim()) {
+						handleSubmit();
+					}
+				}}
+				className="h-5 flex-1 bg-transparent text-[12px] leading-tight tracking-[-0.01em] text-white/70 outline-none placeholder:text-white/25"
+				autoComplete="off"
+			/>
+		</div>
+	);
+}
+
+// --- End Subtask Components ---
 
 interface TasksPluginTagEditorPopoverProps {
 	tags: TagType[];
