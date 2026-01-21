@@ -1,6 +1,7 @@
 use super::storage::save_to_json;
 use super::types::*;
 use super::TasksStore;
+use crate::traces::Trace;
 use tauri::State;
 use uuid::Uuid;
 
@@ -13,7 +14,10 @@ fn now_ms() -> i64 {
 
 #[tauri::command]
 pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>, String> {
+    let trace = Trace::new().with("plugin", "tasks").with("action", "folder_get_all");
+    
     let data = store.read();
+    trace.info("store read acquired");
 
     let mut result: Vec<FolderWithPreview> = data
         .folders
@@ -52,6 +56,10 @@ pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>
         .collect();
 
     result.sort_by_key(|f| f.position);
+    
+    trace.info(&format!("returning {} folders", result.len()));
+    drop(trace);
+    
     Ok(result)
 }
 

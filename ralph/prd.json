@@ -168,7 +168,7 @@
 			"Test manually: run command, check ~/.local/share/jubby/logs/traces/*.jsonl"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "Choose a command that's easy to trigger manually. This validates the full flow before wider adoption. Check file contains valid JSON lines."
 	},
 	{

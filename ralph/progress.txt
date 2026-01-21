@@ -1,7 +1,7 @@
 # Contextual Logging System - PRD
 
 ## Current Status
-Task 11 of 16 completed
+Task 12 of 16 completed
 
 ## Tasks
 - [x] 1. Rust - Create tracing types and data structures
@@ -14,7 +14,7 @@ Task 11 of 16 completed
 - [x] 8. Rust - Implement cleanup for old logs
 - [x] 9. Rust - Create mod.rs and init_tracing()
 - [x] 10. Rust - Add required dependencies (already present)
-- [ ] 11. Rust - Integration test with existing command
+- [x] 11. Rust - Integration test with existing command
 - [ ] 12. TypeScript - Create trace types
 - [ ] 13. TypeScript - Implement createTrace and Trace class
 - [ ] 14. TypeScript - Add trace propagation to invoke wrapper
@@ -144,3 +144,16 @@ Trace 3 ──┘   └─────────────┘     │ - flus
   - OnceCell::set() returns Result<(), T> where T is the value - requires T: Debug for expect()
   - Simplifying Trace API to not require sender makes it much easier to use (just `Trace::new()`)
   - init_tracing() must be called before any Trace is created - enforced by panic in get_writer_tx()
+
+## 2026-01-21 19:55 - Task 11: Rust - Integration test with existing command
+- Added tracing to `folder_get_all` command in tasks plugin
+- Added `use crate::traces::Trace` import
+- Created trace at command start with `plugin: "tasks"` and `action: "folder_get_all"` context
+- Added `trace.info()` calls at key points: after store read, before returning with folder count
+- Explicit `drop(trace)` ensures trace_end emits before Ok() return
+- Files changed: `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+  - The `.with()` builder pattern makes adding initial context clean and readable
+  - Explicit `drop(trace)` is clearer than relying on implicit drop at end of function
+  - Unused warnings in traces module are expected until more commands adopt tracing
+  - Command chosen was read-only and simple - good for validating the full flow without side effects
