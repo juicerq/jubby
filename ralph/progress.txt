@@ -1,13 +1,13 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 4 of 19 completed
+Task 5 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
 - [x] 2. Backend - Data migration
 - [x] 3. Backend - CRUD commands for new fields
-- [ ] 4. Backend - OpenCode server management
+- [x] 4. Backend - OpenCode server management
 - [ ] 5. Backend - Execution orchestration command
 - [x] 6. Frontend - Update useTasksStorage hook with new types
 - [ ] 7. Frontend - Update useTasksStorage hook with execution functions
@@ -193,3 +193,41 @@ Task 4 of 19 completed
   - UseTasksStorageReturn interface documents all available functions
   - TasksPluginTaskDetail is in a separate file and imports SubtaskStatus for its prop interface
 
+## 2026-01-21 15:31 - Task 4: Backend - OpenCode server management
+
+### What was implemented
+- Created `src-tauri/src/plugins/tasks/opencode.rs` module with full OpenCode server HTTP API integration
+- `OpenCodeServerState` struct for tracking server process PID (RwLock for thread safety)
+- `opencode_ensure_server`: Checks if server is running on port 4096, spawns `opencode serve` if not, polls until ready (max 10s)
+- `opencode_health_check`: GET `/global/health` - returns `{healthy: bool, version: string}`
+- `opencode_create_session`: POST `/session` - creates new session with optional title
+- `opencode_send_prompt`: POST `/session/{id}/prompt_async` - sends prompt asynchronously with optional agent
+- `opencode_poll_status`: GET `/session/status` - polls all sessions status, returns status for specific session
+- `opencode_abort_session`: POST `/session/{id}/abort` - aborts running session
+- `opencode_stop_server`: Sends SIGTERM to server process if started by this app
+- Added `reqwest` dependency for HTTP client
+- Registered all 7 commands in lib.rs invoke_handler
+- Registered `OpenCodeServerState` in app setup
+
+### Files changed
+- `src-tauri/src/plugins/tasks/opencode.rs` (new file)
+- `src-tauri/src/plugins/tasks/mod.rs` (added module export)
+- `src-tauri/src/lib.rs` (registered commands and state)
+- `src-tauri/Cargo.toml` (added reqwest dependency)
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - OpenCode server API uses `/global/health` not `/health`
+  - Session status endpoint returns HashMap<sessionId, status> for all sessions, not single session
+  - Use `prompt_async` endpoint for non-blocking prompt sending (returns 204 immediately)
+  - Server spawning uses tokio::process::Command for async compatibility
+- **Gotchas encountered:**
+  - Health response has `healthy: bool` and `version: string`, not `status: string`
+  - Session creation request body is minimal (just optional title), not path-based
+  - Status types are "idle", "busy", "retry" (not "error")
+  - The kill command needs `.status()` not `.exec()` to actually run
+- **Useful context:**
+  - OpenCode server runs on port 4096 by default
+  - All request/response types use camelCase via `#[serde(rename_all = "camelCase")]`
+  - State management uses tauri's `State` wrapper with `app.manage()` in setup
+  - Commands registered in lib.rs around line 140 (tasks plugin section)

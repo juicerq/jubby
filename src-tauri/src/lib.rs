@@ -137,6 +137,13 @@ pub fn run() {
             plugins::tasks::commands::steps_delete,
             plugins::tasks::commands::steps_update_text,
             plugins::tasks::commands::execution_logs_create,
+            plugins::tasks::opencode::opencode_ensure_server,
+            plugins::tasks::opencode::opencode_health_check,
+            plugins::tasks::opencode::opencode_create_session,
+            plugins::tasks::opencode::opencode_send_prompt,
+            plugins::tasks::opencode::opencode_poll_status,
+            plugins::tasks::opencode::opencode_abort_session,
+            plugins::tasks::opencode::opencode_stop_server,
             plugins::tasks::commands::tag_create,
             plugins::tasks::commands::tag_update,
             plugins::tasks::commands::tag_delete,
@@ -174,6 +181,8 @@ pub fn run() {
             let tasks_store = plugins::tasks::init_tasks_store()
                 .map_err(|e| format!("Failed to initialize tasks store: {}", e))?;
             app.manage(tasks_store);
+
+            app.manage(plugins::tasks::opencode::OpenCodeServerState::new());
 
             let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new(app.handle().clone());
             let handle = plugins::quickclip::recorder::coordinator::CoordinatorHandle::new(command_tx);
