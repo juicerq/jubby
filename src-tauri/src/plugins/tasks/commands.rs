@@ -545,3 +545,411 @@ pub fn subtasks_update_text(
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn tasks_update_description(
+    store: State<TasksStore>,
+    id: String,
+    description: String,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| format!("Task not found: {}", id))?;
+
+    task.description = description;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn tasks_update_working_directory(
+    store: State<TasksStore>,
+    id: String,
+    working_directory: String,
+) -> Result<(), String> {
+    let working_directory = working_directory.trim().to_string();
+
+    if !working_directory.is_empty() {
+        let path = std::path::Path::new(&working_directory);
+        if !path.exists() {
+            return Err(format!("Path does not exist: {}", working_directory));
+        }
+        if !path.is_dir() {
+            return Err(format!("Path is not a directory: {}", working_directory));
+        }
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| format!("Task not found: {}", id))?;
+
+    task.working_directory = working_directory;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_status(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    status: String,
+) -> Result<(), String> {
+    let status = match status.as_str() {
+        "waiting" => TaskStatus::Waiting,
+        "in_progress" => TaskStatus::InProgress,
+        "completed" => TaskStatus::Completed,
+        _ => return Err(format!("Invalid status: {}", status)),
+    };
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.status = status;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_order(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    order: u32,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.order = order;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_category(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    category: String,
+) -> Result<(), String> {
+    let category = match category.as_str() {
+        "functional" => SubtaskCategory::Functional,
+        "test" => SubtaskCategory::Test,
+        _ => return Err(format!("Invalid category: {}", category)),
+    };
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.category = category;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_notes(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    notes: String,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.notes = notes;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_should_commit(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    should_commit: bool,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.should_commit = should_commit;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn steps_create(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    text: String,
+) -> Result<Step, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Step text cannot be empty".to_string());
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    let step = Step {
+        id: Uuid::new_v4().to_string(),
+        text,
+        completed: false,
+    };
+
+    subtask.steps.push(step.clone());
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(step)
+}
+
+#[tauri::command]
+pub fn steps_toggle(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    step_id: String,
+) -> Result<bool, String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    let step = subtask
+        .steps
+        .iter_mut()
+        .find(|s| s.id == step_id)
+        .ok_or_else(|| format!("Step not found: {}", step_id))?;
+
+    step.completed = !step.completed;
+    let new_state = step.completed;
+
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(new_state)
+}
+
+#[tauri::command]
+pub fn steps_delete(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    step_id: String,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    let existed = subtask.steps.iter().any(|s| s.id == step_id);
+    if !existed {
+        return Err(format!("Step not found: {}", step_id));
+    }
+
+    subtask.steps.retain(|s| s.id != step_id);
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn steps_update_text(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    step_id: String,
+    text: String,
+) -> Result<(), String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Step text cannot be empty".to_string());
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    let step = subtask
+        .steps
+        .iter_mut()
+        .find(|s| s.id == step_id)
+        .ok_or_else(|| format!("Step not found: {}", step_id))?;
+
+    step.text = text;
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn execution_logs_create(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    outcome: String,
+    summary: String,
+    files_changed: Vec<String>,
+    learnings_patterns: Vec<String>,
+    learnings_gotchas: Vec<String>,
+    learnings_context: Vec<String>,
+    committed: bool,
+    commit_hash: Option<String>,
+    commit_message: Option<String>,
+    error_message: Option<String>,
+) -> Result<ExecutionLog, String> {
+    let outcome = match outcome.as_str() {
+        "success" => ExecutionOutcome::Success,
+        "partial" => ExecutionOutcome::Partial,
+        "failed" => ExecutionOutcome::Failed,
+        "aborted" => ExecutionOutcome::Aborted,
+        _ => return Err(format!("Invalid outcome: {}", outcome)),
+    };
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    let now = now_ms();
+    let log = ExecutionLog {
+        id: Uuid::new_v4().to_string(),
+        started_at: now,
+        completed_at: Some(now),
+        duration: Some(0),
+        outcome,
+        summary,
+        files_changed,
+        learnings: Learnings {
+            patterns: learnings_patterns,
+            gotchas: learnings_gotchas,
+            context: learnings_context,
+        },
+        committed,
+        commit_hash,
+        commit_message,
+        error_message,
+    };
+
+    subtask.execution_logs.push(log.clone());
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(log)
+}

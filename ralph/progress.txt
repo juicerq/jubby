@@ -1,12 +1,12 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 2 of 19 completed
+Task 3 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
 - [x] 2. Backend - Data migration
-- [ ] 3. Backend - CRUD commands for new fields
+- [x] 3. Backend - CRUD commands for new fields
 - [ ] 4. Backend - OpenCode server management
 - [ ] 5. Backend - Execution orchestration command
 - [ ] 6. Frontend - Update useTasksStorage hook with new types
@@ -106,4 +106,39 @@ Task 2 of 19 completed
 - **Useful context:**
   - Data paths: `~/.local/share/jubby/tasks/tasks.json` (current), `~/.local/share/jubby/todo/todo.json` (legacy)
   - `load_or_migrate` is the single entry point for all data loading in the tasks plugin
+
+## 2026-01-21 15:22 - Task 3: Backend - CRUD commands for new fields
+
+### What was implemented
+- `tasks_update_description`: Updates task.description field
+- `tasks_update_working_directory`: Updates task.workingDirectory with path existence and directory validation
+- `subtasks_update_status`: Updates subtask.status enum (waiting/in_progress/completed)
+- `subtasks_update_order`: Updates subtask.order for drag reorder
+- `subtasks_update_category`: Updates subtask.category enum (functional/test)
+- `subtasks_update_notes`: Updates subtask.notes field
+- `subtasks_update_should_commit`: Toggles subtask.shouldCommit boolean
+- `steps_create`: Creates a new Step in a subtask's steps array
+- `steps_toggle`: Toggles step.completed boolean
+- `steps_delete`: Removes a step from subtask.steps
+- `steps_update_text`: Updates step.text
+- `execution_logs_create`: Creates a new ExecutionLog with all fields (outcome, summary, filesChanged, learnings, commit info)
+- Registered all 12 new commands in lib.rs invoke_handler
+
+### Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- `src-tauri/src/lib.rs`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - All commands follow same pattern: validate input → get write lock → find entity (task → subtask → step) → update → save_to_json
+  - Enum parameters come as strings from frontend, must be parsed with match statement and explicit error for invalid values
+  - Path validation for workingDirectory: check exists() AND is_dir() - a file path passing exists() would be wrong
+- **Gotchas encountered:**
+  - Commands need to be registered in lib.rs invoke_handler - easy to forget
+  - For nested entities (steps inside subtasks inside tasks), need multiple find() calls chained
+  - execution_logs_create has many parameters - consider using a struct input in future for cleaner API
+- **Useful context:**
+  - New commands start at line ~550 in commands.rs
+  - Commands are registered at lines ~127-140 in lib.rs (tasks plugin section)
+  - Frontend will need corresponding invoke() calls with exact parameter names (camelCase from Rust snake_case)
 
