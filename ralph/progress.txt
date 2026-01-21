@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 15 of 19 completed
+Task 16 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -18,7 +18,7 @@ Task 15 of 19 completed
 - [x] 12. Frontend - Loop (Run All) button
 - [x] 13. Frontend - Drag to reorder subtasks
 - [ ] 14. Frontend - History section
-- [ ] 15. Frontend - Execution log detail view in subtask
+- [x] 15. Frontend - Execution log detail view in subtask
 - [x] 16. Frontend - OpenCode server lifecycle
 - [ ] 17. Frontend - AI Generate subtasks feature
 - [ ] 18. Backend - AI Generate subtasks command
@@ -527,3 +527,42 @@ Task 15 of 19 completed
   - Drag state: draggedId, dragOverId, dropPosition, isActiveDrag
   - Mouse handlers: handleMouseDown (line 1233), handleMouseMove (line 1240), handleMouseUp (line 1325)
   - Ghost element rendered at lines 1408-1419
+
+## 2026-01-21 16:18 - Task 15: Frontend - Execution log detail view in subtask
+
+### What was implemented
+- Transformed `TasksPluginSubtaskExpandableLastRun` to accept full logs array instead of just last log
+- Added "see all (N)" toggle that expands to show all execution logs in reverse chronological order
+- Each log entry is now expandable via `TasksPluginExecutionLogCard` component with:
+  - Header: timestamp, outcome badge, duration
+  - Summary: truncated to 2 lines when collapsed, full when expanded
+  - Chevron rotation animation indicating expandable state
+- Expandable details section showing:
+  - Files Changed: file badges showing basename only
+  - Learnings - Patterns: sky blue themed bullet list
+  - Learnings - Gotchas: amber themed bullet list  
+  - Learnings - Context: violet themed bullet list
+  - Commit Info: hash badge + message (when committed)
+  - Error Message: red themed error block (when failed)
+- Created `TasksPluginOutcomeBadge` reusable component for outcome badges
+- Created `TasksPluginLearningsSection` reusable component for learnings display
+- Smooth expand/collapse animations using motion/react AnimatePresence
+
+### Files changed
+- `src/plugins/tasks/TasksPlugin.tsx` - Updated LastRun component, added ExecutionLogCard, OutcomeBadge, LearningsSection components
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - AnimatePresence with `mode="wait"` allows smooth transitions between different content views
+  - Using file path as key works for filesChanged since paths are unique
+  - Using item text as key works for learnings arrays since learning items are typically unique strings
+  - The logs array is in chronological order (oldest first), so reverse() for display
+- **Gotchas encountered:**
+  - Changed from passing single `log` prop to passing full `logs` array to enable "see all" functionality
+  - Had to remove the `lastLog` variable that was unused after refactoring
+  - ESLint forbids array index as key - use unique string identifiers instead
+- **Useful context:**
+  - `TasksPluginSubtaskExpandableLastRun` now at lines ~2139-2218
+  - `TasksPluginExecutionLogCard` at lines ~2220-2380
+  - `TasksPluginLearningsSection` at lines ~2404-2428
+  - ExecutionLog has: id, startedAt, completedAt, duration, outcome, summary, filesChanged, learnings, committed, commitHash, commitMessage, errorMessage

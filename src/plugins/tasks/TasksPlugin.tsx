@@ -1559,10 +1559,6 @@ function TasksPluginSubtaskExpandable({
 	const editStepInputRef = useRef<HTMLInputElement>(null);
 
 	const isCompleted = subtask.status === "completed";
-	const lastLog =
-		subtask.executionLogs.length > 0
-			? subtask.executionLogs[subtask.executionLogs.length - 1]
-			: null;
 
 	useEffect(() => {
 		setEditValue(subtask.text);
@@ -1865,12 +1861,11 @@ function TasksPluginSubtaskExpandable({
 								onUpdateNotes={onUpdateNotes}
 							/>
 
-							{lastLog && (
+							{subtask.executionLogs.length > 0 && (
 								<>
 									<div className="h-px bg-white/8" />
 									<TasksPluginSubtaskExpandableLastRun
-										log={lastLog}
-										totalLogs={subtask.executionLogs.length}
+										logs={subtask.executionLogs}
 										formatTime={formatLogTime}
 									/>
 								</>
@@ -2142,56 +2137,292 @@ function TasksPluginSubtaskExpandableDetails({
 }
 
 interface TasksPluginSubtaskExpandableLastRunProps {
-	log: ExecutionLog;
-	totalLogs: number;
+	logs: ExecutionLog[];
 	formatTime: (timestamp: number) => string;
 }
 
 function TasksPluginSubtaskExpandableLastRun({
-	log,
-	totalLogs,
+	logs,
 	formatTime,
 }: TasksPluginSubtaskExpandableLastRunProps) {
+	const [isShowingAll, setIsShowingAll] = useState(false);
+	const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+	const lastLog = logs[logs.length - 1];
+	const totalLogs = logs.length;
+
+	const sortedLogs = [...logs].reverse();
+
+	const toggleLogExpansion = (logId: string) => {
+		setExpandedLogId((prev) => (prev === logId ? null : logId));
+	};
+
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between">
 				<span className="text-[10px] font-medium uppercase tracking-wider text-white/35">
-					Last Run
+					{isShowingAll ? "Execution History" : "Last Run"}
 				</span>
 				{totalLogs > 1 && (
-					<span className="cursor-pointer text-[10px] text-white/30 hover:text-white/50">
-						see all ({totalLogs})
-					</span>
+					<button
+						type="button"
+						onClick={() => {
+							setIsShowingAll((prev) => !prev);
+							if (isShowingAll) setExpandedLogId(null);
+						}}
+						className="cursor-pointer text-[10px] text-white/30 transition-colors hover:text-white/50"
+					>
+						{isShowingAll ? "show less" : `see all (${totalLogs})`}
+					</button>
 				)}
 			</div>
-			<div className="flex flex-col gap-1.5 rounded-md bg-white/[0.03] px-2.5 py-2">
-				<div className="flex items-center gap-2">
-					<span className="text-[10px] text-white/35">
-						{formatTime(log.startedAt)}
+
+			<AnimatePresence mode="wait">
+				{isShowingAll ? (
+					<motion.div
+						key="all-logs"
+						initial={{ opacity: 0, height: 0 }}
+						animate={{ opacity: 1, height: "auto" }}
+						exit={{ opacity: 0, height: 0 }}
+						transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+						className="flex flex-col gap-1.5 overflow-hidden"
+					>
+						{sortedLogs.map((log) => (
+							<TasksPluginExecutionLogCard
+								key={log.id}
+								log={log}
+								formatTime={formatTime}
+								isExpanded={expandedLogId === log.id}
+								onToggle={() => toggleLogExpansion(log.id)}
+							/>
+						))}
+					</motion.div>
+				) : (
+					<motion.div
+						key="last-log"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.15 }}
+					>
+						<TasksPluginExecutionLogCard
+							log={lastLog}
+							formatTime={formatTime}
+							isExpanded={expandedLogId === lastLog.id}
+							onToggle={() => toggleLogExpansion(lastLog.id)}
+						/>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</div>
+	);
+}
+
+interface TasksPluginExecutionLogCardProps {
+	log: ExecutionLog;
+	formatTime: (timestamp: number) => string;
+	isExpanded: boolean;
+	onToggle: () => void;
+}
+
+function TasksPluginExecutionLogCard({
+	log,
+	formatTime,
+	isExpanded,
+	onToggle,
+}: TasksPluginExecutionLogCardProps) {
+	const hasDetails =
+		log.filesChanged.length > 0 ||
+		log.learnings.patterns.length > 0 ||
+		log.learnings.gotchas.length > 0 ||
+		log.learnings.context.length > 0 ||
+		log.committed ||
+		log.errorMessage;
+
+	return (
+		<div
+			className={cn(
+				"flex flex-col rounded-md bg-white/[0.03] transition-all duration-150",
+				hasDetails && "cursor-pointer hover:bg-white/[0.05]",
+			)}
+			onClick={hasDetails ? onToggle : undefined}
+		>
+			<div className="flex items-center gap-2 px-2.5 py-2">
+				<span className="text-[10px] text-white/35">
+					{formatTime(log.startedAt)}
+				</span>
+				<TasksPluginOutcomeBadge outcome={log.outcome} />
+				{log.duration && (
+					<span className="text-[10px] text-white/30">
+						{Math.round(log.duration / 1000)}s
 					</span>
-					<span
+				)}
+				{hasDetails && (
+					<motion.div
+						animate={{ rotate: isExpanded ? 90 : 0 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
+						className="ml-auto flex h-4 w-4 items-center justify-center"
+					>
+						<ChevronRight className="h-2.5 w-2.5 text-white/25" />
+					</motion.div>
+				)}
+			</div>
+
+			{log.summary && (
+				<div className="px-2.5 pb-2">
+					<p
 						className={cn(
-							"rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
-							log.outcome === "success" && "bg-emerald-500/15 text-emerald-400",
-							log.outcome === "partial" && "bg-amber-500/15 text-amber-400",
-							log.outcome === "failed" && "bg-red-500/15 text-red-400",
-							log.outcome === "aborted" && "bg-white/10 text-white/40",
+							"text-[11px] leading-relaxed text-white/50",
+							!isExpanded && "line-clamp-2",
 						)}
 					>
-						{log.outcome}
-					</span>
-					{log.duration && (
-						<span className="text-[10px] text-white/30">
-							{Math.round(log.duration / 1000)}s
-						</span>
-					)}
-				</div>
-				{log.summary && (
-					<p className="line-clamp-2 text-[11px] leading-relaxed text-white/50">
 						{log.summary}
 					</p>
+				</div>
+			)}
+
+			<AnimatePresence>
+				{isExpanded && hasDetails && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+						className="overflow-hidden"
+					>
+						<div className="flex flex-col gap-3 border-t border-white/6 px-2.5 py-2.5">
+							{log.filesChanged.length > 0 && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Files Changed
+									</span>
+									<div className="flex flex-wrap gap-1">
+										{log.filesChanged.map((file) => (
+											<span
+												key={file}
+												className="rounded bg-white/6 px-1.5 py-0.5 font-mono text-[10px] text-white/50"
+											>
+												{file.split("/").pop()}
+											</span>
+										))}
+									</div>
+								</div>
+							)}
+
+							{log.learnings.patterns.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Patterns Discovered"
+									items={log.learnings.patterns}
+									colorClass="text-sky-400/70"
+									bgClass="bg-sky-500/10"
+								/>
+							)}
+
+							{log.learnings.gotchas.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Gotchas Encountered"
+									items={log.learnings.gotchas}
+									colorClass="text-amber-400/70"
+									bgClass="bg-amber-500/10"
+								/>
+							)}
+
+							{log.learnings.context.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Useful Context"
+									items={log.learnings.context}
+									colorClass="text-violet-400/70"
+									bgClass="bg-violet-500/10"
+								/>
+							)}
+
+							{log.committed && log.commitHash && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Commit
+									</span>
+									<div className="flex items-center gap-2">
+										<span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-400/70">
+											{log.commitHash.slice(0, 7)}
+										</span>
+										{log.commitMessage && (
+											<span className="truncate text-[10px] text-white/40">
+												{log.commitMessage}
+											</span>
+										)}
+									</div>
+								</div>
+							)}
+
+							{log.errorMessage && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-red-400/50">
+										Error
+									</span>
+									<p className="rounded bg-red-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-red-400/70">
+										{log.errorMessage}
+									</p>
+								</div>
+							)}
+						</div>
+					</motion.div>
 				)}
-			</div>
+			</AnimatePresence>
+		</div>
+	);
+}
+
+function TasksPluginOutcomeBadge({
+	outcome,
+}: {
+	outcome: ExecutionLog["outcome"];
+}) {
+	return (
+		<span
+			className={cn(
+				"rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+				outcome === "success" && "bg-emerald-500/15 text-emerald-400",
+				outcome === "partial" && "bg-amber-500/15 text-amber-400",
+				outcome === "failed" && "bg-red-500/15 text-red-400",
+				outcome === "aborted" && "bg-white/10 text-white/40",
+			)}
+		>
+			{outcome}
+		</span>
+	);
+}
+
+interface TasksPluginLearningsSectionProps {
+	title: string;
+	items: string[];
+	colorClass: string;
+	bgClass: string;
+}
+
+function TasksPluginLearningsSection({
+	title,
+	items,
+	colorClass,
+	bgClass,
+}: TasksPluginLearningsSectionProps) {
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+				{title}
+			</span>
+			<ul className={cn("flex flex-col gap-0.5 rounded px-2 py-1.5", bgClass)}>
+				{items.map((item) => (
+					<li
+						key={item}
+						className={cn(
+							"text-[10px] leading-relaxed before:mr-1.5 before:content-['•']",
+							colorClass,
+						)}
+					>
+						{item}
+					</li>
+				))}
+			</ul>
 		</div>
 	);
 }

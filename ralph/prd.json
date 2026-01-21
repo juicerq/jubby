@@ -248,7 +248,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. Inline expansion, no navigation away. Learnings should be well formatted (bullet points)."
 	},
 	{
