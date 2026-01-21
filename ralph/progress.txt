@@ -2,9 +2,9 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 9
+- **Completed**: 10
 - **In Progress**: 0
-- **Remaining**: 6
+- **Remaining**: 5
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
@@ -19,7 +19,7 @@
 
 ## Fase 2: Implement Subtasks (6 tasks)
 - [x] 2.1: Backend - Add Subtask type and update Task struct
-- [ ] 2.2: Backend - Add subtask commands
+- [x] 2.2: Backend - Add subtask commands
 - [ ] 2.3: Frontend - Add Subtask types and update Task interface
 - [ ] 2.4: Frontend - Add subtask operations to hook
 - [ ] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
@@ -104,3 +104,13 @@
   - Patterns discovered: Adding new fields to Task requires updating 3 places: types.rs (Task struct + TaskWithTags), commands.rs (create + get responses), storage.rs (SQLite migration)
   - Gotchas encountered: SQLite migration constructs Task manually with default empty values for new fields (subtasks: Vec::new()) since old database has no subtasks column
   - Useful context: The #[serde(default)] attribute ensures backward compatibility - existing tasks.json without subtasks field will deserialize with empty vec
+
+## 2026-01-21 07:12 - Fase 2.2
+- What was implemented: Added 5 subtask commands (subtasks_create, subtasks_toggle, subtasks_delete, subtasks_reorder, subtasks_update_text), updated tasks_update_status to cascade completion to subtasks when parent task is marked completed, registered all commands in lib.rs
+- Files changed:
+  - src-tauri/src/plugins/tasks/commands.rs (added 5 new command functions + updated tasks_update_status)
+  - src-tauri/src/lib.rs (registered 5 new commands)
+- **Learnings for future iterations:**
+  - Patterns discovered: Commands follow State<TasksStore> → find task → mutate → save_to_json() → return Result pattern consistently
+  - Gotchas encountered: subtasks_toggle returns the new boolean state (not void) to allow frontend to optimistically update without re-querying
+  - Useful context: Position calculation for new subtasks follows same max+1 pattern as folders - ensures new items appear at end of list

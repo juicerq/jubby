@@ -220,7 +220,15 @@ pub fn tasks_update_status(store: State<TasksStore>, id: String, status: String)
         .find(|t| t.id == id)
         .ok_or_else(|| format!("Task not found: {}", id))?;
 
-    task.status = status;
+    task.status = status.clone();
+
+    // Cascade: when task is completed, mark all subtasks as completed
+    if status == "completed" {
+        for subtask in &mut task.subtasks {
+            subtask.completed = true;
+        }
+    }
+
     save_to_json(&data).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -346,6 +354,156 @@ pub fn tag_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     }
 
     data.tags.retain(|t| t.id != id);
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_create(
+    store: State<TasksStore>,
+    task_id: String,
+    text: String,
+) -> Result<Subtask, String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Subtask text cannot be empty".to_string());
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let position = task
+        .subtasks
+        .iter()
+        .map(|s| s.position)
+        .max()
+        .unwrap_or(-1)
+        + 1;
+
+    let subtask = Subtask {
+        id: Uuid::new_v4().to_string(),
+        text,
+        completed: false,
+        position,
+    };
+
+    task.subtasks.push(subtask.clone());
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(subtask)
+}
+
+#[tauri::command]
+pub fn subtasks_toggle(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+) -> Result<bool, String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.completed = !subtask.completed;
+    let new_state = subtask.completed;
+
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(new_state)
+}
+
+#[tauri::command]
+pub fn subtasks_delete(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let existed = task.subtasks.iter().any(|s| s.id == subtask_id);
+    if !existed {
+        return Err(format!("Subtask not found: {}", subtask_id));
+    }
+
+    task.subtasks.retain(|s| s.id != subtask_id);
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_reorder(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_ids: Vec<String>,
+) -> Result<(), String> {
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    for (index, subtask_id) in subtask_ids.iter().enumerate() {
+        if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
+            subtask.position = index as i32;
+        }
+    }
+
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn subtasks_update_text(
+    store: State<TasksStore>,
+    task_id: String,
+    subtask_id: String,
+    text: String,
+) -> Result<(), String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Subtask text cannot be empty".to_string());
+    }
+
+    let mut data = store.write();
+
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    let subtask = task
+        .subtasks
+        .iter_mut()
+        .find(|s| s.id == subtask_id)
+        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+
+    subtask.text = text;
     save_to_json(&data).map_err(|e| e.to_string())?;
 
     Ok(())
