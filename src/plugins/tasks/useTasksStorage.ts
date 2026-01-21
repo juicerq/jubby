@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createTrace, tracedInvoke } from "@/lib/trace";
 import type {
 	ExecutionLog,
 	ExecutionOutcome,
@@ -1534,14 +1535,27 @@ export function useFolderStorage(): UseFolderStorageReturn {
 	const [isLoading, setIsLoading] = useState(true);
 
 	const loadFolders = useCallback(async () => {
+		const trace = createTrace({ plugin: "tasks", action: "load_folders" });
+		trace.info("Loading folders");
+
 		try {
-			const data = await invoke<FolderFromBackend[]>("folder_get_all");
+			const data = await tracedInvoke<FolderFromBackend[]>(
+				"folder_get_all",
+				{},
+				trace,
+			);
+			trace.info(`Loaded ${data.length} folders`);
 			setFolders(data.map(mapBackendFolder));
 		} catch (error) {
 			console.error("Failed to load folders:", error);
+			trace.error("Failed to load folders", {
+				message: String(error),
+				code: "LOAD_FOLDERS_FAILED",
+			});
 			toast.error("Failed to load folders");
 		} finally {
 			setIsLoading(false);
+			trace.end();
 		}
 	}, []);
 

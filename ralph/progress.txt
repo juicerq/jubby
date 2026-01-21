@@ -197,3 +197,16 @@ Trace 3 ──┘   └─────────────┘     │ - flus
   - Simple wrapper pattern keeps existing invoke calls working while adding trace support
   - JSDoc with @example is useful for documenting the usage pattern (required by PRD)
   - Spread operator `{ ...args, trace_id }` handles undefined args gracefully
+
+## 2026-01-21 20:03 - Task 15: TypeScript - Integration test with existing component
+- Added tracing to `loadFolders` function in `useFolderStorage` hook
+- Created trace at action start with `plugin: "tasks"` and `action: "load_folders"` context
+- Added `trace.info()` calls: at load start and after successful load with folder count
+- Added `trace.error()` call for error cases with `LOAD_FOLDERS_FAILED` code
+- Uses `tracedInvoke` to propagate trace_id to backend `folder_get_all` command
+- Explicit `trace.end()` in finally block ensures trace always completes
+- Files changed: `src/plugins/tasks/useTasksStorage.ts`
+- **Learnings for future iterations:**
+  - The `tracedInvoke` wrapper requires an object for args (pass `{}` for no args)
+  - Using try/catch/finally pattern with trace.end() in finally ensures cleanup even on error
+  - This component calls `folder_get_all` which already has backend tracing (Task 11), enabling full frontend→backend trace flow verification
