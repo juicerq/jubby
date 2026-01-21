@@ -1,11 +1,12 @@
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc::Sender, Arc, RwLock};
 use std::time::Instant;
 
+use chrono::{SecondsFormat, Utc};
 use serde_json::Value;
 
 use super::guard::ContextGuard;
-use super::types::LogEntry;
+use super::types::{LogEntry, LogLevel, TraceError};
 
 /// A trace represents a unit of work that can be tracked across async boundaries
 pub struct Trace {
@@ -90,6 +91,47 @@ impl Trace {
         }
 
         Value::Object(merged)
+    }
+
+    /// Emit a log entry with the given level, message, and optional error
+    fn emit(&self, level: LogLevel, msg: &str, err: Option<TraceError>) {
+        if err.is_some() {
+            self.has_error.store(true, Ordering::Relaxed);
+        }
+
+        let entry = LogEntry {
+            ts: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            trace: self.id.clone(),
+            level,
+            msg: msg.to_string(),
+            ctx: self.merged_context(),
+            err,
+            duration_ms: None,
+            status: None,
+        };
+
+        // Fire-and-forget: ignore send errors (writer may have shut down)
+        let _ = self.writer_tx.send(entry);
+    }
+
+    /// Log a debug message
+    pub fn debug(&self, msg: &str) {
+        self.emit(LogLevel::Debug, msg, None);
+    }
+
+    /// Log an info message
+    pub fn info(&self, msg: &str) {
+        self.emit(LogLevel::Info, msg, None);
+    }
+
+    /// Log a warning message
+    pub fn warn(&self, msg: &str) {
+        self.emit(LogLevel::Warn, msg, None);
+    }
+
+    /// Log an error message with error details
+    pub fn error(&self, msg: &str, err: TraceError) {
+        self.emit(LogLevel::Error, msg, Some(err));
     }
 }
 
