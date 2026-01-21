@@ -1,7 +1,7 @@
 # Contextual Logging System - PRD
 
 ## Current Status
-Task 7 of 16 completed
+Task 10 of 16 completed
 
 ## Tasks
 - [x] 1. Rust - Create tracing types and data structures
@@ -11,9 +11,9 @@ Task 7 of 16 completed
 - [x] 5. Rust - Implement Trace context methods
 - [x] 6. Rust - Implement Trace logging methods
 - [x] 7. Rust - Implement Trace Drop for trace_end
-- [ ] 8. Rust - Implement cleanup for old logs
+- [x] 8. Rust - Implement cleanup for old logs
 - [ ] 9. Rust - Create mod.rs and init_tracing()
-- [ ] 10. Rust - Add required dependencies
+- [x] 10. Rust - Add required dependencies (already present)
 - [ ] 11. Rust - Integration test with existing command
 - [ ] 12. TypeScript - Create trace types
 - [ ] 13. TypeScript - Implement createTrace and Trace class
@@ -107,3 +107,26 @@ Trace 3 ──┘   └─────────────┘     │ - flus
   - Drop trait ensures trace_end is emitted even if code panics (Drop still runs)
   - Empty `msg` string for trace_end is fine - the level itself communicates intent
   - `as_millis()` returns u128, cast to u64 is safe for durations under ~584 million years
+
+## 2026-01-21 19:49 - Task 8: Rust - Implement cleanup for old logs
+- Created `src-tauri/src/traces/cleanup.rs` with `cleanup_old_traces()` function
+- Gets traces directory from `get_log_dir().join("traces")`
+- Calculates cutoff date: today - 1 day using `chrono::Days::new(1)`
+- Iterates directory, parses YYYY-MM-DD from filename, deletes files older than cutoff
+- Graceful error handling: logs warnings but doesn't fail app startup
+- Added `mod cleanup` and `pub use cleanup::cleanup_old_traces` to mod.rs
+- Files changed: `src-tauri/src/traces/cleanup.rs`, `src-tauri/src/traces/mod.rs`
+- **Learnings for future iterations:**
+  - YYYY-MM-DD format allows lexicographic string comparison for dates
+  - Use `path.file_stem()` to get filename without extension
+  - `entries.flatten()` handles read_dir errors per-entry gracefully
+
+## 2026-01-21 19:49 - Task 10: Rust - Add required dependencies
+- All required dependencies already present in Cargo.toml:
+  - `once_cell = "1"` (for global state)
+  - `rand = "0.8"` (for trace ID generation)
+  - `chrono` with serde feature (for timestamps)
+  - `serde_json = "1"` (for JSON serialization)
+- No changes needed
+- **Learnings for future iterations:**
+  - Always check existing Cargo.toml before assuming deps need to be added
