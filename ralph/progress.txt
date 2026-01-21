@@ -1,7 +1,7 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 6 of 10 completed
+Task 9 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
@@ -10,9 +10,9 @@ Task 6 of 10 completed
 - [x] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
 - [x] 5. Create TasksPluginTaskDetail component - Layout structure
 - [x] 6. TasksPluginTaskDetail - Task info section with inline editing
-- [ ] 7. TasksPluginTaskDetail - Subtasks section with input on top
-- [ ] 8. TasksPluginSubtaskItem - Add inline text editing
-- [ ] 9. Wire up TasksPluginTaskDetail in main component
+- [x] 7. TasksPluginTaskDetail - Subtasks section with input on top
+- [x] 8. TasksPluginSubtaskItem - Add inline text editing
+- [x] 9. Wire up TasksPluginTaskDetail in main component
 - [ ] 10. Verify implementation - Manual testing
 
 ## Notes
@@ -116,3 +116,43 @@ Task 6 of 10 completed
   - Input needs auto-focus and select-all on edit start: `inputRef.current.focus(); inputRef.current.select()`
   - `ml-[30px]` = 18px checkbox + 12px gap (gap-3) to align content below text
   - Container `bg-white/[0.02]` with rounded-lg and padding gives subtle visual grouping
+
+## 2026-01-21 12:42 - Task 7: TasksPluginTaskDetail - Subtasks section with input on top
+- Already implemented in Task 5/6 session - subtasks section structure was complete
+- `TasksPluginSubtaskInput` at TOP of subtasks section
+- `TasksPluginSubtaskList` below the input
+- **Files changed:**
+  - None (already complete)
+- **Learnings for future iterations:**
+  - Check if work was already done before starting - PRD tasks may overlap or be completed together
+
+## 2026-01-21 12:42 - Task 8: TasksPluginSubtaskItem - Add inline text editing
+- Added `onUpdateText` prop to `TasksPluginSubtaskItemProps`
+- Added `isEditing`, `editValue` states and `inputRef` to component
+- Added useEffect hooks for text sync and auto-focus/select on edit
+- Added `handleSave`, `handleCancel`, `handleKeyDown` handlers (same pattern as TasksPluginTaskInfo)
+- Conditional render: input when editing, span when not
+- Added edit button (Pencil icon) visible on hover via `group-hover/subtask:opacity-100`
+- Added `onUpdateSubtaskText` to `TasksPluginSubtaskListProps` and wired to items
+- Updated `TasksPluginTaskDetailProps` to include `onUpdateSubtaskText` and wired through
+- **Files changed:**
+  - `src/plugins/tasks/TasksPlugin.tsx` - Added props, state, handlers, edit button to TasksPluginSubtaskItem
+  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added onUpdateSubtaskText prop and wiring
+- **Learnings for future iterations:**
+  - Inline editing pattern: `isEditing` state, `editValue` state, `inputRef`, useEffect for sync and focus
+  - Edit button styling: `opacity-0 group-hover/subtask:opacity-100` for reveal on hover
+  - Props chain: hook → main component → detail component → list → item
+
+## 2026-01-21 12:42 - Task 9: Wire up TasksPluginTaskDetail in main component
+- Imported `TasksPluginTaskDetail` from `./TasksPluginTaskDetail`
+- Removed underscore prefixes from subtask functions in useTasksStorage destructuring
+- Added `updateTaskText` and `updateSubtaskText` to destructuring
+- Removed `void handleNavigateToList;` statement (now used)
+- Added conditional render block: `if (view === "task" && currentTask)` returning TasksPluginTaskDetail
+- Passed all required props: task, tags, all CRUD operations, navigation callback
+- **Files changed:**
+  - `src/plugins/tasks/TasksPlugin.tsx` - Import, destructuring, conditional render
+- **Learnings for future iterations:**
+  - When wiring up a component that was built incrementally, ensure ALL props are available from the hook
+  - Remove `void` statements when the referenced functions become used
+  - Conditional render pattern: `if (view === "X" && requiredData)` for view switching

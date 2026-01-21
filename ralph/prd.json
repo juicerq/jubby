@@ -118,7 +118,7 @@
 			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "Input on top is better UX - always visible without scrolling. Reuse existing subtask components, just reorganize their placement."
 	},
 	{
@@ -138,7 +138,7 @@
 			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. Edit icon must always be at the far right. Follow same inline editing pattern as task text editing for consistency."
 	},
 	{
@@ -155,7 +155,7 @@
 			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "This connects everything together. The navigation flow should be seamless: click task -> detail view -> breadcrumb or delete -> back to list."
 	},
 	{

@@ -23,6 +23,7 @@ import { Breadcrumb } from "@/core/components/Breadcrumb";
 import { useNavigationLevels } from "@/core/hooks";
 import type { PluginProps } from "@/core/types";
 import { cn } from "@/lib/utils";
+import { TasksPluginTaskDetail } from "./TasksPluginTaskDetail";
 import type {
 	Folder,
 	RecentTask,
@@ -81,21 +82,18 @@ function TasksPlugin(_props: PluginProps) {
 		isLoading: tasksLoading,
 		createTask,
 		updateTaskStatus,
+		updateTaskText,
 		deleteTask,
 		setTaskTags,
 		createTag,
 		updateTag,
 		deleteTag,
-		createSubtask: _createSubtask,
-		toggleSubtask: _toggleSubtask,
-		deleteSubtask: _deleteSubtask,
-		reorderSubtasks: _reorderSubtasks,
+		createSubtask,
+		toggleSubtask,
+		deleteSubtask,
+		reorderSubtasks,
+		updateSubtaskText,
 	} = useTasksStorage(currentFolderId ?? "");
-
-	void _createSubtask;
-	void _toggleSubtask;
-	void _deleteSubtask;
-	void _reorderSubtasks;
 
 	const isLoading =
 		view === "folders" ? foldersLoading : foldersLoading || tasksLoading;
@@ -188,8 +186,6 @@ function TasksPlugin(_props: PluginProps) {
 		setCurrentTaskId(null);
 		setView("list");
 	};
-
-	void handleNavigateToList;
 
 	const handleCreateFolder = async () => {
 		if (!newFolderName.trim()) return;
@@ -378,6 +374,28 @@ function TasksPlugin(_props: PluginProps) {
 						/>
 					)}
 				</div>
+			</div>
+		);
+	}
+
+	if (view === "task" && currentTask) {
+		return (
+			<div className="flex h-full flex-col overflow-hidden">
+				<Breadcrumb />
+				<TasksPluginTaskDetail
+					task={currentTask}
+					tags={tags}
+					onDeleteTask={deleteTask}
+					onUpdateTaskStatus={updateTaskStatus}
+					onUpdateTaskText={updateTaskText}
+					onSetTaskTags={setTaskTags}
+					onCreateSubtask={createSubtask}
+					onToggleSubtask={toggleSubtask}
+					onDeleteSubtask={deleteSubtask}
+					onReorderSubtasks={reorderSubtasks}
+					onUpdateSubtaskText={updateSubtaskText}
+					onNavigateBack={handleNavigateToList}
+				/>
 			</div>
 		);
 	}
@@ -835,6 +853,7 @@ interface TasksPluginSubtaskListProps {
 	onToggleSubtask: (subtaskId: string) => void;
 	onDeleteSubtask: (subtaskId: string) => void;
 	onReorderSubtasks: (subtaskIds: string[]) => void;
+	onUpdateSubtaskText: (subtaskId: string, text: string) => void;
 }
 
 function TasksPluginSubtaskList({
@@ -842,6 +861,7 @@ function TasksPluginSubtaskList({
 	onToggleSubtask,
 	onDeleteSubtask,
 	onReorderSubtasks,
+	onUpdateSubtaskText,
 }: TasksPluginSubtaskListProps) {
 	const [draggedId, setDraggedId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -1083,6 +1103,9 @@ function TasksPluginSubtaskList({
 								subtask={item.subtask}
 								onToggle={() => onToggleSubtask(item.subtask.id)}
 								onDelete={() => onDeleteSubtask(item.subtask.id)}
+								onUpdateText={(text) =>
+									onUpdateSubtaskText(item.subtask.id, text)
+								}
 								isDragging={
 									draggedId === item.subtask.id && isDraggingRef.current
 								}
@@ -1102,6 +1125,7 @@ interface TasksPluginSubtaskItemProps {
 	subtask: Subtask;
 	onToggle: () => void;
 	onDelete: () => void;
+	onUpdateText: (text: string) => void;
 	isDragging?: boolean;
 	isAnyDragging?: boolean;
 	onMouseDown?: (e: React.MouseEvent) => void;
@@ -1112,11 +1136,52 @@ function TasksPluginSubtaskItem({
 	subtask,
 	onToggle,
 	onDelete,
+	onUpdateText,
 	isDragging = false,
 	isAnyDragging = false,
 	onMouseDown,
 	itemRef,
 }: TasksPluginSubtaskItemProps) {
+	const [isEditing, setIsEditing] = useState(false);
+	const [editValue, setEditValue] = useState(subtask.text);
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		setEditValue(subtask.text);
+	}, [subtask.text]);
+
+	useEffect(() => {
+		if (isEditing && inputRef.current) {
+			inputRef.current.focus();
+			inputRef.current.select();
+		}
+	}, [isEditing]);
+
+	const handleSave = () => {
+		const trimmed = editValue.trim();
+		if (trimmed && trimmed !== subtask.text) {
+			onUpdateText(trimmed);
+		} else {
+			setEditValue(subtask.text);
+		}
+		setIsEditing(false);
+	};
+
+	const handleCancel = () => {
+		setEditValue(subtask.text);
+		setIsEditing(false);
+	};
+
+	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			handleSave();
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			handleCancel();
+		}
+	};
+
 	return (
 		<div
 			ref={itemRef}
@@ -1146,17 +1211,39 @@ function TasksPluginSubtaskItem({
 				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]" />}
 			</button>
 
-			<span
-				className={cn(
-					"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
-					subtask.completed
-						? "text-white/30 line-through decoration-white/20"
-						: "text-white/70",
-					isAnyDragging && "select-none",
-				)}
+			{isEditing ? (
+				<input
+					ref={inputRef}
+					type="text"
+					value={editValue}
+					onChange={(e) => setEditValue(e.target.value)}
+					onKeyDown={handleKeyDown}
+					onBlur={handleSave}
+					className="flex-1 bg-transparent text-[12px] leading-tight tracking-[-0.01em] text-white/70 outline-none"
+					autoComplete="off"
+				/>
+			) : (
+				<span
+					className={cn(
+						"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
+						subtask.completed
+							? "text-white/30 line-through decoration-white/20"
+							: "text-white/70",
+						isAnyDragging && "select-none",
+					)}
+				>
+					{subtask.text}
+				</span>
+			)}
+
+			<button
+				type="button"
+				onClick={() => setIsEditing(true)}
+				className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-150 ease-out hover:bg-white/8 group-hover/subtask:opacity-100 active:scale-90"
+				aria-label="Edit subtask"
 			>
-				{subtask.text}
-			</span>
+				<Pencil className="h-3 w-3 text-white/40 transition-colors duration-150 hover:text-white/60" />
+			</button>
 
 			<button
 				type="button"

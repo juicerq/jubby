@@ -21,6 +21,11 @@ interface TasksPluginTaskDetailProps {
 	onToggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
 	onDeleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
 	onReorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
+	onUpdateSubtaskText: (
+		taskId: string,
+		subtaskId: string,
+		text: string,
+	) => Promise<void>;
 	onNavigateBack: () => void;
 }
 
@@ -35,6 +40,7 @@ function TasksPluginTaskDetail({
 	onToggleSubtask,
 	onDeleteSubtask,
 	onReorderSubtasks,
+	onUpdateSubtaskText,
 	onNavigateBack,
 }: TasksPluginTaskDetailProps) {
 	const {
@@ -108,6 +114,9 @@ function TasksPluginTaskDetail({
 						onDeleteSubtask={(subtaskId) => onDeleteSubtask(task.id, subtaskId)}
 						onReorderSubtasks={(subtaskIds) =>
 							onReorderSubtasks(task.id, subtaskIds)
+						}
+						onUpdateSubtaskText={(subtaskId, text) =>
+							onUpdateSubtaskText(task.id, subtaskId, text)
 						}
 					/>
 				</div>
