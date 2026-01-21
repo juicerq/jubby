@@ -2,23 +2,23 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 4
+- **Completed**: 9
 - **In Progress**: 0
-- **Remaining**: 11
+- **Remaining**: 6
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
 - [x] 1.2: Backend - Update store and storage with data migration
 - [x] 1.3: Backend - Rename commands and update error messages
 - [x] 1.4: Backend - Update lib.rs, logging.rs and paths.rs
-- [ ] 1.5: Frontend - Rename files and update types
-- [ ] 1.6: Frontend - Update hook (useTasksStorage.ts)
-- [ ] 1.7: Frontend - Update main component (TasksPlugin.tsx)
-- [ ] 1.8: Frontend - Update manifest, registry and navigation hook
+- [x] 1.5: Frontend - Rename files and update types
+- [x] 1.6: Frontend - Update hook (useTasksStorage.ts)
+- [x] 1.7: Frontend - Update main component (TasksPlugin.tsx)
+- [x] 1.8: Frontend - Update manifest, registry and navigation hook
 - [ ] 1.9: Verify Phase 1 - Manual testing of rename
 
 ## Fase 2: Implement Subtasks (6 tasks)
-- [ ] 2.1: Backend - Add Subtask type and update Task struct
+- [x] 2.1: Backend - Add Subtask type and update Task struct
 - [ ] 2.2: Backend - Add subtask commands
 - [ ] 2.3: Frontend - Add Subtask types and update Task interface
 - [ ] 2.4: Frontend - Add subtask operations to hook
@@ -73,3 +73,34 @@
   - Patterns discovered: Logging routes by target name - the plugins array in init_logging() determines which log file receives events
   - Gotchas encountered: Frontend logging via log_from_frontend uses string matching on plugin name, so both plugins array AND match cases need updating
   - Useful context: Backend rename is NOW COMPLETE - cargo check passes. Frontend still uses old invoke command names as strings (not type-checked), so TypeScript passes but runtime will fail until frontend migration (1.5-1.8) is done
+
+## 2026-01-21 06:55 - Fase 1.5-1.8 (Frontend Rename)
+- What was implemented: Complete frontend rename from Todo to Tasks
+  - 1.5: Renamed folder src/plugins/todo/ to src/plugins/tasks/, renamed TodoPlugin.tsx to TasksPlugin.tsx, useTodoStorage.ts to useTasksStorage.ts, updated types.ts (TodoStatus→TaskStatus, Todo→Task, RecentTodo→RecentTask, todoCount→taskCount, recentTodos→recentTasks)
+  - 1.6: Updated hook - renamed useTodoStorage to useTasksStorage, updated all interfaces (TaskFromBackend, TasksDataFromBackend, UseTasksStorageReturn), updated invoke calls (todo_*→tasks_*), renamed all variables (todos→tasks, setTodos→setTasks), updated toast messages
+  - 1.7: Updated main component - renamed TodoPlugin to TasksPlugin, TodoView to TasksView, updated navigation label to "Tasks", renamed all mini-components (TodoPluginItem→TasksPluginItem, etc.), updated all variables and props
+  - 1.8: Updated manifest (TodoManifest→TasksManifest, id "todo"→"tasks", name "Todo"→"Tasks"), updated registry.ts imports, updated useNavigationLevels.ts example comment
+- Files changed:
+  - src/plugins/todo/ → src/plugins/tasks/ (folder rename)
+  - src/plugins/tasks/types.ts
+  - src/plugins/tasks/useTasksStorage.ts
+  - src/plugins/tasks/TasksPlugin.tsx
+  - src/plugins/tasks/index.tsx
+  - src/plugins/registry.ts
+  - src/core/hooks/useNavigationLevels.ts
+- **Learnings for future iterations:**
+  - Patterns discovered: Frontend components follow NomeDoComponentePrincipal + Parte pattern (e.g., TasksPluginItem, TasksPluginTagBadge)
+  - Gotchas encountered: The file was auto-formatted by the editor during edits, so exact string matching for edits required re-reading the file
+  - Gotchas encountered: Pre-existing Biome lint warnings about accessibility (onClick without onKeyDown on divs) appeared but are not TypeScript errors
+  - Useful context: The frontend rename is batched in a single commit as specified in PRD notes. Both `bun tsc --noEmit` and `cargo check` pass after this change
+
+## 2026-01-21 07:05 - Fase 2.1
+- What was implemented: Added Subtask struct with fields (id, text, completed, position), added subtasks field to Task struct with #[serde(default)], added subtasks to TaskWithTags response struct, updated tasks_get_by_folder to include subtasks in response, updated tasks_create to initialize empty subtasks vec, fixed SQLite migration to include subtasks field
+- Files changed:
+  - src-tauri/src/plugins/tasks/types.rs
+  - src-tauri/src/plugins/tasks/commands.rs
+  - src-tauri/src/plugins/tasks/storage.rs
+- **Learnings for future iterations:**
+  - Patterns discovered: Adding new fields to Task requires updating 3 places: types.rs (Task struct + TaskWithTags), commands.rs (create + get responses), storage.rs (SQLite migration)
+  - Gotchas encountered: SQLite migration constructs Task manually with default empty values for new fields (subtasks: Vec::new()) since old database has no subtasks column
+  - Useful context: The #[serde(default)] attribute ensures backward compatibility - existing tasks.json without subtasks field will deserialize with empty vec

@@ -116,6 +116,7 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
                 status: row.get(3)?,
                 created_at: row.get(4)?,
                 tag_ids: Vec::new(),
+                subtasks: Vec::new(),
             })
         })?;
         for row in rows {

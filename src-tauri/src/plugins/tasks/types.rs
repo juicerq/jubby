@@ -11,6 +11,15 @@ pub struct Folder {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Subtask {
+    pub id: String,
+    pub text: String,
+    pub completed: bool,
+    pub position: i32,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
     pub folder_id: String,
@@ -19,6 +28,8 @@ pub struct Task {
     pub created_at: i64,
     #[serde(default)]
     pub tag_ids: Vec<String>,
+    #[serde(default)]
+    pub subtasks: Vec<Subtask>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -68,6 +79,7 @@ pub struct TaskWithTags {
     pub status: String,
     pub created_at: i64,
     pub tag_ids: Vec<String>,
+    pub subtasks: Vec<Subtask>,
 }
 
 #[derive(Serialize)]

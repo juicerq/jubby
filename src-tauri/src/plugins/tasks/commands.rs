@@ -151,6 +151,7 @@ pub fn tasks_get_by_folder(
             status: t.status.clone(),
             created_at: t.created_at,
             tag_ids: t.tag_ids.clone(),
+            subtasks: t.subtasks.clone(),
         })
         .collect();
 
@@ -189,6 +190,7 @@ pub fn tasks_create(
         status: "pending".to_string(),
         created_at: now_ms(),
         tag_ids: tag_ids.clone().unwrap_or_default(),
+        subtasks: Vec::new(),
     };
 
     data.tasks.push(task.clone());
@@ -200,6 +202,7 @@ pub fn tasks_create(
         status: task.status,
         created_at: task.created_at,
         tag_ids: task.tag_ids,
+        subtasks: task.subtasks,
     })
 }
 
