@@ -100,6 +100,16 @@ interface UseTasksStorageReturn {
 	createTag: (name: string, color: string) => Promise<boolean>;
 	updateTag: (id: string, name: string, color: string) => Promise<boolean>;
 	deleteTag: (id: string) => Promise<void>;
+
+	createSubtask: (taskId: string, text: string) => Promise<void>;
+	toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	reorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
+	updateSubtaskText: (
+		taskId: string,
+		subtaskId: string,
+		text: string,
+	) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -328,6 +338,169 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		}
 	}, []);
 
+	const createSubtask = useCallback(
+		async (taskId: string, text: string) => {
+			const tempId = `temp-${Date.now()}`;
+			const task = tasks.find((t) => t.id === taskId);
+			const maxPosition =
+				task?.subtasks.reduce((max, s) => Math.max(max, s.position), -1) ?? -1;
+
+			const optimisticSubtask: Subtask = {
+				id: tempId,
+				text,
+				completed: false,
+				position: maxPosition + 1,
+			};
+
+			setTasks((prev) =>
+				prev.map((t) =>
+					t.id === taskId
+						? { ...t, subtasks: [...t.subtasks, optimisticSubtask] }
+						: t,
+				),
+			);
+
+			try {
+				const newSubtask = await invoke<SubtaskFromBackend>("subtasks_create", {
+					taskId,
+					text,
+				});
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? {
+									...t,
+									subtasks: t.subtasks.map((s) =>
+										s.id === tempId ? mapBackendSubtask(newSubtask) : s,
+									),
+								}
+							: t,
+					),
+				);
+			} catch (error) {
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? { ...t, subtasks: t.subtasks.filter((s) => s.id !== tempId) }
+							: t,
+					),
+				);
+				toast.error("Failed to create subtask");
+			}
+		},
+		[tasks],
+	);
+
+	const toggleSubtask = useCallback(
+		async (taskId: string, subtaskId: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, completed: !s.completed } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_toggle", { taskId, subtaskId });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to toggle subtask");
+			}
+		},
+		[],
+	);
+
+	const deleteSubtask = useCallback(
+		async (taskId: string, subtaskId: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) }
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_delete", { taskId, subtaskId });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to delete subtask");
+			}
+		},
+		[],
+	);
+
+	const reorderSubtasks = useCallback(
+		async (taskId: string, subtaskIds: string[]) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) => {
+					if (t.id !== taskId) return t;
+					const subtaskMap = new Map(t.subtasks.map((s) => [s.id, s]));
+					return {
+						...t,
+						subtasks: subtaskIds
+							.map((id, index) => {
+								const subtask = subtaskMap.get(id);
+								return subtask ? { ...subtask, position: index } : null;
+							})
+							.filter((s): s is Subtask => s !== null),
+					};
+				});
+			});
+
+			try {
+				await invoke("subtasks_reorder", { taskId, subtaskIds });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to reorder subtasks");
+			}
+		},
+		[],
+	);
+
+	const updateSubtaskText = useCallback(
+		async (taskId: string, subtaskId: string, text: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, text } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_update_text", { taskId, subtaskId, text });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update subtask");
+			}
+		},
+		[],
+	);
+
 	return {
 		tasks,
 		tags,
@@ -339,6 +512,11 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		createTag,
 		updateTag,
 		deleteTag,
+		createSubtask,
+		toggleSubtask,
+		deleteSubtask,
+		reorderSubtasks,
+		updateSubtaskText,
 	};
 }
 

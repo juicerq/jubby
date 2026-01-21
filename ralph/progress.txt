@@ -21,7 +21,7 @@
 - [x] 2.1: Backend - Add Subtask type and update Task struct
 - [x] 2.2: Backend - Add subtask commands
 - [x] 2.3: Frontend - Add Subtask types and update Task interface
-- [ ] 2.4: Frontend - Add subtask operations to hook
+- [x] 2.4: Frontend - Add subtask operations to hook
 - [ ] 2.5: Frontend - Add subtask UI components (use frontend-design skill)
 - [ ] 2.6: Verify Phase 2 - Manual testing of subtasks
 
@@ -124,3 +124,12 @@
   - Patterns discovered: Frontend type mapping follows pattern: XFromBackend interface → mapBackendX function → X interface from types.ts
   - Gotchas encountered: When adding new fields to Task interface, must also update optimistic task creation in createTask callback (line 174)
   - Useful context: The Subtask import was added but mapBackendSubtask creates the Subtask object directly, so the import is used for type annotation
+
+## 2026-01-21 07:10 - Fase 2.4
+- What was implemented: Added 5 subtask operations to useTasksStorage hook (createSubtask, toggleSubtask, deleteSubtask, reorderSubtasks, updateSubtaskText), updated UseTasksStorageReturn interface with all new function signatures, added all functions to return object
+- Files changed:
+  - src/plugins/tasks/useTasksStorage.ts (added 5 subtask operation functions, updated interface and return object)
+- **Learnings for future iterations:**
+  - Patterns discovered: All optimistic update operations follow the same pattern: capture previousTasks, setTasks() to optimistically update, try invoke() then catch and rollback with setTasks(previousTasks)
+  - Gotchas encountered: createSubtask needs access to `tasks` state to calculate maxPosition, so it has `[tasks]` in dependency array unlike other operations that use `[]`
+  - Useful context: Subtask operations target nested state (task.subtasks), so all setTasks() calls use nested .map() to find the right task then modify its subtasks array
