@@ -108,20 +108,20 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            // Todo plugin
-            plugins::todo::commands::folder_get_all,
-            plugins::todo::commands::folder_create,
-            plugins::todo::commands::folder_rename,
-            plugins::todo::commands::folder_delete,
-            plugins::todo::commands::folder_reorder,
-            plugins::todo::commands::todo_get_by_folder,
-            plugins::todo::commands::todo_create,
-            plugins::todo::commands::todo_update_status,
-            plugins::todo::commands::todo_delete,
-            plugins::todo::commands::todo_set_tags,
-            plugins::todo::commands::tag_create,
-            plugins::todo::commands::tag_update,
-            plugins::todo::commands::tag_delete,
+            // Tasks plugin
+            plugins::tasks::commands::folder_get_all,
+            plugins::tasks::commands::folder_create,
+            plugins::tasks::commands::folder_rename,
+            plugins::tasks::commands::folder_delete,
+            plugins::tasks::commands::folder_reorder,
+            plugins::tasks::commands::tasks_get_by_folder,
+            plugins::tasks::commands::tasks_create,
+            plugins::tasks::commands::tasks_update_status,
+            plugins::tasks::commands::tasks_delete,
+            plugins::tasks::commands::tasks_set_tags,
+            plugins::tasks::commands::tag_create,
+            plugins::tasks::commands::tag_update,
+            plugins::tasks::commands::tag_delete,
             // QuickClip plugin
             plugins::quickclip::enhancer::enhance_prompt,
             plugins::quickclip::capture::screenshot::capture_get_sources,
@@ -152,10 +152,10 @@ pub fn run() {
             let logging_guards = core::logging::init_logging();
             app.manage(core::logging::LoggingState::new(logging_guards));
 
-            // Initialize todo store (migrates from SQLite if needed)
-            let todo_store = plugins::todo::init_todo_store()
-                .map_err(|e| format!("Failed to initialize todo store: {}", e))?;
-            app.manage(todo_store);
+            // Initialize tasks store (migrates from SQLite if needed)
+            let tasks_store = plugins::tasks::init_tasks_store()
+                .map_err(|e| format!("Failed to initialize tasks store: {}", e))?;
+            app.manage(tasks_store);
 
             let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new(app.handle().clone());
             let handle = plugins::quickclip::recorder::coordinator::CoordinatorHandle::new(command_tx);

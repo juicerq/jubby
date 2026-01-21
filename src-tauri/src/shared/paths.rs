@@ -47,7 +47,7 @@ mod tests {
         let logs = get_log_dir();
         assert!(logs.ends_with("logs"));
 
-        let plugin = get_plugin_dir("todo");
-        assert!(plugin.ends_with("todo"));
+        let plugin = get_plugin_dir("tasks");
+        assert!(plugin.ends_with("tasks"));
     }
 }

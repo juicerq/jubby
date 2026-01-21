@@ -58,7 +58,7 @@ pub fn init_logging() -> LoggingGuards {
     let mut guards = Vec::new();
     let mut plugin_writers = HashMap::new();
 
-    let plugins = ["quickclip", "todo"];
+    let plugins = ["quickclip", "tasks"];
 
     for plugin in plugins {
         let file_appender =
@@ -131,12 +131,12 @@ pub fn log_from_frontend(
         ("quickclip", "error") => emit_log!("quickclip", error, message, ctx_str),
         ("quickclip", _) => emit_log!("quickclip", info, message, ctx_str),
 
-        ("todo", "trace") => emit_log!("todo", trace, message, ctx_str),
-        ("todo", "debug") => emit_log!("todo", debug, message, ctx_str),
-        ("todo", "info") => emit_log!("todo", info, message, ctx_str),
-        ("todo", "warn") => emit_log!("todo", warn, message, ctx_str),
-        ("todo", "error") => emit_log!("todo", error, message, ctx_str),
-        ("todo", _) => emit_log!("todo", info, message, ctx_str),
+        ("tasks", "trace") => emit_log!("tasks", trace, message, ctx_str),
+        ("tasks", "debug") => emit_log!("tasks", debug, message, ctx_str),
+        ("tasks", "info") => emit_log!("tasks", info, message, ctx_str),
+        ("tasks", "warn") => emit_log!("tasks", warn, message, ctx_str),
+        ("tasks", "error") => emit_log!("tasks", error, message, ctx_str),
+        ("tasks", _) => emit_log!("tasks", info, message, ctx_str),
 
         (_, "trace") => emit_log!("system", trace, message, ctx_str),
         (_, "debug") => emit_log!("system", debug, message, ctx_str),
