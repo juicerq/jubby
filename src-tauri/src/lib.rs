@@ -1,6 +1,7 @@
 mod core;
 mod plugins;
 mod shared;
+mod traces;
 
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
@@ -176,7 +177,8 @@ pub fn run() {
             reveal_in_folder,
         ])
         .setup(move |app| {
-            // Initialize logging first
+            traces::init_tracing();
+
             let logging_guards = core::logging::init_logging();
             app.manage(core::logging::LoggingState::new(logging_guards));
 

@@ -13,7 +13,7 @@ use crate::shared::paths::get_log_dir;
 const BUFFER_CAPACITY: usize = 32;
 const FLUSH_INTERVAL_MS: u64 = 100;
 
-/// Buffered log writer that writes to daily JSONL files
+#[derive(Debug)]
 pub struct LogWriter {
     tx: Sender<LogEntry>,
 }
@@ -33,6 +33,10 @@ impl LogWriter {
     /// Send a log entry to the writer (fire-and-forget)
     pub fn send(&self, entry: LogEntry) {
         let _ = self.tx.send(entry);
+    }
+
+    pub fn sender(&self) -> Sender<LogEntry> {
+        self.tx.clone()
     }
 }
 

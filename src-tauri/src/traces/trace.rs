@@ -5,6 +5,7 @@ use std::time::Instant;
 use chrono::{SecondsFormat, Utc};
 use serde_json::Value;
 
+use super::get_writer_tx;
 use super::guard::ContextGuard;
 use super::types::{LogEntry, LogLevel, TraceError};
 
@@ -23,24 +24,22 @@ impl Trace {
         format!("{:08x}", rand::random::<u32>())
     }
 
-    /// Create a new trace with a generated ID
-    pub fn new(writer_tx: Sender<LogEntry>) -> Self {
+    pub fn new() -> Self {
         Self {
             id: Self::generate_trace_id(),
             started_at: Instant::now(),
             context: RwLock::new(Vec::new()),
-            writer_tx,
+            writer_tx: get_writer_tx(),
             has_error: AtomicBool::new(false),
         }
     }
 
-    /// Continue an existing trace from a frontend trace ID
-    pub fn continue_from(id: String, writer_tx: Sender<LogEntry>) -> Self {
+    pub fn continue_from(id: String) -> Self {
         Self {
             id,
             started_at: Instant::now(),
             context: RwLock::new(Vec::new()),
-            writer_tx,
+            writer_tx: get_writer_tx(),
             has_error: AtomicBool::new(false),
         }
     }
