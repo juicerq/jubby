@@ -94,6 +94,7 @@ interface UseTasksStorageReturn {
 
 	createTask: (text: string, tagIds?: string[]) => Promise<void>;
 	updateTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
+	updateTaskText: (id: string, text: string) => Promise<void>;
 	deleteTask: (id: string) => Promise<void>;
 	setTaskTags: (taskId: string, tagIds: string[]) => Promise<void>;
 
@@ -227,6 +228,22 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		},
 		[],
 	);
+
+	const updateTaskText = useCallback(async (id: string, text: string) => {
+		let previousTasks: Task[] = [];
+
+		setTasks((prev) => {
+			previousTasks = prev;
+			return prev.map((t) => (t.id === id ? { ...t, text } : t));
+		});
+
+		try {
+			await invoke("tasks_update_text", { id, text });
+		} catch (error) {
+			setTasks(previousTasks);
+			toast.error("Failed to update task");
+		}
+	}, []);
 
 	const deleteTask = useCallback(async (id: string) => {
 		let previousTasks: Task[] = [];
@@ -507,6 +524,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		isLoading,
 		createTask,
 		updateTaskStatus,
+		updateTaskText,
 		deleteTask,
 		setTaskTags,
 		createTag,

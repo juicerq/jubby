@@ -26,7 +26,7 @@
 			"Run bun tsc --noEmit to verify"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "Simple addition following existing patterns. The optimistic update pattern is already established in the hook."
 	},
 	{

@@ -1,11 +1,11 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 1 of 10 completed
+Task 2 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
-- [ ] 2. Frontend Hook - Add updateTaskText function
+- [x] 2. Frontend Hook - Add updateTaskText function
 - [ ] 3. State and Navigation - Add task detail view infrastructure
 - [ ] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
 - [ ] 5. Create TasksPluginTaskDetail component - Layout structure
@@ -34,3 +34,14 @@ Task 1 of 10 completed
 - **Learnings for future iterations:**
   - Pattern for update commands: validate input → get write lock → find entity → update field → save_to_json
   - `subtasks_update_text` already exists (different from `tasks_update_text`) - naming is plural for the resource, singular action
+
+## 2026-01-21 12:26 - Task 2: Frontend Hook - Add updateTaskText function
+- Added `updateTaskText` to `UseTasksStorageReturn` interface
+- Implemented `updateTaskText(id, text)` with optimistic update pattern: store previous state → update state → invoke backend → rollback on error
+- Added to return object
+- **Files changed:**
+  - `src/plugins/tasks/useTasksStorage.ts` - Added interface entry, implementation, and return value
+- **Learnings for future iterations:**
+  - Optimistic update pattern in this hook: capture `previousTasks` inside `setTasks` callback, invoke backend, rollback on catch
+  - Interface order matches return object order for consistency
+  - Backend command uses snake_case (`tasks_update_text`), frontend uses camelCase (`updateTaskText`)
