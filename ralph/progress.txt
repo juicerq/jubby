@@ -2,14 +2,14 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 2
+- **Completed**: 3
 - **In Progress**: 0
-- **Remaining**: 13
+- **Remaining**: 12
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
 - [x] 1.2: Backend - Update store and storage with data migration
-- [ ] 1.3: Backend - Rename commands and update error messages
+- [x] 1.3: Backend - Rename commands and update error messages
 - [ ] 1.4: Backend - Update lib.rs, logging.rs and paths.rs
 - [ ] 1.5: Frontend - Rename files and update types
 - [ ] 1.6: Frontend - Update hook (useTasksStorage.ts)
@@ -53,3 +53,12 @@
   - Patterns discovered: Migration logic follows priority order: new JSON → old JSON → SQLite → default. Each migration cleans up old files.
   - Gotchas encountered: The `data.todos` field is now `data.tasks` - commands.rs needs `.tasks` not `.todos` for field access
   - Useful context: Old todo directory is removed after migration using remove_dir_all, with graceful error handling if removal fails
+
+## 2026-01-21 06:50 - Fase 1.3
+- What was implemented: Renamed all commands and updated error messages in commands.rs (todo_get_by_folder→tasks_get_by_folder, todo_create→tasks_create, todo_update_status→tasks_update_status, todo_delete→tasks_delete, todo_set_tags→tasks_set_tags), updated all TodoStore→TasksStore references, renamed internal variables (folder_todos→folder_tasks, sorted_todos→sorted_tasks), updated data field access (.todos→.tasks), updated error messages ("Todo not found"→"Task not found")
+- Files changed:
+  - src-tauri/src/plugins/tasks/commands.rs
+- **Learnings for future iterations:**
+  - Patterns discovered: Commands follow a consistent pattern: get State<TasksStore>, read/write data, validate, mutate, save_to_json(), return Result
+  - Gotchas encountered: The parameter name `todo_id` in tasks_set_tags was renamed to `task_id` for consistency
+  - Useful context: cargo check will still fail after this task because lib.rs references the old command names - this is expected until task 1.4 completes

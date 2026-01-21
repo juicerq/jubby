@@ -1,6 +1,6 @@
 use super::storage::save_to_json;
 use super::types::*;
-use super::TodoStore;
+use super::TasksStore;
 use tauri::State;
 use uuid::Uuid;
 
@@ -12,28 +12,28 @@ fn now_ms() -> i64 {
 }
 
 #[tauri::command]
-pub fn folder_get_all(store: State<TodoStore>) -> Result<Vec<FolderWithPreview>, String> {
+pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>, String> {
     let data = store.read();
 
     let mut result: Vec<FolderWithPreview> = data
         .folders
         .iter()
         .map(|f| {
-            let folder_todos: Vec<&Todo> = data
-                .todos
+            let folder_tasks: Vec<&Task> = data
+                .tasks
                 .iter()
                 .filter(|t| t.folder_id == f.id)
                 .collect();
 
-            let todo_count = folder_todos.len() as i32;
+            let task_count = folder_tasks.len() as i32;
 
-            let mut sorted_todos = folder_todos;
-            sorted_todos.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let mut sorted_tasks = folder_tasks;
+            sorted_tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
-            let recent_todos: Vec<RecentTodo> = sorted_todos
+            let recent_tasks: Vec<RecentTask> = sorted_tasks
                 .iter()
                 .take(2)
-                .map(|t| RecentTodo {
+                .map(|t| RecentTask {
                     id: t.id.clone(),
                     text: t.text.clone(),
                     status: t.status.clone(),
@@ -45,8 +45,8 @@ pub fn folder_get_all(store: State<TodoStore>) -> Result<Vec<FolderWithPreview>,
                 name: f.name.clone(),
                 position: f.position,
                 created_at: f.created_at,
-                todo_count,
-                recent_todos,
+                task_count,
+                recent_tasks,
             }
         })
         .collect();
@@ -56,7 +56,7 @@ pub fn folder_get_all(store: State<TodoStore>) -> Result<Vec<FolderWithPreview>,
 }
 
 #[tauri::command]
-pub fn folder_create(store: State<TodoStore>, name: String) -> Result<Folder, String> {
+pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("Folder name cannot be empty".to_string());
@@ -80,7 +80,7 @@ pub fn folder_create(store: State<TodoStore>, name: String) -> Result<Folder, St
 }
 
 #[tauri::command]
-pub fn folder_rename(store: State<TodoStore>, id: String, name: String) -> Result<(), String> {
+pub fn folder_rename(store: State<TasksStore>, id: String, name: String) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("Folder name cannot be empty".to_string());
@@ -101,7 +101,7 @@ pub fn folder_rename(store: State<TodoStore>, id: String, name: String) -> Resul
 }
 
 #[tauri::command]
-pub fn folder_delete(store: State<TodoStore>, id: String) -> Result<(), String> {
+pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     let mut data = store.write();
 
     let existed = data.folders.iter().any(|f| f.id == id);
@@ -109,8 +109,8 @@ pub fn folder_delete(store: State<TodoStore>, id: String) -> Result<(), String> 
         return Err(format!("Folder not found: {}", id));
     }
 
-    // Cascade delete: remove todos, tags, and the folder
-    data.todos.retain(|t| t.folder_id != id);
+    // Cascade delete: remove tasks, tags, and the folder
+    data.tasks.retain(|t| t.folder_id != id);
     data.tags.retain(|t| t.folder_id != id);
     data.folders.retain(|f| f.id != id);
 
@@ -120,7 +120,7 @@ pub fn folder_delete(store: State<TodoStore>, id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn folder_reorder(store: State<TodoStore>, folder_ids: Vec<String>) -> Result<(), String> {
+pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Result<(), String> {
     let mut data = store.write();
 
     for (index, folder_id) in folder_ids.iter().enumerate() {
@@ -135,17 +135,17 @@ pub fn folder_reorder(store: State<TodoStore>, folder_ids: Vec<String>) -> Resul
 }
 
 #[tauri::command]
-pub fn todo_get_by_folder(
-    store: State<TodoStore>,
+pub fn tasks_get_by_folder(
+    store: State<TasksStore>,
     folder_id: String,
-) -> Result<TodoDataResponse, String> {
+) -> Result<TasksDataResponse, String> {
     let data = store.read();
 
-    let mut folder_todos: Vec<TodoWithTags> = data
-        .todos
+    let mut folder_tasks: Vec<TaskWithTags> = data
+        .tasks
         .iter()
         .filter(|t| t.folder_id == folder_id)
-        .map(|t| TodoWithTags {
+        .map(|t| TaskWithTags {
             id: t.id.clone(),
             text: t.text.clone(),
             status: t.status.clone(),
@@ -154,7 +154,7 @@ pub fn todo_get_by_folder(
         })
         .collect();
 
-    folder_todos.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    folder_tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     let folder_tags: Vec<TagResponse> = data
         .tags
@@ -167,22 +167,22 @@ pub fn todo_get_by_folder(
         })
         .collect();
 
-    Ok(TodoDataResponse {
-        todos: folder_todos,
+    Ok(TasksDataResponse {
+        tasks: folder_tasks,
         tags: folder_tags,
     })
 }
 
 #[tauri::command]
-pub fn todo_create(
-    store: State<TodoStore>,
+pub fn tasks_create(
+    store: State<TasksStore>,
     folder_id: String,
     text: String,
     tag_ids: Option<Vec<String>>,
-) -> Result<TodoWithTags, String> {
+) -> Result<TaskWithTags, String> {
     let mut data = store.write();
 
-    let todo = Todo {
+    let task = Task {
         id: Uuid::new_v4().to_string(),
         folder_id,
         text: text.clone(),
@@ -191,68 +191,68 @@ pub fn todo_create(
         tag_ids: tag_ids.clone().unwrap_or_default(),
     };
 
-    data.todos.push(todo.clone());
+    data.tasks.push(task.clone());
     save_to_json(&data).map_err(|e| e.to_string())?;
 
-    Ok(TodoWithTags {
-        id: todo.id,
-        text: todo.text,
-        status: todo.status,
-        created_at: todo.created_at,
-        tag_ids: todo.tag_ids,
+    Ok(TaskWithTags {
+        id: task.id,
+        text: task.text,
+        status: task.status,
+        created_at: task.created_at,
+        tag_ids: task.tag_ids,
     })
 }
 
 #[tauri::command]
-pub fn todo_update_status(store: State<TodoStore>, id: String, status: String) -> Result<(), String> {
+pub fn tasks_update_status(store: State<TasksStore>, id: String, status: String) -> Result<(), String> {
     if !["pending", "in_progress", "completed"].contains(&status.as_str()) {
         return Err(format!("Invalid status: {}", status));
     }
 
     let mut data = store.write();
 
-    let todo = data
-        .todos
+    let task = data
+        .tasks
         .iter_mut()
         .find(|t| t.id == id)
-        .ok_or_else(|| format!("Todo not found: {}", id))?;
+        .ok_or_else(|| format!("Task not found: {}", id))?;
 
-    todo.status = status;
+    task.status = status;
     save_to_json(&data).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn todo_delete(store: State<TodoStore>, id: String) -> Result<(), String> {
+pub fn tasks_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     let mut data = store.write();
 
-    let existed = data.todos.iter().any(|t| t.id == id);
+    let existed = data.tasks.iter().any(|t| t.id == id);
     if !existed {
-        return Err(format!("Todo not found: {}", id));
+        return Err(format!("Task not found: {}", id));
     }
 
-    data.todos.retain(|t| t.id != id);
+    data.tasks.retain(|t| t.id != id);
     save_to_json(&data).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn todo_set_tags(
-    store: State<TodoStore>,
-    todo_id: String,
+pub fn tasks_set_tags(
+    store: State<TasksStore>,
+    task_id: String,
     tag_ids: Vec<String>,
 ) -> Result<(), String> {
     let mut data = store.write();
 
-    let todo = data
-        .todos
+    let task = data
+        .tasks
         .iter_mut()
-        .find(|t| t.id == todo_id)
-        .ok_or_else(|| format!("Todo not found: {}", todo_id))?;
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
-    todo.tag_ids = tag_ids;
+    task.tag_ids = tag_ids;
     save_to_json(&data).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -260,7 +260,7 @@ pub fn todo_set_tags(
 
 #[tauri::command]
 pub fn tag_create(
-    store: State<TodoStore>,
+    store: State<TasksStore>,
     folder_id: String,
     name: String,
     color: String,
@@ -296,7 +296,7 @@ pub fn tag_create(
 
 #[tauri::command]
 pub fn tag_update(
-    store: State<TodoStore>,
+    store: State<TasksStore>,
     id: String,
     name: String,
     color: String,
@@ -330,7 +330,7 @@ pub fn tag_update(
 }
 
 #[tauri::command]
-pub fn tag_delete(store: State<TodoStore>, id: String) -> Result<(), String> {
+pub fn tag_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     let mut data = store.write();
 
     let existed = data.tags.iter().any(|t| t.id == id);
@@ -338,9 +338,8 @@ pub fn tag_delete(store: State<TodoStore>, id: String) -> Result<(), String> {
         return Err(format!("Tag not found: {}", id));
     }
 
-    // Remove tag from all todos
-    for todo in &mut data.todos {
-        todo.tag_ids.retain(|tag_id| tag_id != &id);
+    for task in &mut data.tasks {
+        task.tag_ids.retain(|tag_id| tag_id != &id);
     }
 
     data.tags.retain(|t| t.id != id);
