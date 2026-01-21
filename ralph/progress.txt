@@ -1,14 +1,14 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 4 of 10 completed
+Task 5 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
 - [x] 2. Frontend Hook - Add updateTaskText function
 - [x] 3. State and Navigation - Add task detail view infrastructure
 - [x] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
-- [ ] 5. Create TasksPluginTaskDetail component - Layout structure
+- [x] 5. Create TasksPluginTaskDetail component - Layout structure
 - [ ] 6. TasksPluginTaskDetail - Task info section with inline editing
 - [ ] 7. TasksPluginTaskDetail - Subtasks section with input on top
 - [ ] 8. TasksPluginSubtaskItem - Add inline text editing
@@ -80,3 +80,21 @@ Task 4 of 10 completed
   - Export components that will be reused across files instead of using `void` statements
   - When removing a wrapper component (TasksPluginSubtaskSection), keep the inner components (TasksPluginSubtaskList, TasksPluginSubtaskInput) if they'll be needed elsewhere
   - Task item needs `role="button"` and keyboard handlers for accessibility when using div as clickable element
+
+## 2026-01-21 12:37 - Task 5: Create TasksPluginTaskDetail component - Layout structure
+- Created new file `TasksPluginTaskDetail.tsx` for task detail view
+- Implemented layout with two sections: TASK (with delete button) and SUBTASKS
+- Used section header pattern: `text-[12px] font-medium text-white/40 uppercase tracking-wide`
+- Integrated `usePendingDelete` hook for two-click delete confirmation
+- Delete button shows X icon normally, Check icon when pending confirmation
+- After delete confirmed, automatically calls `onNavigateBack` to return to list
+- Reused `TasksPluginSubtaskInput` and `TasksPluginSubtaskList` from TasksPlugin.tsx
+- Added placeholder for task info section (to be implemented in Task 6)
+- **Files changed:**
+  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - New file with component
+- **Learnings for future iterations:**
+  - Create separate files for large component groups that will be imported elsewhere
+  - `usePendingDelete` hook takes a callback that receives the id - wrap async operations in it
+  - Props can be typed inline in interface, no need for separate type file for simple cases
+  - Placeholder components help visualize layout structure before full implementation
+  - Section headers as visual separators (no borders) keeps UI clean and scannable
