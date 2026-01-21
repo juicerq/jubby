@@ -233,7 +233,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. Timeline style, clean and scannable. Outcome badges: success=green, partial=yellow, failed=red, aborted=gray."
 	},
 	{

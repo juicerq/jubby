@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 17 of 19 completed
+Task 18 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -17,10 +17,10 @@ Task 17 of 19 completed
 - [x] 11. Frontend - Run/Stop button logic
 - [x] 12. Frontend - Loop (Run All) button
 - [x] 13. Frontend - Drag to reorder subtasks
-- [ ] 14. Frontend - History section
+- [x] 14. Frontend - History section
 - [x] 15. Frontend - Execution log detail view in subtask
 - [x] 16. Frontend - OpenCode server lifecycle
-- [ ] 17. Frontend - AI Generate subtasks feature
+- [x] 17. Frontend - AI Generate subtasks feature
 - [x] 18. Backend - AI Generate subtasks command
 - [ ] 19. Manual testing - Full flow verification
 
@@ -648,3 +648,42 @@ Task 17 of 19 completed
   - TasksPluginGeneratePreviewItem at lines ~700-780 in TasksPluginTaskDetail.tsx
   - generateSubtasks at lines ~1266-1300 in useTasksStorage.ts
   - createSubtaskBatch at lines ~1302-1370 in useTasksStorage.ts
+
+## 2026-01-21 16:32 - Task 14: Frontend - History section
+
+### What was implemented
+- Created `AggregatedLog` interface with: log (ExecutionLog), subtaskId, subtaskText
+- Created `aggregateExecutionLogs()` helper function that collects all execution logs from all subtasks and sorts by startedAt descending (most recent first)
+- Created `TasksPluginHistorySection` component with:
+  - Section header using existing `TasksPluginTaskDetailSectionHeader`
+  - Empty state with History icon when no logs exist
+  - Execution count in header right side
+  - List of `TasksPluginHistoryItem` components with AnimatePresence for smooth animations
+  - "Show X more" button when more than 20 logs (HISTORY_LIMIT constant)
+- Created `TasksPluginHistoryItem` component showing:
+  - Timestamp (formatted as "Jan 21, 4:32 PM")
+  - Outcome badge (success/partial/failed/aborted with color coding)
+  - Subtask text (truncated)
+  - Duration in seconds
+  - Expandable details showing: files changed, learnings (patterns/gotchas/context), commit info, error message
+  - Chevron indicator that rotates on expand
+- Created local `TasksPluginOutcomeBadge` and `TasksPluginLearningsSection` components (matching patterns from TasksPlugin.tsx)
+- Added History section after Subtasks section in TasksPluginTaskDetail component
+
+### Files changed
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added History section, AggregatedLog interface, aggregateExecutionLogs helper, and 5 new components
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Use `AnimatePresence mode="popLayout"` for lists where items can be added/removed with smooth animations
+  - Timeline items: timestamp + badge + text + duration is a scannable pattern
+  - Helper functions for aggregating data across nested structures should be defined near the component that uses them
+- **Gotchas encountered:**
+  - Key for aggregated logs must combine log.id AND subtaskId to ensure uniqueness (same log could theoretically appear in multiple contexts)
+  - ESLint forbids array index as key - use item.text as fallback for learnings arrays
+  - Must add History icon import from lucide-react
+- **Useful context:**
+  - TasksPluginHistorySection at lines ~829-894 in TasksPluginTaskDetail.tsx
+  - TasksPluginHistoryItem at lines ~903-1065 in TasksPluginTaskDetail.tsx
+  - aggregateExecutionLogs helper at lines ~104-120 in TasksPluginTaskDetail.tsx
+  - HISTORY_LIMIT constant = 20 entries before "show more"

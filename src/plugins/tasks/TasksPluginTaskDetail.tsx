@@ -1,6 +1,8 @@
 import {
 	Check,
+	ChevronRight,
 	Code2,
+	History,
 	Loader2,
 	Minus,
 	Pencil,
@@ -21,6 +23,7 @@ import {
 	TasksPluginTagEditorPopover,
 } from "./TasksPlugin";
 import type {
+	ExecutionLog,
 	SubtaskCategory,
 	SubtaskStatus,
 	Tag as TagType,
@@ -28,6 +31,26 @@ import type {
 	TaskStatus,
 } from "./types";
 import { type GeneratedSubtask, usePendingDelete } from "./useTasksStorage";
+
+interface AggregatedLog {
+	log: ExecutionLog;
+	subtaskId: string;
+	subtaskText: string;
+}
+
+function aggregateExecutionLogs(task: Task): AggregatedLog[] {
+	const aggregated: AggregatedLog[] = [];
+	for (const subtask of task.subtasks) {
+		for (const log of subtask.executionLogs) {
+			aggregated.push({
+				log,
+				subtaskId: subtask.id,
+				subtaskText: subtask.text,
+			});
+		}
+	}
+	return aggregated.sort((a, b) => b.log.startedAt - a.log.startedAt);
+}
 
 interface TasksPluginTaskDetailProps {
 	task: Task;
@@ -207,7 +230,7 @@ function TasksPluginTaskDetail({
 					}
 				/>
 
-				<div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+				<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
 					<TasksPluginSubtaskInput
 						onCreateSubtask={(text) => onCreateSubtask(task.id, text)}
 					/>
@@ -253,6 +276,8 @@ function TasksPluginTaskDetail({
 					/>
 				</div>
 			</section>
+
+			<TasksPluginHistorySection task={task} />
 		</div>
 	);
 }
@@ -791,6 +816,306 @@ function TasksPluginGeneratePreviewItem({
 					</motion.div>
 				)}
 			</AnimatePresence>
+		</div>
+	);
+}
+
+interface TasksPluginHistorySectionProps {
+	task: Task;
+}
+
+const HISTORY_LIMIT = 20;
+
+function TasksPluginHistorySection({ task }: TasksPluginHistorySectionProps) {
+	const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+	const [showAll, setShowAll] = useState(false);
+
+	const allLogs = aggregateExecutionLogs(task);
+	const hasMore = allLogs.length > HISTORY_LIMIT;
+	const displayedLogs = showAll ? allLogs : allLogs.slice(0, HISTORY_LIMIT);
+
+	const toggleLogExpansion = (logId: string) => {
+		setExpandedLogId((prev) => (prev === logId ? null : logId));
+	};
+
+	if (allLogs.length === 0) {
+		return (
+			<section className="shrink-0">
+				<TasksPluginTaskDetailSectionHeader
+					title="History"
+					right={
+						<div className="flex h-5 w-5 items-center justify-center">
+							<History className="h-3.5 w-3.5 text-white/20" />
+						</div>
+					}
+				/>
+				<div className="flex items-center justify-center rounded-lg bg-white/[0.02] py-6">
+					<span className="text-[11px] text-white/30">
+						No execution history yet
+					</span>
+				</div>
+			</section>
+		);
+	}
+
+	return (
+		<section className="flex shrink-0 flex-col">
+			<TasksPluginTaskDetailSectionHeader
+				title="History"
+				right={
+					<span className="text-[10px] text-white/30">
+						{allLogs.length} execution{allLogs.length > 1 ? "s" : ""}
+					</span>
+				}
+			/>
+			<div className="flex flex-col gap-1.5">
+				<AnimatePresence mode="popLayout">
+					{displayedLogs.map((item) => (
+						<TasksPluginHistoryItem
+							key={`${item.log.id}-${item.subtaskId}`}
+							item={item}
+							isExpanded={expandedLogId === item.log.id}
+							onToggle={() => toggleLogExpansion(item.log.id)}
+						/>
+					))}
+				</AnimatePresence>
+
+				{hasMore && !showAll && (
+					<button
+						type="button"
+						onClick={() => setShowAll(true)}
+						className="mt-1 flex h-7 items-center justify-center rounded-md bg-white/[0.02] text-[11px] text-white/40 transition-all duration-150 hover:bg-white/[0.04] hover:text-white/60 active:scale-[0.99]"
+					>
+						Show {allLogs.length - HISTORY_LIMIT} more
+					</button>
+				)}
+			</div>
+		</section>
+	);
+}
+
+interface TasksPluginHistoryItemProps {
+	item: AggregatedLog;
+	isExpanded: boolean;
+	onToggle: () => void;
+}
+
+function TasksPluginHistoryItem({
+	item,
+	isExpanded,
+	onToggle,
+}: TasksPluginHistoryItemProps) {
+	const { log, subtaskText } = item;
+
+	const hasDetails =
+		log.filesChanged.length > 0 ||
+		log.learnings.patterns.length > 0 ||
+		log.learnings.gotchas.length > 0 ||
+		log.learnings.context.length > 0 ||
+		log.committed ||
+		log.errorMessage;
+
+	const formatTime = (timestamp: number) => {
+		return new Date(timestamp).toLocaleString(undefined, {
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+	};
+
+	return (
+		<motion.div
+			layout
+			initial={{ opacity: 0, y: -8 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, scale: 0.95 }}
+			transition={{ duration: 0.15, ease: "easeOut" }}
+			className={cn(
+				"flex flex-col rounded-lg bg-white/[0.02] transition-all duration-150",
+				hasDetails && "cursor-pointer hover:bg-white/[0.03]",
+			)}
+			onClick={hasDetails ? onToggle : undefined}
+		>
+			<div className="flex items-center gap-2.5 px-3 py-2.5">
+				<span className="shrink-0 text-[10px] tabular-nums text-white/35">
+					{formatTime(log.startedAt)}
+				</span>
+				<TasksPluginOutcomeBadge outcome={log.outcome} />
+				<span className="min-w-0 flex-1 truncate text-[11px] text-white/50">
+					{subtaskText}
+				</span>
+				{log.duration && (
+					<span className="shrink-0 text-[10px] tabular-nums text-white/25">
+						{Math.round(log.duration / 1000)}s
+					</span>
+				)}
+				{hasDetails && (
+					<motion.div
+						animate={{ rotate: isExpanded ? 90 : 0 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
+						className="flex h-4 w-4 shrink-0 items-center justify-center"
+					>
+						<ChevronRight className="h-3 w-3 text-white/20" />
+					</motion.div>
+				)}
+			</div>
+
+			{log.summary && (
+				<div className="px-3 pb-2.5">
+					<p
+						className={cn(
+							"text-[11px] leading-relaxed text-white/40",
+							!isExpanded && "line-clamp-2",
+						)}
+					>
+						{log.summary}
+					</p>
+				</div>
+			)}
+
+			<AnimatePresence>
+				{isExpanded && hasDetails && (
+					<motion.div
+						initial={{ height: 0, opacity: 0 }}
+						animate={{ height: "auto", opacity: 1 }}
+						exit={{ height: 0, opacity: 0 }}
+						transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+						className="overflow-hidden"
+					>
+						<div className="flex flex-col gap-3 border-t border-white/6 px-3 py-3">
+							{log.filesChanged.length > 0 && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Files Changed
+									</span>
+									<div className="flex flex-wrap gap-1">
+										{log.filesChanged.map((file) => (
+											<span
+												key={file}
+												className="rounded bg-white/6 px-1.5 py-0.5 font-mono text-[10px] text-white/50"
+											>
+												{file.split("/").pop()}
+											</span>
+										))}
+									</div>
+								</div>
+							)}
+
+							{log.learnings.patterns.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Patterns Discovered"
+									items={log.learnings.patterns}
+									colorClass="text-sky-400/70"
+									bgClass="bg-sky-500/10"
+								/>
+							)}
+
+							{log.learnings.gotchas.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Gotchas Encountered"
+									items={log.learnings.gotchas}
+									colorClass="text-amber-400/70"
+									bgClass="bg-amber-500/10"
+								/>
+							)}
+
+							{log.learnings.context.length > 0 && (
+								<TasksPluginLearningsSection
+									title="Useful Context"
+									items={log.learnings.context}
+									colorClass="text-violet-400/70"
+									bgClass="bg-violet-500/10"
+								/>
+							)}
+
+							{log.committed && log.commitHash && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+										Commit
+									</span>
+									<div className="flex items-center gap-2">
+										<span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-400/70">
+											{log.commitHash.slice(0, 7)}
+										</span>
+										{log.commitMessage && (
+											<span className="truncate text-[10px] text-white/40">
+												{log.commitMessage}
+											</span>
+										)}
+									</div>
+								</div>
+							)}
+
+							{log.errorMessage && (
+								<div className="flex flex-col gap-1">
+									<span className="text-[9px] font-medium uppercase tracking-wider text-red-400/50">
+										Error
+									</span>
+									<p className="rounded bg-red-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-red-400/70">
+										{log.errorMessage}
+									</p>
+								</div>
+							)}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+		</motion.div>
+	);
+}
+
+function TasksPluginOutcomeBadge({
+	outcome,
+}: {
+	outcome: ExecutionLog["outcome"];
+}) {
+	return (
+		<span
+			className={cn(
+				"shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider",
+				outcome === "success" && "bg-emerald-500/15 text-emerald-400",
+				outcome === "partial" && "bg-amber-500/15 text-amber-400",
+				outcome === "failed" && "bg-red-500/15 text-red-400",
+				outcome === "aborted" && "bg-white/10 text-white/40",
+			)}
+		>
+			{outcome}
+		</span>
+	);
+}
+
+interface TasksPluginLearningsSectionProps {
+	title: string;
+	items: string[];
+	colorClass: string;
+	bgClass: string;
+}
+
+function TasksPluginLearningsSection({
+	title,
+	items,
+	colorClass,
+	bgClass,
+}: TasksPluginLearningsSectionProps) {
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="text-[9px] font-medium uppercase tracking-wider text-white/30">
+				{title}
+			</span>
+			<ul className={cn("flex flex-col gap-0.5 rounded px-2 py-1.5", bgClass)}>
+				{items.map((item) => (
+					<li
+						key={item}
+						className={cn(
+							"text-[10px] leading-relaxed before:mr-1.5 before:content-['•']",
+							colorClass,
+						)}
+					>
+						{item}
+					</li>
+				))}
+			</ul>
 		</div>
 	);
 }
