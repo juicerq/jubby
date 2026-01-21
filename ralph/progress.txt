@@ -1,7 +1,7 @@
 # Task Detail View - Progress
 
 ## Current Status
-Task 5 of 10 completed
+Task 6 of 10 completed
 
 ## Tasks
 - [x] 1. Backend - Add tasks_update_text command
@@ -9,7 +9,7 @@ Task 5 of 10 completed
 - [x] 3. State and Navigation - Add task detail view infrastructure
 - [x] 4. Modify TasksPluginItem - Remove inline subtasks, add click navigation
 - [x] 5. Create TasksPluginTaskDetail component - Layout structure
-- [ ] 6. TasksPluginTaskDetail - Task info section with inline editing
+- [x] 6. TasksPluginTaskDetail - Task info section with inline editing
 - [ ] 7. TasksPluginTaskDetail - Subtasks section with input on top
 - [ ] 8. TasksPluginSubtaskItem - Add inline text editing
 - [ ] 9. Wire up TasksPluginTaskDetail in main component
@@ -98,3 +98,21 @@ Task 5 of 10 completed
   - Props can be typed inline in interface, no need for separate type file for simple cases
   - Placeholder components help visualize layout structure before full implementation
   - Section headers as visual separators (no borders) keeps UI clean and scannable
+
+## 2026-01-21 12:39 - Task 6: TasksPluginTaskDetail - Task info section with inline editing
+- Created `TasksPluginTaskInfo` component replacing the placeholder
+- Implemented 3-state status checkbox (pending → in_progress → completed) with exact styling from TasksPluginItem
+- Added inline text editing with isEditing/editValue states, Enter saves, Escape cancels, blur saves
+- Edit button (Pencil icon) always visible and aligned to the right
+- Tags section below text with `TasksPluginTagBadge` and `TasksPluginTagEditorPopover`
+- Tags area indented with `ml-[30px]` to align with text (after checkbox)
+- Shows "+ Add tags" text when no tags assigned
+- Removed placeholder component and void statements
+- **Files changed:**
+  - `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added TasksPluginTaskInfo, removed placeholder
+- **Learnings for future iterations:**
+  - Import reusable components from sibling files (TasksPluginTagBadge, TasksPluginTagEditorPopover from TasksPlugin)
+  - Use `useEffect` with task.text dependency to sync editValue when task changes externally
+  - Input needs auto-focus and select-all on edit start: `inputRef.current.focus(); inputRef.current.select()`
+  - `ml-[30px]` = 18px checkbox + 12px gap (gap-3) to align content below text
+  - Container `bg-white/[0.02]` with rounded-lg and padding gives subtle visual grouping
