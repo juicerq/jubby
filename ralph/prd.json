@@ -297,7 +297,7 @@
 			"Run cargo check"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "The prompt must be clear about expected output format. Include example in prompt. Use structured output if opencode supports it."
 	},
 	{

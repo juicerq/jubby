@@ -352,6 +352,7 @@ pub async fn opencode_stop_server(state: State<'_, OpenCodeServerState>) -> Resu
 
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
 const EXECUTION_TIMEOUT_SECS: u64 = 300;
+const GENERATE_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -475,4 +476,243 @@ pub async fn tasks_execute_subtask(
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedStep {
+    pub text: String,
+    pub completed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtask {
+    pub text: String,
+    #[serde(default)]
+    pub steps: Vec<GeneratedStep>,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default = "default_should_commit")]
+    pub should_commit: bool,
+}
+
+fn default_should_commit() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateSubtasksResult {
+    pub subtasks: Vec<GeneratedSubtask>,
+    pub session_id: String,
+}
+
+fn build_generate_prompt(task: &super::types::Task) -> String {
+    format!(
+        r#"Analyze the following task description and generate a list of subtasks.
+
+TASK NAME: {}
+TASK DESCRIPTION:
+{}
+
+Generate subtasks as a JSON array. Each subtask should have:
+- text: Brief description of what to do (1 sentence)
+- steps: Array of detailed implementation steps (each step is an object with "text" and "completed": false)
+- category: Either "functional" or "test"
+- notes: Additional context or considerations (can be empty)
+- shouldCommit: Whether this subtask should be committed separately (usually true)
+
+IMPORTANT:
+1. Order subtasks by logical dependency (prerequisites first)
+2. Keep subtasks atomic and focused on a single concern
+3. Include test subtasks where appropriate
+4. Steps should be concrete and actionable
+
+Respond with ONLY the JSON array, no explanation. Example format:
+```json
+[
+  {{
+    "text": "Backend - Create user model",
+    "steps": [
+      {{"text": "Define User struct with id, email, password_hash fields", "completed": false}},
+      {{"text": "Add serde serialization", "completed": false}},
+      {{"text": "Create validation methods", "completed": false}}
+    ],
+    "category": "functional",
+    "notes": "Use bcrypt for password hashing",
+    "shouldCommit": true
+  }}
+]
+```"#,
+        task.text, task.description
+    )
+}
+
+fn extract_json_from_response(response: &str) -> Result<Vec<GeneratedSubtask>, String> {
+    let cleaned = response
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let start = cleaned.find('[').ok_or("No JSON array found in response")?;
+    let end = cleaned.rfind(']').ok_or("No closing bracket found in response")?;
+
+    if end < start {
+        return Err("Invalid JSON structure".to_string());
+    }
+
+    let json_str = &cleaned[start..=end];
+
+    serde_json::from_str::<Vec<GeneratedSubtask>>(json_str)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))
+}
+
+#[tauri::command]
+pub async fn tasks_generate_subtasks(
+    store: State<'_, super::TasksStore>,
+    server_state: State<'_, OpenCodeServerState>,
+    task_id: String,
+) -> Result<GenerateSubtasksResult, String> {
+    opencode_ensure_server(server_state).await?;
+
+    let task = {
+        let data = store.read();
+        data.tasks
+            .iter()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| format!("Task not found: {}", task_id))?
+            .clone()
+    };
+
+    if task.description.trim().is_empty() {
+        return Err("Task description is empty. Please add a description first.".to_string());
+    }
+
+    let prompt = build_generate_prompt(&task);
+
+    tracing::info!(target: "tasks", "Generating subtasks for task '{}' with prompt length: {}", task.text, prompt.len());
+
+    let session = opencode_create_session(Some(format!("Generate subtasks: {}", task.text))).await?;
+    let session_id = session.id.clone();
+
+    tracing::info!(target: "tasks", "Created session for generation: {}", session_id);
+
+    opencode_send_prompt(session_id.clone(), prompt, None).await?;
+
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(GENERATE_TIMEOUT_SECS);
+
+    loop {
+        if start.elapsed() > timeout {
+            tracing::warn!(target: "tasks", "Generation timeout for session: {}", session_id);
+            let _ = opencode_abort_session(session_id.clone()).await;
+            return Err(format!(
+                "Generation timed out after {} seconds",
+                GENERATE_TIMEOUT_SECS
+            ));
+        }
+
+        tokio::time::sleep(POLL_INTERVAL).await;
+
+        match opencode_poll_status(session_id.clone()).await {
+            Ok(status) => {
+                tracing::debug!(target: "tasks", "Generation session {} status: {}", session_id, status.status);
+
+                if status.status == "idle" {
+                    tracing::info!(target: "tasks", "Generation session {} completed", session_id);
+
+                    let response = get_session_last_message(&session_id).await?;
+
+                    let subtasks = extract_json_from_response(&response)?;
+
+                    tracing::info!(target: "tasks", "Generated {} subtasks for task '{}'", subtasks.len(), task.text);
+
+                    return Ok(GenerateSubtasksResult {
+                        subtasks,
+                        session_id,
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::error!(target: "tasks", "Failed to poll generation status: {}", e);
+            }
+        }
+    }
+}
+
+async fn get_session_last_message(session_id: &str) -> Result<String, String> {
+    let client = client();
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MessagePart {
+        #[serde(rename = "type")]
+        part_type: String,
+        #[serde(default)]
+        text: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Message {
+        role: String,
+        parts: Vec<MessagePart>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SessionMessages {
+        messages: Vec<Message>,
+    }
+
+    let response = client
+        .get(format!("{}/session/{}", base_url(), session_id))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get session messages: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Get session failed with status {}: {}",
+            status, body
+        ));
+    }
+
+    let session_data: SessionMessages = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse session messages: {}", e))?;
+
+    let assistant_message = session_data
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "assistant")
+        .ok_or("No assistant message found in session")?;
+
+    let text = assistant_message
+        .parts
+        .iter()
+        .filter_map(|p| {
+            if p.part_type == "text" {
+                p.text.clone()
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if text.is_empty() {
+        return Err("Assistant message has no text content".to_string());
+    }
+
+    Ok(text)
 }

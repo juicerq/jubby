@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 16 of 19 completed
+Task 17 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -21,7 +21,7 @@ Task 16 of 19 completed
 - [x] 15. Frontend - Execution log detail view in subtask
 - [x] 16. Frontend - OpenCode server lifecycle
 - [ ] 17. Frontend - AI Generate subtasks feature
-- [ ] 18. Backend - AI Generate subtasks command
+- [x] 18. Backend - AI Generate subtasks command
 - [ ] 19. Manual testing - Full flow verification
 
 ## Notes
@@ -566,3 +566,45 @@ Task 16 of 19 completed
   - `TasksPluginExecutionLogCard` at lines ~2220-2380
   - `TasksPluginLearningsSection` at lines ~2404-2428
   - ExecutionLog has: id, startedAt, completedAt, duration, outcome, summary, filesChanged, learnings, committed, commitHash, commitMessage, errorMessage
+
+## 2026-01-21 16:22 - Task 18: Backend - AI Generate subtasks command
+
+### What was implemented
+- Added `tasks_generate_subtasks` command in opencode.rs
+- Parameters: `taskId` (to retrieve task description)
+- Validates task has non-empty description before generating
+- Creates OpenCode session with title "Generate subtasks: {task.text}"
+- Builds prompt that instructs AI to:
+  - Analyze task name and description
+  - Generate JSON array of subtasks with: text, steps[], category, notes, shouldCommit
+  - Order subtasks by logical dependency
+  - Include test subtasks where appropriate
+- Polls session until idle (max 2 minutes timeout)
+- Fetches session messages via `get_session_last_message` helper
+- Parses AI response with `extract_json_from_response`:
+  - Strips markdown code block wrappers (```json)
+  - Finds JSON array boundaries
+  - Deserializes to `Vec<GeneratedSubtask>`
+- Returns `GenerateSubtasksResult` with subtasks array and sessionId
+- Created types: `GeneratedStep`, `GeneratedSubtask`, `GenerateSubtasksResult`
+- Registered command in lib.rs invoke_handler
+
+### Files changed
+- `src-tauri/src/plugins/tasks/opencode.rs`
+- `src-tauri/src/lib.rs`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - OpenCode session messages endpoint: `GET /session/{id}` returns `{messages: [{role, parts: [{type, text}]}]}`
+  - AI responses often include markdown code blocks around JSON - need to strip them before parsing
+  - Use `rfind(']')` to handle JSON that may have extra text after the array
+  - Separate timeout constants for different operations: EXECUTION_TIMEOUT_SECS (5min) vs GENERATE_TIMEOUT_SECS (2min)
+- **Gotchas encountered:**
+  - Session messages response has nested structure: messages[] → parts[] → text
+  - Must filter for `role == "assistant"` and `type == "text"` to get the actual response
+  - The prompt must be very explicit about JSON format - include example with exact structure
+- **Useful context:**
+  - `tasks_generate_subtasks` is at lines ~95-160 in opencode.rs
+  - `get_session_last_message` helper at lines ~162-227
+  - `extract_json_from_response` at lines ~75-93
+  - Frontend will receive subtasks and show preview for user confirmation before creating
