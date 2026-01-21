@@ -28,6 +28,7 @@ import type {
 	Folder,
 	RecentTask,
 	Subtask,
+	SubtaskStatus,
 	Tag as TagType,
 	Task,
 	TaskStatus,
@@ -89,7 +90,7 @@ function TasksPlugin(_props: PluginProps) {
 		updateTag,
 		deleteTag,
 		createSubtask,
-		toggleSubtask,
+		updateSubtaskStatus,
 		deleteSubtask,
 		reorderSubtasks,
 		updateSubtaskText,
@@ -393,7 +394,7 @@ function TasksPlugin(_props: PluginProps) {
 					onUpdateTaskText={updateTaskText}
 					onSetTaskTags={setTaskTags}
 					onCreateSubtask={createSubtask}
-					onToggleSubtask={toggleSubtask}
+					onUpdateSubtaskStatus={updateSubtaskStatus}
 					onDeleteSubtask={deleteSubtask}
 					onReorderSubtasks={reorderSubtasks}
 					onUpdateSubtaskText={updateSubtaskText}
@@ -695,7 +696,9 @@ function TasksPluginItem({
 
 	const hasTags = tags.length > 0;
 	const hasSubtasks = task.subtasks.length > 0;
-	const completedCount = task.subtasks.filter((s) => s.completed).length;
+	const completedCount = task.subtasks.filter(
+		(s) => s.status === "completed",
+	).length;
 	const totalCount = task.subtasks.length;
 
 	return (
@@ -875,7 +878,7 @@ function TasksPluginProgressBadge({
 
 interface TasksPluginSubtaskListProps {
 	subtasks: Subtask[];
-	onToggleSubtask: (subtaskId: string) => void;
+	onUpdateSubtaskStatus: (subtaskId: string, status: SubtaskStatus) => void;
 	onDeleteSubtask: (subtaskId: string) => void;
 	onReorderSubtasks: (subtaskIds: string[]) => void;
 	onUpdateSubtaskText: (subtaskId: string, text: string) => void;
@@ -883,7 +886,7 @@ interface TasksPluginSubtaskListProps {
 
 function TasksPluginSubtaskList({
 	subtasks,
-	onToggleSubtask,
+	onUpdateSubtaskStatus,
 	onDeleteSubtask,
 	onReorderSubtasks,
 	onUpdateSubtaskText,
@@ -1133,7 +1136,9 @@ function TasksPluginSubtaskList({
 						>
 							<TasksPluginSubtaskItem
 								subtask={item.subtask}
-								onToggle={() => onToggleSubtask(item.subtask.id)}
+								onUpdateStatus={(status) =>
+									onUpdateSubtaskStatus(item.subtask.id, status)
+								}
 								onDeleteClick={() => handleDeleteClick(item.subtask.id)}
 								isPendingDelete={pendingDeleteId === item.subtask.id}
 								onUpdateText={(text) =>
@@ -1156,7 +1161,7 @@ function TasksPluginSubtaskList({
 
 interface TasksPluginSubtaskItemProps {
 	subtask: Subtask;
-	onToggle: () => void;
+	onUpdateStatus: (status: SubtaskStatus) => void;
 	onDeleteClick: () => void;
 	isPendingDelete: boolean;
 	onUpdateText: (text: string) => void;
@@ -1168,7 +1173,7 @@ interface TasksPluginSubtaskItemProps {
 
 function TasksPluginSubtaskItem({
 	subtask,
-	onToggle,
+	onUpdateStatus,
 	onDeleteClick,
 	isPendingDelete,
 	onUpdateText,
@@ -1177,6 +1182,11 @@ function TasksPluginSubtaskItem({
 	onMouseDown,
 	itemRef,
 }: TasksPluginSubtaskItemProps) {
+	const isCompleted = subtask.status === "completed";
+
+	const handleToggle = () => {
+		onUpdateStatus(isCompleted ? "waiting" : "completed");
+	};
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState(subtask.text);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -1234,16 +1244,16 @@ function TasksPluginSubtaskItem({
 
 			<button
 				type="button"
-				onClick={onToggle}
+				onClick={handleToggle}
 				className={cn(
 					"flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center rounded border transition-all duration-150 ease-out active:scale-[0.9]",
-					subtask.completed
+					isCompleted
 						? "border-white/50 bg-white/50"
 						: "border-white/25 bg-transparent hover:border-white/40",
 				)}
-				aria-label={subtask.completed ? "Mark incomplete" : "Mark complete"}
+				aria-label={isCompleted ? "Mark incomplete" : "Mark complete"}
 			>
-				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]" />}
+				{isCompleted && <Check className="h-2 w-2 text-[#0a0a0a]" />}
 			</button>
 
 			{isEditing ? (
@@ -1261,7 +1271,7 @@ function TasksPluginSubtaskItem({
 				<span
 					className={cn(
 						"flex-1 text-[12px] leading-tight tracking-[-0.01em] transition-all duration-150 ease-out",
-						subtask.completed
+						isCompleted
 							? "text-white/30 line-through decoration-white/20"
 							: "text-white/70",
 						isAnyDragging && "select-none",
@@ -1315,12 +1325,14 @@ function TasksPluginSubtaskGhost({ subtask }: TasksPluginSubtaskGhostProps) {
 			<div
 				className={cn(
 					"flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-					subtask.completed
+					subtask.status === "completed"
 						? "border-white/30 bg-white/30"
 						: "border-white/15 bg-transparent",
 				)}
 			>
-				{subtask.completed && <Check className="h-2 w-2 text-[#0a0a0a]/50" />}
+				{subtask.status === "completed" && (
+					<Check className="h-2 w-2 text-[#0a0a0a]/50" />
+				)}
 			</div>
 
 			<span className="flex-1 select-none text-[12px] leading-tight tracking-[-0.01em] text-white/40">

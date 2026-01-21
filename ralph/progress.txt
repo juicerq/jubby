@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 3 of 19 completed
+Task 4 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -9,7 +9,7 @@ Task 3 of 19 completed
 - [x] 3. Backend - CRUD commands for new fields
 - [ ] 4. Backend - OpenCode server management
 - [ ] 5. Backend - Execution orchestration command
-- [ ] 6. Frontend - Update useTasksStorage hook with new types
+- [x] 6. Frontend - Update useTasksStorage hook with new types
 - [ ] 7. Frontend - Update useTasksStorage hook with execution functions
 - [ ] 8. Frontend - Task creation flow update
 - [ ] 9. Frontend - Subtask expandable component
@@ -141,4 +141,55 @@ Task 3 of 19 completed
   - New commands start at line ~550 in commands.rs
   - Commands are registered at lines ~127-140 in lib.rs (tasks plugin section)
   - Frontend will need corresponding invoke() calls with exact parameter names (camelCase from Rust snake_case)
+
+## 2026-01-21 15:24 - Task 6: Frontend - Update useTasksStorage hook with new types
+
+### What was implemented
+- Updated `types.ts` with all new types matching backend:
+  - `SubtaskStatus` enum (waiting, in_progress, completed)
+  - `SubtaskCategory` enum (functional, test)
+  - `ExecutionOutcome` enum (success, partial, failed, aborted)
+  - `Step` interface (id, text, completed)
+  - `Learnings` interface (patterns, gotchas, context)
+  - `ExecutionLog` interface (full execution log with all fields)
+  - Updated `Subtask` interface: replaced `completed: boolean` with `status: SubtaskStatus`, added order, category, steps, shouldCommit, notes, executionLogs
+  - Updated `Task` interface: added description, workingDirectory
+- Updated `useTasksStorage.ts`:
+  - Added backend interfaces for Step, Learnings, ExecutionLog, Subtask, Task
+  - Added mapping functions: mapBackendStep, mapBackendLearnings, mapBackendExecutionLog
+  - Updated mapBackendSubtask and mapBackendTask for new fields
+  - Added helper functions: createDefaultSubtask, createDefaultTask
+  - Added new functions: updateTaskDescription, updateTaskWorkingDirectory
+  - Added subtask functions: updateSubtaskStatus, updateSubtaskOrder, updateSubtaskCategory, updateSubtaskNotes, updateSubtaskShouldCommit
+  - Added step functions: createStep, toggleStep, deleteStep, updateStepText
+  - Added createExecutionLog function
+  - Updated UseTasksStorageReturn interface with all 27 functions
+- Updated `TasksPlugin.tsx`:
+  - Replaced `toggleSubtask` with `updateSubtaskStatus` throughout component chain
+  - Changed `subtask.completed` to `subtask.status === "completed"` in all UI logic
+  - Updated TasksPluginSubtaskList and TasksPluginSubtaskItem interfaces
+  - Added local `isCompleted` and `handleToggle` for cleaner toggle logic
+- Updated `TasksPluginTaskDetail.tsx`:
+  - Changed prop interface from onToggleSubtask to onUpdateSubtaskStatus with SubtaskStatus parameter
+
+### Files changed
+- `src/plugins/tasks/types.ts`
+- `src/plugins/tasks/useTasksStorage.ts`
+- `src/plugins/tasks/TasksPlugin.tsx`
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Frontend interfaces mirror backend types with camelCase (JS convention)
+  - Backend interfaces use `FromBackend` suffix to distinguish raw API data from mapped domain types
+  - All CRUD functions follow optimistic update pattern: update state → invoke backend → rollback on error
+  - Helper functions (createDefaultSubtask, createDefaultTask) centralize default values
+- **Gotchas encountered:**
+  - Changing `completed: boolean` to `status: enum` requires updating entire prop chain (TasksPlugin → TasksPluginSubtaskList → TasksPluginSubtaskItem)
+  - Ghost components (TasksPluginSubtaskGhost) also reference subtask fields, easy to miss
+  - The status toggle logic (waiting ↔ completed) is different from simple boolean flip
+- **Useful context:**
+  - Type imports from types.ts are in lines 27-35 of TasksPlugin.tsx
+  - UseTasksStorageReturn interface documents all available functions
+  - TasksPluginTaskDetail is in a separate file and imports SubtaskStatus for its prop interface
 

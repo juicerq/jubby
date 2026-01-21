@@ -6,11 +6,49 @@ export interface Tag {
 
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
-export interface Subtask {
+export type SubtaskStatus = "waiting" | "in_progress" | "completed";
+
+export type SubtaskCategory = "functional" | "test";
+
+export type ExecutionOutcome = "success" | "partial" | "failed" | "aborted";
+
+export interface Step {
 	id: string;
 	text: string;
 	completed: boolean;
-	position: number;
+}
+
+export interface Learnings {
+	patterns: string[];
+	gotchas: string[];
+	context: string[];
+}
+
+export interface ExecutionLog {
+	id: string;
+	startedAt: number;
+	completedAt: number | null;
+	duration: number | null;
+	outcome: ExecutionOutcome;
+	summary: string;
+	filesChanged: string[];
+	learnings: Learnings;
+	committed: boolean;
+	commitHash: string | null;
+	commitMessage: string | null;
+	errorMessage: string | null;
+}
+
+export interface Subtask {
+	id: string;
+	text: string;
+	status: SubtaskStatus;
+	order: number;
+	category: SubtaskCategory;
+	steps: Step[];
+	shouldCommit: boolean;
+	notes: string;
+	executionLogs: ExecutionLog[];
 }
 
 export interface Task {
@@ -18,6 +56,8 @@ export interface Task {
 	text: string;
 	status: TaskStatus;
 	createdAt: number;
+	description: string;
+	workingDirectory: string;
 	tagIds?: string[];
 	subtasks: Subtask[];
 }

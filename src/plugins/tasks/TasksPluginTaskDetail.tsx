@@ -7,7 +7,7 @@ import {
 	TasksPluginTagBadge,
 	TasksPluginTagEditorPopover,
 } from "./TasksPlugin";
-import type { Tag as TagType, Task, TaskStatus } from "./types";
+import type { SubtaskStatus, Tag as TagType, Task, TaskStatus } from "./types";
 import { usePendingDelete } from "./useTasksStorage";
 
 interface TasksPluginTaskDetailProps {
@@ -18,7 +18,11 @@ interface TasksPluginTaskDetailProps {
 	onUpdateTaskText: (id: string, text: string) => Promise<void>;
 	onSetTaskTags: (taskId: string, tagIds: string[]) => Promise<void>;
 	onCreateSubtask: (taskId: string, text: string) => Promise<void>;
-	onToggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	onUpdateSubtaskStatus: (
+		taskId: string,
+		subtaskId: string,
+		status: SubtaskStatus,
+	) => Promise<void>;
 	onDeleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
 	onReorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
 	onUpdateSubtaskText: (
@@ -37,7 +41,7 @@ function TasksPluginTaskDetail({
 	onUpdateTaskText,
 	onSetTaskTags,
 	onCreateSubtask,
-	onToggleSubtask,
+	onUpdateSubtaskStatus,
 	onDeleteSubtask,
 	onReorderSubtasks,
 	onUpdateSubtaskText,
@@ -110,7 +114,9 @@ function TasksPluginTaskDetail({
 					/>
 					<TasksPluginSubtaskList
 						subtasks={task.subtasks}
-						onToggleSubtask={(subtaskId) => onToggleSubtask(task.id, subtaskId)}
+						onUpdateSubtaskStatus={(subtaskId, status) =>
+							onUpdateSubtaskStatus(task.id, subtaskId, status)
+						}
 						onDeleteSubtask={(subtaskId) => onDeleteSubtask(task.id, subtaskId)}
 						onReorderSubtasks={(subtaskIds) =>
 							onReorderSubtasks(task.id, subtaskIds)

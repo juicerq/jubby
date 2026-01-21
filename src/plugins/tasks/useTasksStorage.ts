@@ -2,9 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type {
+	ExecutionLog,
+	ExecutionOutcome,
 	Folder,
+	Learnings,
 	RecentTask,
+	Step,
 	Subtask,
+	SubtaskCategory,
+	SubtaskStatus,
 	Tag,
 	Task,
 	TaskStatus,
@@ -57,11 +63,43 @@ export function usePendingDelete(
 	return { pendingId, handleDeleteClick, cancelDelete };
 }
 
-interface SubtaskFromBackend {
+interface StepFromBackend {
 	id: string;
 	text: string;
 	completed: boolean;
-	position: number;
+}
+
+interface LearningsFromBackend {
+	patterns: string[];
+	gotchas: string[];
+	context: string[];
+}
+
+interface ExecutionLogFromBackend {
+	id: string;
+	startedAt: number;
+	completedAt: number | null;
+	duration: number | null;
+	outcome: string;
+	summary: string;
+	filesChanged: string[];
+	learnings: LearningsFromBackend;
+	committed: boolean;
+	commitHash: string | null;
+	commitMessage: string | null;
+	errorMessage: string | null;
+}
+
+interface SubtaskFromBackend {
+	id: string;
+	text: string;
+	status: string;
+	order: number;
+	category: string;
+	steps: StepFromBackend[];
+	shouldCommit: boolean;
+	notes: string;
+	executionLogs: ExecutionLogFromBackend[];
 }
 
 interface TaskFromBackend {
@@ -69,6 +107,8 @@ interface TaskFromBackend {
 	text: string;
 	status: string;
 	createdAt: number;
+	description: string;
+	workingDirectory: string;
 	tagIds: string[];
 	subtasks: SubtaskFromBackend[];
 }
@@ -95,6 +135,8 @@ interface UseTasksStorageReturn {
 	createTask: (text: string, tagIds?: string[]) => Promise<void>;
 	updateTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
 	updateTaskText: (id: string, text: string) => Promise<void>;
+	updateTaskDescription: (id: string, description: string) => Promise<void>;
+	updateTaskWorkingDirectory: (id: string, path: string) => Promise<void>;
 	deleteTask: (id: string) => Promise<void>;
 	setTaskTags: (taskId: string, tagIds: string[]) => Promise<void>;
 
@@ -103,13 +145,65 @@ interface UseTasksStorageReturn {
 	deleteTag: (id: string) => Promise<void>;
 
 	createSubtask: (taskId: string, text: string) => Promise<void>;
-	toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+	updateSubtaskStatus: (
+		taskId: string,
+		subtaskId: string,
+		status: SubtaskStatus,
+	) => Promise<void>;
+	updateSubtaskOrder: (
+		taskId: string,
+		subtaskId: string,
+		order: number,
+	) => Promise<void>;
+	updateSubtaskCategory: (
+		taskId: string,
+		subtaskId: string,
+		category: SubtaskCategory,
+	) => Promise<void>;
+	updateSubtaskNotes: (
+		taskId: string,
+		subtaskId: string,
+		notes: string,
+	) => Promise<void>;
+	updateSubtaskShouldCommit: (
+		taskId: string,
+		subtaskId: string,
+		shouldCommit: boolean,
+	) => Promise<void>;
 	deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
 	reorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
 	updateSubtaskText: (
 		taskId: string,
 		subtaskId: string,
 		text: string,
+	) => Promise<void>;
+
+	createStep: (
+		taskId: string,
+		subtaskId: string,
+		text: string,
+	) => Promise<void>;
+	toggleStep: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+	) => Promise<void>;
+	deleteStep: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+	) => Promise<void>;
+	updateStepText: (
+		taskId: string,
+		subtaskId: string,
+		stepId: string,
+		text: string,
+	) => Promise<void>;
+
+	createExecutionLog: (
+		taskId: string,
+		subtaskId: string,
+		log: Omit<ExecutionLog, "id">,
 	) => Promise<void>;
 }
 
@@ -124,12 +218,50 @@ interface UseFolderStorageReturn {
 	reorderFolders: (folderIds: string[]) => Promise<void>;
 }
 
+function mapBackendStep(step: StepFromBackend): Step {
+	return {
+		id: step.id,
+		text: step.text,
+		completed: step.completed,
+	};
+}
+
+function mapBackendLearnings(learnings: LearningsFromBackend): Learnings {
+	return {
+		patterns: learnings.patterns ?? [],
+		gotchas: learnings.gotchas ?? [],
+		context: learnings.context ?? [],
+	};
+}
+
+function mapBackendExecutionLog(log: ExecutionLogFromBackend): ExecutionLog {
+	return {
+		id: log.id,
+		startedAt: log.startedAt,
+		completedAt: log.completedAt,
+		duration: log.duration,
+		outcome: log.outcome as ExecutionOutcome,
+		summary: log.summary,
+		filesChanged: log.filesChanged ?? [],
+		learnings: mapBackendLearnings(log.learnings),
+		committed: log.committed,
+		commitHash: log.commitHash,
+		commitMessage: log.commitMessage,
+		errorMessage: log.errorMessage,
+	};
+}
+
 function mapBackendSubtask(subtask: SubtaskFromBackend): Subtask {
 	return {
 		id: subtask.id,
 		text: subtask.text,
-		completed: subtask.completed,
-		position: subtask.position,
+		status: subtask.status as SubtaskStatus,
+		order: subtask.order,
+		category: subtask.category as SubtaskCategory,
+		steps: subtask.steps.map(mapBackendStep),
+		shouldCommit: subtask.shouldCommit,
+		notes: subtask.notes,
+		executionLogs: subtask.executionLogs.map(mapBackendExecutionLog),
 	};
 }
 
@@ -139,6 +271,8 @@ function mapBackendTask(task: TaskFromBackend): Task {
 		text: task.text,
 		status: task.status as TaskStatus,
 		createdAt: task.createdAt,
+		description: task.description ?? "",
+		workingDirectory: task.workingDirectory ?? "",
 		tagIds: task.tagIds,
 		subtasks: task.subtasks.map(mapBackendSubtask),
 	};
@@ -152,6 +286,37 @@ function mapBackendFolder(folder: FolderFromBackend): Folder {
 		createdAt: folder.createdAt,
 		taskCount: folder.taskCount,
 		recentTasks: folder.recentTasks,
+	};
+}
+
+function createDefaultSubtask(
+	id: string,
+	text: string,
+	order: number,
+): Subtask {
+	return {
+		id,
+		text,
+		status: "waiting",
+		order,
+		category: "functional",
+		steps: [],
+		shouldCommit: true,
+		notes: "",
+		executionLogs: [],
+	};
+}
+
+function createDefaultTask(id: string, text: string, tagIds: string[]): Task {
+	return {
+		id,
+		text,
+		status: "pending",
+		createdAt: Date.now(),
+		description: "",
+		workingDirectory: "",
+		tagIds,
+		subtasks: [],
 	};
 }
 
@@ -182,14 +347,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	const createTask = useCallback(
 		async (text: string, tagIds?: string[]) => {
 			const tempId = `temp-${Date.now()}`;
-			const optimisticTask: Task = {
-				id: tempId,
-				text,
-				status: "pending",
-				createdAt: Date.now(),
-				tagIds: tagIds ?? [],
-				subtasks: [],
-			};
+			const optimisticTask = createDefaultTask(tempId, text, tagIds ?? []);
 
 			setTasks((prev) => [optimisticTask, ...prev]);
 
@@ -244,6 +402,46 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			toast.error("Failed to update task");
 		}
 	}, []);
+
+	const updateTaskDescription = useCallback(
+		async (id: string, description: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) => (t.id === id ? { ...t, description } : t));
+			});
+
+			try {
+				await invoke("tasks_update_description", { id, description });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update description");
+			}
+		},
+		[],
+	);
+
+	const updateTaskWorkingDirectory = useCallback(
+		async (id: string, path: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === id ? { ...t, workingDirectory: path } : t,
+				);
+			});
+
+			try {
+				await invoke("tasks_update_working_directory", { id, path });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update working directory");
+			}
+		},
+		[],
+	);
 
 	const deleteTask = useCallback(async (id: string) => {
 		let previousTasks: Task[] = [];
@@ -359,15 +557,14 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		async (taskId: string, text: string) => {
 			const tempId = `temp-${Date.now()}`;
 			const task = tasks.find((t) => t.id === taskId);
-			const maxPosition =
-				task?.subtasks.reduce((max, s) => Math.max(max, s.position), -1) ?? -1;
+			const maxOrder =
+				task?.subtasks.reduce((max, s) => Math.max(max, s.order), -1) ?? -1;
 
-			const optimisticSubtask: Subtask = {
-				id: tempId,
+			const optimisticSubtask = createDefaultSubtask(
+				tempId,
 				text,
-				completed: false,
-				position: maxPosition + 1,
-			};
+				maxOrder + 1,
+			);
 
 			setTasks((prev) =>
 				prev.map((t) =>
@@ -408,8 +605,8 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[tasks],
 	);
 
-	const toggleSubtask = useCallback(
-		async (taskId: string, subtaskId: string) => {
+	const updateSubtaskStatus = useCallback(
+		async (taskId: string, subtaskId: string, status: SubtaskStatus) => {
 			let previousTasks: Task[] = [];
 
 			setTasks((prev) => {
@@ -419,7 +616,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 						? {
 								...t,
 								subtasks: t.subtasks.map((s) =>
-									s.id === subtaskId ? { ...s, completed: !s.completed } : s,
+									s.id === subtaskId ? { ...s, status } : s,
 								),
 							}
 						: t,
@@ -427,10 +624,130 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			});
 
 			try {
-				await invoke("subtasks_toggle", { taskId, subtaskId });
+				await invoke("subtasks_update_status", { taskId, subtaskId, status });
 			} catch (error) {
 				setTasks(previousTasks);
-				toast.error("Failed to toggle subtask");
+				toast.error("Failed to update subtask status");
+			}
+		},
+		[],
+	);
+
+	const updateSubtaskOrder = useCallback(
+		async (taskId: string, subtaskId: string, order: number) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, order } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_update_order", { taskId, subtaskId, order });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update subtask order");
+			}
+		},
+		[],
+	);
+
+	const updateSubtaskCategory = useCallback(
+		async (taskId: string, subtaskId: string, category: SubtaskCategory) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, category } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_update_category", {
+					taskId,
+					subtaskId,
+					category,
+				});
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update subtask category");
+			}
+		},
+		[],
+	);
+
+	const updateSubtaskNotes = useCallback(
+		async (taskId: string, subtaskId: string, notes: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, notes } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_update_notes", { taskId, subtaskId, notes });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update subtask notes");
+			}
+		},
+		[],
+	);
+
+	const updateSubtaskShouldCommit = useCallback(
+		async (taskId: string, subtaskId: string, shouldCommit: boolean) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId ? { ...s, shouldCommit } : s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("subtasks_update_should_commit", {
+					taskId,
+					subtaskId,
+					shouldCommit,
+				});
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update subtask commit setting");
 			}
 		},
 		[],
@@ -468,15 +785,13 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				return prev.map((t) => {
 					if (t.id !== taskId) return t;
 					const subtaskMap = new Map(t.subtasks.map((s) => [s.id, s]));
-					return {
-						...t,
-						subtasks: subtaskIds
-							.map((id, index) => {
-								const subtask = subtaskMap.get(id);
-								return subtask ? { ...subtask, position: index } : null;
-							})
-							.filter((s): s is Subtask => s !== null),
-					};
+					const reorderedSubtasks = subtaskIds
+						.map((id, index) => {
+							const subtask = subtaskMap.get(id);
+							return subtask ? { ...subtask, order: index } : null;
+						})
+						.filter((s): s is Subtask => s !== null);
+					return { ...t, subtasks: reorderedSubtasks };
 				});
 			});
 
@@ -518,6 +833,234 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[],
 	);
 
+	const createStep = useCallback(
+		async (taskId: string, subtaskId: string, text: string) => {
+			const tempId = `temp-${Date.now()}`;
+			const optimisticStep: Step = { id: tempId, text, completed: false };
+
+			setTasks((prev) =>
+				prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId
+										? { ...s, steps: [...s.steps, optimisticStep] }
+										: s,
+								),
+							}
+						: t,
+				),
+			);
+
+			try {
+				const newStep = await invoke<StepFromBackend>("steps_create", {
+					taskId,
+					subtaskId,
+					text,
+				});
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? {
+									...t,
+									subtasks: t.subtasks.map((s) =>
+										s.id === subtaskId
+											? {
+													...s,
+													steps: s.steps.map((step) =>
+														step.id === tempId ? mapBackendStep(newStep) : step,
+													),
+												}
+											: s,
+									),
+								}
+							: t,
+					),
+				);
+			} catch (error) {
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? {
+									...t,
+									subtasks: t.subtasks.map((s) =>
+										s.id === subtaskId
+											? {
+													...s,
+													steps: s.steps.filter((step) => step.id !== tempId),
+												}
+											: s,
+									),
+								}
+							: t,
+					),
+				);
+				toast.error("Failed to create step");
+			}
+		},
+		[],
+	);
+
+	const toggleStep = useCallback(
+		async (taskId: string, subtaskId: string, stepId: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId
+										? {
+												...s,
+												steps: s.steps.map((step) =>
+													step.id === stepId
+														? { ...step, completed: !step.completed }
+														: step,
+												),
+											}
+										: s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("steps_toggle", { taskId, subtaskId, stepId });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to toggle step");
+			}
+		},
+		[],
+	);
+
+	const deleteStep = useCallback(
+		async (taskId: string, subtaskId: string, stepId: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId
+										? {
+												...s,
+												steps: s.steps.filter((step) => step.id !== stepId),
+											}
+										: s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("steps_delete", { taskId, subtaskId, stepId });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to delete step");
+			}
+		},
+		[],
+	);
+
+	const updateStepText = useCallback(
+		async (taskId: string, subtaskId: string, stepId: string, text: string) => {
+			let previousTasks: Task[] = [];
+
+			setTasks((prev) => {
+				previousTasks = prev;
+				return prev.map((t) =>
+					t.id === taskId
+						? {
+								...t,
+								subtasks: t.subtasks.map((s) =>
+									s.id === subtaskId
+										? {
+												...s,
+												steps: s.steps.map((step) =>
+													step.id === stepId ? { ...step, text } : step,
+												),
+											}
+										: s,
+								),
+							}
+						: t,
+				);
+			});
+
+			try {
+				await invoke("steps_update_text", { taskId, subtaskId, stepId, text });
+			} catch (error) {
+				setTasks(previousTasks);
+				toast.error("Failed to update step text");
+			}
+		},
+		[],
+	);
+
+	const createExecutionLog = useCallback(
+		async (
+			taskId: string,
+			subtaskId: string,
+			log: Omit<ExecutionLog, "id">,
+		) => {
+			try {
+				const newLog = await invoke<ExecutionLogFromBackend>(
+					"execution_logs_create",
+					{
+						taskId,
+						subtaskId,
+						startedAt: log.startedAt,
+						completedAt: log.completedAt,
+						duration: log.duration,
+						outcome: log.outcome,
+						summary: log.summary,
+						filesChanged: log.filesChanged,
+						patterns: log.learnings.patterns,
+						gotchas: log.learnings.gotchas,
+						context: log.learnings.context,
+						committed: log.committed,
+						commitHash: log.commitHash,
+						commitMessage: log.commitMessage,
+						errorMessage: log.errorMessage,
+					},
+				);
+				setTasks((prev) =>
+					prev.map((t) =>
+						t.id === taskId
+							? {
+									...t,
+									subtasks: t.subtasks.map((s) =>
+										s.id === subtaskId
+											? {
+													...s,
+													executionLogs: [
+														...s.executionLogs,
+														mapBackendExecutionLog(newLog),
+													],
+												}
+											: s,
+									),
+								}
+							: t,
+					),
+				);
+			} catch (error) {
+				toast.error("Failed to create execution log");
+			}
+		},
+		[],
+	);
+
 	return {
 		tasks,
 		tags,
@@ -525,16 +1068,27 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
+		updateTaskDescription,
+		updateTaskWorkingDirectory,
 		deleteTask,
 		setTaskTags,
 		createTag,
 		updateTag,
 		deleteTag,
 		createSubtask,
-		toggleSubtask,
+		updateSubtaskStatus,
+		updateSubtaskOrder,
+		updateSubtaskCategory,
+		updateSubtaskNotes,
+		updateSubtaskShouldCommit,
 		deleteSubtask,
 		reorderSubtasks,
 		updateSubtaskText,
+		createStep,
+		toggleStep,
+		deleteStep,
+		updateStepText,
+		createExecutionLog,
 	};
 }
 
@@ -633,7 +1187,6 @@ export function useFolderStorage(): UseFolderStorageReturn {
 	const reorderFolders = useCallback(async (folderIds: string[]) => {
 		let previousFolders: Folder[] = [];
 
-		// Reorder folders based on the new ID order
 		setFolders((prev) => {
 			previousFolders = prev;
 			const folderMap = new Map(prev.map((f) => [f.id, f]));
