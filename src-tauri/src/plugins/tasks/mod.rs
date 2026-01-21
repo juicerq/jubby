@@ -3,34 +3,34 @@ pub mod storage;
 pub mod types;
 
 use std::sync::RwLock;
-use types::TodoData;
+use types::TasksData;
 
 /// Thread-safe in-memory store with file persistence.
-pub struct TodoStore(pub RwLock<TodoData>);
+pub struct TasksStore(pub RwLock<TasksData>);
 
-impl TodoStore {
-    pub fn new(data: TodoData) -> Self {
+impl TasksStore {
+    pub fn new(data: TasksData) -> Self {
         Self(RwLock::new(data))
     }
 
-    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, TodoData> {
+    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, TasksData> {
         self.0.read().unwrap()
     }
 
-    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, TodoData> {
+    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, TasksData> {
         self.0.write().unwrap()
     }
 }
 
-/// Initialize the todo store, migrating from SQLite if needed.
-pub fn init_todo_store() -> Result<TodoStore, Box<dyn std::error::Error>> {
+/// Initialize the tasks store, migrating from SQLite or old todo directory if needed.
+pub fn init_tasks_store() -> Result<TasksStore, Box<dyn std::error::Error>> {
     let data = storage::load_or_migrate()?;
     tracing::info!(
-        target: "todo",
-        "Todo store initialized: {} folders, {} todos, {} tags",
+        target: "tasks",
+        "Tasks store initialized: {} folders, {} tasks, {} tags",
         data.folders.len(),
-        data.todos.len(),
+        data.tasks.len(),
         data.tags.len()
     );
-    Ok(TodoStore::new(data))
+    Ok(TasksStore::new(data))
 }

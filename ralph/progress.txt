@@ -2,13 +2,13 @@
 
 ## Overview
 - **Total tasks**: 15
-- **Completed**: 1
+- **Completed**: 2
 - **In Progress**: 0
-- **Remaining**: 14
+- **Remaining**: 13
 
 ## Fase 1: Rename "Todo" to "Tasks" (9 tasks)
 - [x] 1.1: Backend - Rename todo module to tasks and update types
-- [ ] 1.2: Backend - Update store and storage with data migration
+- [x] 1.2: Backend - Update store and storage with data migration
 - [ ] 1.3: Backend - Rename commands and update error messages
 - [ ] 1.4: Backend - Update lib.rs, logging.rs and paths.rs
 - [ ] 1.5: Frontend - Rename files and update types
@@ -43,3 +43,13 @@
   - Patterns discovered: Rust serde uses camelCase for JSON serialization via `#[serde(rename_all = "camelCase")]`
   - Gotchas encountered: The TasksData struct now uses `tasks: Vec<Task>` instead of `todos: Vec<Todo>` - storage.rs and commands.rs need to be updated to use `.tasks` field access
   - Useful context: The backend rename is split into 4 tasks (1.1-1.4) to allow incremental commits; cargo check will fail until all 4 are done
+
+## 2026-01-21 06:47 - Fase 1.2
+- What was implemented: Updated mod.rs (TodoStore→TasksStore, init_todo_store()→init_tasks_store(), tracing target to "tasks"), updated storage.rs (get_todo_dir()→get_tasks_dir(), paths to tasks/tasks.json, migration from old todo/todo.json, type references to TasksData/Task)
+- Files changed:
+  - src-tauri/src/plugins/tasks/mod.rs
+  - src-tauri/src/plugins/tasks/storage.rs
+- **Learnings for future iterations:**
+  - Patterns discovered: Migration logic follows priority order: new JSON → old JSON → SQLite → default. Each migration cleans up old files.
+  - Gotchas encountered: The `data.todos` field is now `data.tasks` - commands.rs needs `.tasks` not `.todos` for field access
+  - Useful context: Old todo directory is removed after migration using remove_dir_all, with graceful error handling if removal fails
