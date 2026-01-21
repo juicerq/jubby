@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type {
 	ExecutionLog,
@@ -127,10 +127,22 @@ interface FolderFromBackend {
 	recentTasks: RecentTask[];
 }
 
+interface ExecutionResultFromBackend {
+	sessionId: string;
+	outcome: string;
+	aborted: boolean;
+	errorMessage: string | null;
+}
+
 interface UseTasksStorageReturn {
 	tasks: Task[];
 	tags: Tag[];
 	isLoading: boolean;
+
+	// Execution state
+	isExecuting: boolean;
+	executingSubtaskId: string | null;
+	currentSessionId: string | null;
 
 	createTask: (text: string, tagIds?: string[]) => Promise<void>;
 	updateTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
@@ -205,6 +217,14 @@ interface UseTasksStorageReturn {
 		subtaskId: string,
 		log: Omit<ExecutionLog, "id">,
 	) => Promise<void>;
+
+	// Execution functions
+	ensureOpenCodeServer: () => Promise<boolean>;
+	executeSubtask: (
+		taskId: string,
+		subtaskId: string,
+	) => Promise<ExecutionResultFromBackend | null>;
+	abortExecution: () => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -324,6 +344,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [tags, setTags] = useState<Tag[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
+
+	const [isExecuting, setIsExecuting] = useState(false);
+	const [executingSubtaskId, setExecutingSubtaskId] = useState<string | null>(
+		null,
+	);
+	const currentSessionIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		const loadData = async () => {
@@ -1061,10 +1087,71 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[],
 	);
 
+	const ensureOpenCodeServer = useCallback(async (): Promise<boolean> => {
+		try {
+			await invoke("opencode_ensure_server");
+			return true;
+		} catch (error) {
+			console.error("Failed to ensure OpenCode server:", error);
+			toast.error("Failed to start OpenCode server");
+			return false;
+		}
+	}, []);
+
+	const executeSubtask = useCallback(
+		async (
+			taskId: string,
+			subtaskId: string,
+		): Promise<ExecutionResultFromBackend | null> => {
+			if (isExecuting) {
+				toast.error("Another subtask is already executing");
+				return null;
+			}
+
+			setIsExecuting(true);
+			setExecutingSubtaskId(subtaskId);
+
+			try {
+				const result = await invoke<ExecutionResultFromBackend>(
+					"tasks_execute_subtask",
+					{ taskId, subtaskId },
+				);
+				currentSessionIdRef.current = result.sessionId;
+				return result;
+			} catch (error) {
+				console.error("Failed to execute subtask:", error);
+				toast.error("Failed to execute subtask");
+				return null;
+			} finally {
+				setIsExecuting(false);
+				setExecutingSubtaskId(null);
+				currentSessionIdRef.current = null;
+			}
+		},
+		[isExecuting],
+	);
+
+	const abortExecution = useCallback(async (): Promise<void> => {
+		const sessionId = currentSessionIdRef.current;
+		if (!sessionId) {
+			return;
+		}
+
+		try {
+			await invoke("opencode_abort_session", { sessionId });
+		} catch (error) {
+			console.error("Failed to abort execution:", error);
+			toast.error("Failed to abort execution");
+		}
+	}, []);
+
 	return {
 		tasks,
 		tags,
 		isLoading,
+		isExecuting,
+		executingSubtaskId,
+		currentSessionId: currentSessionIdRef.current,
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
@@ -1089,6 +1176,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		deleteStep,
 		updateStepText,
 		createExecutionLog,
+		ensureOpenCodeServer,
+		executeSubtask,
+		abortExecution,
 	};
 }
 

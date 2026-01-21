@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 6 of 19 completed
+Task 7 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -10,7 +10,7 @@ Task 6 of 19 completed
 - [x] 4. Backend - OpenCode server management
 - [x] 5. Backend - Execution orchestration command
 - [x] 6. Frontend - Update useTasksStorage hook with new types
-- [ ] 7. Frontend - Update useTasksStorage hook with execution functions
+- [x] 7. Frontend - Update useTasksStorage hook with execution functions
 - [ ] 8. Frontend - Task creation flow update
 - [ ] 9. Frontend - Subtask expandable component
 - [ ] 10. Frontend - Running state animation
@@ -267,3 +267,30 @@ Task 6 of 19 completed
   - Poll interval is 500ms (POLL_INTERVAL)
   - The prompt template instructs AI to work on highest priority task and update progress.txt
   - Frontend will call this command and handle the ExecutionResult to create ExecutionLog entries
+
+## 2026-01-21 15:40 - Task 7: Frontend - Update useTasksStorage hook with execution functions
+
+### What was implemented
+- Added `ExecutionResultFromBackend` interface matching backend ExecutionResult struct
+- Added execution state to hook: `isExecuting`, `executingSubtaskId`, `currentSessionIdRef` (using useRef to avoid stale closures)
+- Added `ensureOpenCodeServer()` function: calls `opencode_ensure_server` backend command
+- Added `executeSubtask(taskId, subtaskId)` function: invokes `tasks_execute_subtask`, manages execution state (sets isExecuting/executingSubtaskId before, clears in finally block), returns ExecutionResultFromBackend
+- Added `abortExecution()` function: calls `opencode_abort_session` with current session ID from ref
+- Updated `UseTasksStorageReturn` interface with all execution-related state and functions
+- Added `useRef` import from React
+
+### Files changed
+- `src/plugins/tasks/useTasksStorage.ts`
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Using `useRef` for session ID avoids stale closure issues in async callbacks (state captured at callback creation time would be stale)
+  - Execution state follows pattern: set before try → clear in finally → this ensures state is always reset even on error
+  - Backend returns camelCase (sessionId, errorMessage) thanks to serde rename_all
+- **Gotchas encountered:**
+  - The `currentSessionId` in return object needs `.current` since it's a ref, but TypeScript interface expects string | null (works because ref.current is the value)
+  - Must guard `executeSubtask` with `isExecuting` check to prevent concurrent executions
+- **Useful context:**
+  - Execution functions are at lines 1090-1146 in useTasksStorage.ts
+  - The hook now exports 30 functions total (27 CRUD + 3 execution)
+  - UI components can use `executingSubtaskId` to show running state per-subtask
