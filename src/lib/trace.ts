@@ -128,3 +128,34 @@ class TraceImpl implements Trace {
 export function createTrace(initialContext?: TraceContext): Trace {
 	return new TraceImpl(initialContext);
 }
+
+// Re-export invoke with trace propagation support
+export { invoke as baseInvoke } from "@tauri-apps/api/core";
+
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+/**
+ * Invoke a Tauri command with optional trace propagation.
+ *
+ * When a trace is provided, the trace_id is automatically added to the payload,
+ * allowing the backend to continue the trace via `Trace::continue_from(trace_id)`.
+ *
+ * @example
+ * ```ts
+ * // Without trace
+ * const result = await tracedInvoke('my_command', { arg1: 'value' });
+ *
+ * // With trace propagation
+ * const trace = createTrace({ plugin: 'tasks' });
+ * const result = await tracedInvoke('my_command', { arg1: 'value' }, trace);
+ * trace.end();
+ * ```
+ */
+export async function tracedInvoke<T>(
+	cmd: string,
+	args?: Record<string, unknown>,
+	trace?: Trace,
+): Promise<T> {
+	const payload = trace ? { ...args, trace_id: trace.id } : args;
+	return tauriInvoke<T>(cmd, payload);
+}
