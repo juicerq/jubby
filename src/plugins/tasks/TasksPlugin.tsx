@@ -8,8 +8,10 @@ import {
 	GripVertical,
 	Minus,
 	Pencil,
+	Play,
 	Plus,
 	Settings,
+	Square,
 	Tag,
 	TestTube2,
 	Trash2,
@@ -91,6 +93,8 @@ function TasksPlugin(_props: PluginProps) {
 		tasks,
 		tags,
 		isLoading: tasksLoading,
+		isExecuting,
+		executingSubtaskId,
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
@@ -111,6 +115,8 @@ function TasksPlugin(_props: PluginProps) {
 		toggleStep,
 		deleteStep,
 		updateStepText,
+		executeSubtask,
+		abortExecution,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	const isLoading =
@@ -412,6 +418,10 @@ function TasksPlugin(_props: PluginProps) {
 					onToggleStep={toggleStep}
 					onDeleteStep={deleteStep}
 					onUpdateStepText={updateStepText}
+					onExecuteSubtask={executeSubtask}
+					onAbortExecution={abortExecution}
+					isExecuting={isExecuting}
+					executingSubtaskId={executingSubtaskId}
 					onNavigateBack={handleNavigateToList}
 				/>
 			</div>
@@ -1131,6 +1141,10 @@ interface TasksPluginSubtaskListProps {
 	onToggleStep: (subtaskId: string, stepId: string) => void;
 	onDeleteStep: (subtaskId: string, stepId: string) => void;
 	onUpdateStepText: (subtaskId: string, stepId: string, text: string) => void;
+	onExecuteSubtask: (subtaskId: string) => void;
+	onAbortExecution: () => void;
+	isExecuting: boolean;
+	executingSubtaskId: string | null;
 }
 
 function TasksPluginSubtaskList({
@@ -1146,6 +1160,10 @@ function TasksPluginSubtaskList({
 	onToggleStep,
 	onDeleteStep,
 	onUpdateStepText,
+	onExecuteSubtask,
+	onAbortExecution,
+	isExecuting,
+	executingSubtaskId,
 }: TasksPluginSubtaskListProps) {
 	const {
 		pendingId: pendingDeleteId,
@@ -1415,6 +1433,10 @@ function TasksPluginSubtaskList({
 								onUpdateStepText={(stepId, text) =>
 									onUpdateStepText(item.subtask.id, stepId, text)
 								}
+								onExecute={() => onExecuteSubtask(item.subtask.id)}
+								onAbort={onAbortExecution}
+								isExecuting={isExecuting}
+								isThisExecuting={executingSubtaskId === item.subtask.id}
 								isDragging={
 									draggedId === item.subtask.id && isDraggingRef.current
 								}
@@ -1474,6 +1496,10 @@ interface TasksPluginSubtaskExpandableProps {
 	onToggleStep: (stepId: string) => void;
 	onDeleteStep: (stepId: string) => void;
 	onUpdateStepText: (stepId: string, text: string) => void;
+	onExecute: () => void;
+	onAbort: () => void;
+	isExecuting: boolean;
+	isThisExecuting: boolean;
 	isDragging?: boolean;
 	isAnyDragging?: boolean;
 	onMouseDown?: (e: React.MouseEvent) => void;
@@ -1493,6 +1519,10 @@ function TasksPluginSubtaskExpandable({
 	onToggleStep,
 	onDeleteStep,
 	onUpdateStepText,
+	onExecute,
+	onAbort,
+	isExecuting,
+	isThisExecuting,
 	isDragging = false,
 	isAnyDragging = false,
 	onMouseDown,
@@ -1699,6 +1729,38 @@ function TasksPluginSubtaskExpandable({
 				<TasksPluginSubtaskExpandableCategoryBadge
 					category={subtask.category}
 				/>
+
+				{isThisExecuting ? (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onAbort();
+						}}
+						className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded bg-red-500/20 transition-all duration-150 ease-out hover:bg-red-500/30 active:scale-90"
+						aria-label="Stop execution"
+					>
+						<Square className="h-2.5 w-2.5 fill-red-400 text-red-400" />
+					</button>
+				) : (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onExecute();
+						}}
+						disabled={isExecuting}
+						className={cn(
+							"flex h-5 w-5 shrink-0 items-center justify-center rounded transition-all duration-150 ease-out active:scale-90",
+							isExecuting
+								? "cursor-not-allowed opacity-30"
+								: "cursor-pointer opacity-0 hover:bg-emerald-500/20 group-hover/subtask:opacity-100",
+						)}
+						aria-label="Run subtask"
+					>
+						<Play className="h-3 w-3 fill-emerald-400 text-emerald-400" />
+					</button>
+				)}
 
 				<motion.div
 					animate={{ rotate: isExpanded ? 90 : 0 }}

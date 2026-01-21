@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 9 of 19 completed
+Task 11 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -14,7 +14,7 @@ Task 9 of 19 completed
 - [x] 8. Frontend - Task creation flow update
 - [x] 9. Frontend - Subtask expandable component
 - [ ] 10. Frontend - Running state animation
-- [ ] 11. Frontend - Run/Stop button logic
+- [x] 11. Frontend - Run/Stop button logic
 - [ ] 12. Frontend - Loop (Run All) button
 - [ ] 13. Frontend - Drag to reorder subtasks
 - [ ] 14. Frontend - History section
@@ -372,3 +372,34 @@ Task 9 of 19 completed
   - Sub-components: StatusBadge, CategoryBadge, Steps, Details, LastRun
   - Notes textarea has onBlur save behavior (debounced would be better for production)
   - The "see all (N)" link is a placeholder - full execution history view is Task 15
+
+## 2026-01-21 16:00 - Task 11: Frontend - Run/Stop button logic
+
+### What was implemented
+- Added Run/Stop button to each subtask in the collapsed row (between category badge and chevron)
+- Run button: visible on hover, emerald green Play icon, onClick triggers `executeSubtask`
+- Stop button: visible when this subtask is executing, red Square icon with filled background, onClick triggers `abortExecution`
+- Disabled state: when another subtask is executing, Run button is grayed out (opacity-30, cursor-not-allowed)
+- Passed execution state through full prop chain: TasksPlugin → TasksPluginTaskDetail → TasksPluginSubtaskList → TasksPluginSubtaskExpandable
+- Added 4 new props to TasksPluginSubtaskExpandable: onExecute, onAbort, isExecuting, isThisExecuting
+- Added 4 new props to TasksPluginSubtaskList: onExecuteSubtask, onAbortExecution, isExecuting, executingSubtaskId
+- Added 4 new props to TasksPluginTaskDetail: onExecuteSubtask, onAbortExecution, isExecuting, executingSubtaskId
+- Destructured isExecuting, executingSubtaskId, executeSubtask, abortExecution from useTasksStorage in main TasksPlugin
+
+### Files changed
+- `src/plugins/tasks/TasksPlugin.tsx` - Added Run/Stop button UI, updated SubtaskList and SubtaskExpandable interfaces and implementations
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added execution props to interface and passed to SubtaskList
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Prop drilling pattern for execution state: pass `isExecuting` (global) + `executingSubtaskId` down, components determine their own state with `isThisExecuting = executingSubtaskId === subtask.id`
+  - Fill pattern for Play/Square icons: `fill-{color}` + `text-{color}` makes solid icon with clean appearance
+  - Disabled button pattern: `disabled={isExecuting}` + conditional className for visual + `cursor-not-allowed`
+- **Gotchas encountered:**
+  - Play and Square icons need to be imported from lucide-react
+  - When adding props at multiple levels, start from innermost component (where they're used) and work outward to avoid missing intermediate levels
+  - The `onExecuteSubtask` callback needs task.id at TaskDetail level but only subtaskId at SubtaskList level - wrap callback appropriately
+- **Useful context:**
+  - Run/Stop button is located at lines ~1711-1744 in TasksPlugin.tsx (between CategoryBadge and ChevronRight)
+  - Execution state destructured from useTasksStorage at lines ~92-119 in TasksPlugin.tsx
+  - TasksPluginSubtaskExpandableProps interface at line ~1479 includes all execution-related props

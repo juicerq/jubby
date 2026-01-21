@@ -72,6 +72,10 @@ interface TasksPluginTaskDetailProps {
 		stepId: string,
 		text: string,
 	) => Promise<void>;
+	onExecuteSubtask: (taskId: string, subtaskId: string) => void;
+	onAbortExecution: () => void;
+	isExecuting: boolean;
+	executingSubtaskId: string | null;
 	onNavigateBack: () => void;
 }
 
@@ -94,6 +98,10 @@ function TasksPluginTaskDetail({
 	onToggleStep,
 	onDeleteStep,
 	onUpdateStepText,
+	onExecuteSubtask,
+	onAbortExecution,
+	isExecuting,
+	executingSubtaskId,
 	onNavigateBack,
 }: TasksPluginTaskDetailProps) {
 	const {
@@ -194,6 +202,12 @@ function TasksPluginTaskDetail({
 						onUpdateStepText={(subtaskId, stepId, text) =>
 							onUpdateStepText(task.id, subtaskId, stepId, text)
 						}
+						onExecuteSubtask={(subtaskId) =>
+							onExecuteSubtask(task.id, subtaskId)
+						}
+						onAbortExecution={onAbortExecution}
+						isExecuting={isExecuting}
+						executingSubtaskId={executingSubtaskId}
 					/>
 				</div>
 			</section>

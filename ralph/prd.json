@@ -187,7 +187,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "USE THE frontend-design SKILL. Button states must be clear. Disabled state should be visually distinct but not ugly."
 	},
 	{
