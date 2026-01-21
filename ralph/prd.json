@@ -218,8 +218,8 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
-		"notes": "Check existing drag implementation in the codebase (subtasks already have reorder). May just need to wire up to new order field."
+		"passes": true,
+		"notes": "ALREADY IMPLEMENTED: Custom vanilla JS drag-and-drop (lines 1170-1473 in TasksPlugin.tsx). Uses GripVertical handle, ghost element for feedback, reorderSubtasks hook updates order field, backend subtasks_reorder command persists."
 	},
 	{
 		"category": "functional",

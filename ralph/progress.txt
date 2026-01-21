@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 14 of 19 completed
+Task 15 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -16,7 +16,7 @@ Task 14 of 19 completed
 - [x] 10. Frontend - Running state animation
 - [x] 11. Frontend - Run/Stop button logic
 - [x] 12. Frontend - Loop (Run All) button
-- [ ] 13. Frontend - Drag to reorder subtasks
+- [x] 13. Frontend - Drag to reorder subtasks
 - [ ] 14. Frontend - History section
 - [ ] 15. Frontend - Execution log detail view in subtask
 - [x] 16. Frontend - OpenCode server lifecycle
@@ -499,3 +499,31 @@ Task 14 of 19 completed
   - Loop logic is at lines ~1175-1227 in useTasksStorage.ts
   - TasksPluginRunAllButton component is at lines ~423-471 in TasksPluginTaskDetail.tsx
   - Button placement is in Subtasks section header (right side)
+
+## 2026-01-21 16:16 - Task 13: Frontend - Drag to reorder subtasks
+
+### What was implemented
+- **ALREADY COMPLETE** - Verified existing implementation satisfies all PRD requirements
+- Custom vanilla JavaScript drag-and-drop (no external library like dnd-kit)
+- GripVertical drag handle on each subtask (left side)
+- Ghost element shows insertion point during drag
+- `reorderSubtasks` hook updates `order` field for each subtask
+- Backend `subtasks_reorder` command persists new order to JSON
+
+### Files verified
+- `src/plugins/tasks/TasksPlugin.tsx` (lines 1170-1473 for drag implementation, line 1702 for grip handle)
+- `src/plugins/tasks/useTasksStorage.ts` (lines 832-859 for reorderSubtasks hook)
+- `src-tauri/src/plugins/tasks/commands.rs` (lines 495-517 for subtasks_reorder command)
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - This codebase uses custom vanilla JS for drag-and-drop instead of dnd-kit
+  - Hysteresis (8px threshold) prevents jitter when cursor is near drop zone boundaries
+  - Uses `itemRefs` Map to cache DOM bounding rects for performance
+- **Gotchas encountered:**
+  - PRD marked as `passes: false` but implementation was already complete from earlier task
+  - Always verify implementation status before starting work
+- **Useful context:**
+  - Drag state: draggedId, dragOverId, dropPosition, isActiveDrag
+  - Mouse handlers: handleMouseDown (line 1233), handleMouseMove (line 1240), handleMouseUp (line 1325)
+  - Ghost element rendered at lines 1408-1419
