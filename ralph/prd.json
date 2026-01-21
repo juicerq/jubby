@@ -1,304 +1,235 @@
 [
 	{
 		"category": "functional",
-		"description": "Backend - Update data model types",
+		"description": "Rust - Create tracing types and data structures",
 		"steps": [
-			"In src-tauri/src/plugins/tasks/types.rs: Update Task struct to add description: String and workingDirectory: String fields",
-			"Update Subtask struct: rename 'completed' to 'status' with enum TaskStatus (waiting, in_progress, completed)",
-			"Add 'order: u32' field to Subtask for drag reorder",
-			"Add 'category: SubtaskCategory' enum (functional, test) to Subtask",
-			"Add 'steps: Vec<Step>' to Subtask where Step has id, text, completed",
-			"Add 'shouldCommit: bool' and 'notes: String' to Subtask",
-			"Add 'executionLogs: Vec<ExecutionLog>' to Subtask",
-			"Create ExecutionLog struct with: id, startedAt, completedAt, duration, outcome (enum: success/partial/failed/aborted), summary, filesChanged, learnings (patterns/gotchas/context vecs), committed, commitHash, commitMessage, errorMessage",
-			"Run cargo check to verify compilation"
-		],
-		"shouldCommit": true,
-		"passes": false,
-		"notes": "This is the foundation. All other tasks depend on these types. Use serde for serialization. Make new fields Option where needed for migration compatibility."
-	},
-	{
-		"category": "functional",
-		"description": "Backend - Data migration",
-		"steps": [
-			"In storage.rs: Create migrate_task_data function that detects old format",
-			"Old format detection: subtask has 'completed: bool' instead of 'status'",
-			"Migration logic: completed=true → status='completed', else 'waiting'",
-			"Add default values: description='', workingDirectory='', order=index, category='functional', steps=[], shouldCommit=true, notes='', executionLogs=[]",
-			"Call migration on load if old format detected",
-			"Save migrated data immediately after migration",
-			"Run cargo check and test with sample old-format data"
-		],
-		"shouldCommit": true,
-		"passes": false,
-		"notes": "Must be backward compatible. Test with existing tasks.json if it exists. Migration should be idempotent (safe to run multiple times)."
-	},
-	{
-		"category": "functional",
-		"description": "Backend - CRUD commands for new fields",
-		"steps": [
-			"Add tasks_update_description command: updates task.description",
-			"Add tasks_update_working_directory command: updates task.workingDirectory, validates path exists",
-			"Add subtasks_update_status command: updates subtask.status enum",
-			"Add subtasks_update_order command: updates subtask.order (for reorder)",
-			"Add subtasks_update_category command: updates subtask.category",
-			"Add subtasks_update_notes command: updates subtask.notes",
-			"Add subtasks_update_should_commit command: toggles shouldCommit",
-			"Add steps_create, steps_toggle, steps_delete, steps_update_text commands",
-			"Add execution_logs_create command: adds new log entry to subtask",
-			"Register all commands in lib.rs",
+			"Create src-tauri/src/tracing/ directory",
+			"Create types.rs with: LogLevel enum (debug, info, warn, error, trace_end)",
+			"Add LogEntry struct with ts, trace, level, msg, ctx, err, duration_ms, status fields",
+			"Add TraceError struct with message (String) and code (&'static str) fields",
+			"Use serde with skip_serializing_if for optional fields (err, duration_ms, status)",
+			"Use short field names (ts, msg, ctx) to keep log lines compact",
 			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Follow existing patterns in commands.rs. Each command: validate input → get write lock → find entity → update → save_to_json."
+		"notes": "All fields use short names for compact JSON. LogLevel uses lowercase serialization (debug, info, etc). TraceError code is &'static str for zero-copy error codes."
 	},
 	{
 		"category": "functional",
-		"description": "Backend - OpenCode server management",
+		"description": "Rust - Implement LogWriter with buffered channel",
 		"steps": [
-			"Create src-tauri/src/plugins/tasks/opencode.rs module",
-			"Add opencode_ensure_server command: checks if server running on port 4096, starts if not",
-			"Use tokio::process::Command to spawn 'opencode serve --port 4096'",
-			"Add opencode_health_check command: GET http://localhost:4096/health",
-			"Add opencode_create_session command: POST /session with title",
-			"Add opencode_send_prompt command: POST /session/{id}/message with prompt parts",
-			"Add opencode_poll_status command: GET /session/status, returns session status",
-			"Add opencode_abort_session command: POST /session/{id}/abort",
-			"Add state to track server PID for cleanup on app exit",
-			"Register all commands in lib.rs",
+			"Create writer.rs module",
+			"Create LogWriter struct with mpsc::Sender<LogEntry>",
+			"Implement spawn() that creates channel and spawns writer thread",
+			"Writer thread: buffer Vec<LogEntry> with capacity 32",
+			"Implement recv_timeout(100ms) loop for non-blocking receive",
+			"Flush buffer when: buffer.len() >= 32 OR 100ms elapsed since last flush",
+			"flush_buffer(): get today's date, open file in append mode, write each entry as JSON line",
+			"Handle RecvTimeoutError::Disconnected for graceful shutdown (final flush)",
+			"Implement send(&self, entry: LogEntry) as fire-and-forget",
 			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Use reqwest for HTTP client. Handle errors gracefully: server not running, network issues. Implement auto-restart logic (try once, then report error)."
+		"notes": "File path: ~/.local/share/jubby/logs/traces/YYYY-MM-DD.jsonl. Use chrono::Local for date. OpenOptions with create(true).append(true). Buffer prevents excessive file I/O."
 	},
 	{
 		"category": "functional",
-		"description": "Backend - Execution orchestration command",
+		"description": "Rust - Implement ContextGuard with RAII",
 		"steps": [
-			"Add tasks_execute_subtask command that orchestrates full execution",
-			"Parameters: taskId, subtaskId",
-			"Logic: 1) ensure server running, 2) create session, 3) build prompt with task context + subtask + learnings, 4) send prompt, 5) poll until idle, 6) return session result",
-			"Build prompt template with: task.description, subtask.text, subtask.steps, subtask.notes, aggregated learnings from executionLogs, JSON path, schema",
-			"Include workingDirectory in prompt context",
-			"Handle abort: if session aborted, mark log as 'aborted'",
+			"Create guard.rs module",
+			"Create ContextGuard struct holding Arc<Trace>",
+			"Implement Drop trait that calls trace.pop_context()",
+			"Guard must be Send + Sync for async compatibility",
 			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "This is the core execution logic. The prompt must instruct AI to edit the JSON file directly. Include all learnings from previous executionLogs."
+		"notes": "RAII pattern ensures context is always removed when guard goes out of scope, even on panic/early return. The Arc<Trace> reference allows the guard to be moved across await points."
 	},
 	{
 		"category": "functional",
-		"description": "Frontend - Update useTasksStorage hook with new types",
+		"description": "Rust - Implement Trace struct core",
 		"steps": [
-			"Update Task interface in useTasksStorage.ts with description, workingDirectory",
-			"Update Subtask interface: status enum, order, category, steps[], shouldCommit, notes, executionLogs[]",
-			"Add Step interface: id, text, completed",
-			"Add ExecutionLog interface with all fields",
-			"Add updateTaskDescription(id, description) function",
-			"Add updateTaskWorkingDirectory(id, path) function",
-			"Add updateSubtaskStatus(taskId, subtaskId, status) function",
-			"Add updateSubtaskOrder(taskId, subtaskId, order) function",
-			"Add updateSubtaskCategory, updateSubtaskNotes, updateSubtaskShouldCommit functions",
-			"Add createStep, toggleStep, deleteStep, updateStepText functions",
-			"Add createExecutionLog function",
-			"Run bun tsc --noEmit"
+			"Create trace.rs module",
+			"Create Trace struct with: id (String), started_at (Instant), context (RwLock<Vec<Value>>), writer_tx (Sender<LogEntry>), has_error (AtomicBool)",
+			"Implement generate_trace_id() -> String using format!(\"{:08x}\", rand::random::<u32>())",
+			"Implement new() that creates trace with generated ID and gets writer from global",
+			"Implement continue_from(id: String) for frontend trace continuation",
+			"Implement with(key, value) builder pattern that adds to initial context",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Follow existing optimistic update patterns. All new functions follow same pattern: update state → invoke backend → rollback on error."
+		"notes": "Use RwLock for context stack (multiple readers, single writer). AtomicBool for has_error avoids lock contention. Trace is Send + Sync for async usage."
 	},
 	{
 		"category": "functional",
-		"description": "Frontend - Update useTasksStorage hook with execution functions",
+		"description": "Rust - Implement Trace context methods",
 		"steps": [
-			"Add executeSubtask(taskId, subtaskId) async function",
-			"Add abortExecution(sessionId) function",
-			"Add state for currentSessionId and isExecuting",
-			"executeSubtask: set isExecuting=true, invoke tasks_execute_subtask, handle result",
-			"Track which subtask is currently executing (executingSubtaskId state)",
-			"Add ensureOpenCodeServer() function that calls backend",
-			"Run bun tsc --noEmit"
+			"Implement push(&self, ctx: Value) -> ContextGuard that adds context to stack",
+			"Implement pop_context(&self) that removes last context from stack (called by ContextGuard::drop)",
+			"Implement merged_context(&self) -> Value that merges all context stack into single object",
+			"Merged context: later values override earlier ones for same key",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Execution state is important for UI (disable other Run buttons, show Stop button). Consider using useRef for sessionId to avoid stale closures."
+		"notes": "push() acquires write lock, adds context, returns ContextGuard. merged_context() acquires read lock, iterates stack merging into single Value::Object."
 	},
 	{
 		"category": "functional",
-		"description": "Frontend - Task creation flow update",
+		"description": "Rust - Implement Trace logging methods",
 		"steps": [
-			"Update task creation UI to include description field (optional textarea)",
-			"Add workingDirectory field with file picker button",
-			"Store lastWorkingDirectory in localStorage, use as default",
-			"Validate workingDirectory is not empty on create",
-			"Update createTask to pass description and workingDirectory",
-			"Run bun tsc --noEmit"
+			"Implement emit(&self, level: LogLevel, msg: &str, err: Option<TraceError>)",
+			"emit() creates LogEntry with current timestamp (ISO 8601), trace id, level, msg, merged context, err",
+			"Sends entry to writer via channel (fire-and-forget)",
+			"If err.is_some(), set has_error to true",
+			"Implement debug(&self, msg: &str), info(&self, msg: &str), warn(&self, msg: &str)",
+			"Implement error(&self, msg: &str, err: TraceError)",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Keep creation flow simple but complete. Description can be empty initially. WorkingDirectory is required."
+		"passes": false,
+		"notes": "Timestamp format: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true). Convenience methods just call emit() with appropriate LogLevel."
 	},
 	{
 		"category": "functional",
-		"description": "Frontend - Subtask expandable component",
+		"description": "Rust - Implement Trace Drop for trace_end",
 		"steps": [
-			"Create TasksPluginSubtaskExpandable component",
-			"Props: subtask, isExpanded, onToggleExpand, all CRUD callbacks",
-			"Collapsed state: shows text, status badge, category badge, Run/Stop button",
-			"Expanded state: shows steps checklist, details (category dropdown, commit toggle, notes), last execution log",
-			"Add smooth expand/collapse animation (height transition)",
-			"Steps section: checkboxes, add step input, delete step button",
-			"Details section: category dropdown, shouldCommit checkbox, notes textarea",
-			"Last run section: shows most recent executionLog summary, 'ver todos (N)' link",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Animation should be subtle and satisfying. No borders between sections, only title separators. Expand icon rotates on expand."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - Running state animation",
-		"steps": [
-			"Create CSS animation for neon border effect (white/gray tones)",
-			"Animation: gradient that rotates around the border",
-			"Apply animation class when subtask.id === executingSubtaskId",
-			"Use Tailwind + custom CSS for the animation (exception for complex animation)",
-			"Ensure animation is performant (use transform/opacity)",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. The animation should feel premium and satisfying. Reference: neon glow effects, but subtle with white/gray palette."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - Run/Stop button logic",
-		"steps": [
-			"Add Run button to each subtask (visible when not executing)",
-			"Run button: onClick calls executeSubtask(taskId, subtask.id)",
-			"When this subtask is executing: show Stop button instead",
-			"Stop button: onClick calls abortExecution(sessionId)",
-			"When OTHER subtask is executing: disable Run button (gray, not clickable)",
-			"Add loading spinner inside Stop button",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Button states must be clear. Disabled state should be visually distinct but not ugly."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - Loop (Run All) button",
-		"steps": [
-			"Add 'Run All' button above subtasks list (next to section header)",
-			"Loop logic: find first subtask with status 'waiting', execute it",
-			"On completion: check if more 'waiting' subtasks exist, continue",
-			"Stop when: all subtasks completed OR user clicks Stop",
-			"During loop: button shows 'Stop' instead of 'Run All'",
-			"Add isLooping state to track loop mode",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Loop respects subtask order (order field). If a subtask fails, loop should continue to next (don't block on failures)."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - Drag to reorder subtasks",
-		"steps": [
-			"Add drag handle to each subtask (grip icon on left)",
-			"Implement drag and drop using existing pattern (check if dnd-kit is already used)",
-			"On drop: update order field for affected subtasks",
-			"Call updateSubtaskOrder for each changed subtask",
-			"Visual feedback during drag (opacity, placeholder)",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "ALREADY IMPLEMENTED: Custom vanilla JS drag-and-drop (lines 1170-1473 in TasksPlugin.tsx). Uses GripVertical handle, ghost element for feedback, reorderSubtasks hook updates order field, backend subtasks_reorder command persists."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - History section",
-		"steps": [
-			"Add HISTORY section at bottom of Task detail view",
-			"Aggregate all executionLogs from all subtasks, sort by startedAt desc",
-			"Each log entry shows: timestamp, subtask name, outcome badge",
-			"Clicking entry expands to show full details (summary, files, learnings)",
-			"Limit to last 20 entries, with 'show more' if needed",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Timeline style, clean and scannable. Outcome badges: success=green, partial=yellow, failed=red, aborted=gray."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - Execution log detail view in subtask",
-		"steps": [
-			"In expanded subtask, show 'Last run' section with most recent log",
-			"Display: timestamp, outcome, summary (truncated)",
-			"Add 'ver todos (N)' link that expands to show all logs for this subtask",
-			"Expanded view: list of all logs with full details",
-			"Each log shows: summary, filesChanged list, learnings (patterns/gotchas/context), commit info",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Inline expansion, no navigation away. Learnings should be well formatted (bullet points)."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - OpenCode server lifecycle",
-		"steps": [
-			"In TasksPlugin main component: call ensureOpenCodeServer on mount",
-			"Show subtle indicator if server is starting (small spinner in header?)",
-			"Handle server error: show toast/notification with retry option",
-			"Add health check on interval (every 30s) to detect server crashes",
-			"Auto-restart once on crash, then show error",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Server management should be invisible when working. Only show UI on errors. Don't block plugin usage while server starts."
-	},
-	{
-		"category": "functional",
-		"description": "Frontend - AI Generate subtasks feature",
-		"steps": [
-			"Add 'Generate' button (sparkle icon) next to 'Run All' in subtasks header",
-			"On click: check if task has description, warn if empty",
-			"Call backend command that sends description to AI and asks for subtask structure",
-			"AI returns JSON with subtasks array (text, steps, category, notes)",
-			"Show preview modal/popover with generated subtasks",
-			"User can edit/remove subtasks in preview before confirming",
-			"On confirm: create all subtasks via createSubtask calls",
-			"Run bun tsc --noEmit"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. This is a power feature, should feel magical. Preview is important - user must be able to review before accepting."
-	},
-	{
-		"category": "functional",
-		"description": "Backend - AI Generate subtasks command",
-		"steps": [
-			"Add tasks_generate_subtasks command in opencode.rs",
-			"Parameters: taskId (to get description)",
-			"Create prompt that asks AI to analyze description and generate subtasks",
-			"Prompt should specify output format: JSON array of subtasks with text, steps[], category, notes",
-			"Parse AI response, extract JSON",
-			"Return parsed subtasks (don't create yet, frontend will confirm)",
-			"Handle parse errors gracefully",
+			"Implement Drop trait for Trace",
+			"On drop: calculate duration_ms from started_at.elapsed()",
+			"Determine status: 'error' if has_error is true, 'ok' otherwise",
+			"Emit trace_end entry with duration_ms and status fields",
 			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": true,
-		"notes": "The prompt must be clear about expected output format. Include example in prompt. Use structured output if opencode supports it."
+		"notes": "trace_end is automatically emitted when Trace goes out of scope. This ensures every trace has a summary even if code panics (Drop still runs)."
+	},
+	{
+		"category": "functional",
+		"description": "Rust - Implement cleanup for old logs",
+		"steps": [
+			"Create cleanup.rs module",
+			"Implement cleanup_old_traces() function",
+			"Get traces directory path: ~/.local/share/jubby/logs/traces/",
+			"Calculate cutoff date: today - 1 day",
+			"Iterate directory entries, parse date from filename (YYYY-MM-DD.jsonl)",
+			"Delete files where date < cutoff",
+			"Handle errors gracefully (log warning, continue)",
+			"Run cargo check"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Runs once on app startup. Simple string comparison works for YYYY-MM-DD format. Don't fail app startup if cleanup fails."
+	},
+	{
+		"category": "functional",
+		"description": "Rust - Create mod.rs and init_tracing()",
+		"steps": [
+			"Create mod.rs with pub use for Trace, ContextGuard, TraceError, LogLevel",
+			"Use once_cell::sync::OnceCell for global LOG_WRITER",
+			"Implement init_tracing() that: creates traces directory, runs cleanup, spawns LogWriter, stores in OnceCell",
+			"Implement get_writer() -> &'static LogWriter for internal use",
+			"Add tracing module to src-tauri/src/main.rs or lib.rs",
+			"Call init_tracing() in app setup before other initialization",
+			"Run cargo check"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "OnceCell ensures single initialization. get_writer() panics if called before init (programming error). Directory: fs::create_dir_all for nested path creation."
+	},
+	{
+		"category": "functional",
+		"description": "Rust - Add required dependencies",
+		"steps": [
+			"Add to Cargo.toml: once_cell (for global state)",
+			"Add rand (for trace ID generation) if not present",
+			"Verify chrono is available (already used in project)",
+			"Verify serde_json is available (already used)",
+			"Run cargo check"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Check existing Cargo.toml before adding - some deps may already exist. Use workspace versions if applicable."
+	},
+	{
+		"category": "functional",
+		"description": "Rust - Integration test with existing command",
+		"steps": [
+			"Pick one simple existing Tauri command to add tracing",
+			"Create Trace at command start with plugin and action context",
+			"Add trace.info() call at key points",
+			"Add trace.push() for sub-operations if applicable",
+			"Verify trace_end is emitted when command completes",
+			"Run cargo check",
+			"Test manually: run command, check ~/.local/share/jubby/logs/traces/*.jsonl"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Choose a command that's easy to trigger manually. This validates the full flow before wider adoption. Check file contains valid JSON lines."
+	},
+	{
+		"category": "functional",
+		"description": "TypeScript - Create trace types",
+		"steps": [
+			"Create src/lib/trace.ts",
+			"Define TraceContext interface: Record<string, string | number | boolean>",
+			"Define TraceError interface: { message: string; code: string }",
+			"Define Trace interface with: id, push, debug, info, warn, error, end, Symbol.dispose",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Symbol.dispose enables TS 5.2+ 'using' keyword for automatic cleanup. Keep types simple - frontend tracing is lighter than backend."
+	},
+	{
+		"category": "functional",
+		"description": "TypeScript - Implement createTrace and Trace class",
+		"steps": [
+			"Implement generateTraceId(): 8 hex chars using Math.random",
+			"Implement createTrace(initialContext?: TraceContext): Trace",
+			"Create TraceImpl class with: id, contextStack, startedAt, hasError",
+			"Implement push(ctx): add to stack, return cleanup function",
+			"Implement debug/info/warn/error methods that log to console (dev) or invoke backend (prod)",
+			"Implement end() that logs trace_end with duration",
+			"Implement Symbol.dispose that calls end()",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "For now, frontend logs to console.log with structured format. Backend invoke for logging can be added later if needed. The 'using' cleanup ensures traces always end."
+	},
+	{
+		"category": "functional",
+		"description": "TypeScript - Add trace propagation to invoke wrapper",
+		"steps": [
+			"Create typesafe invoke wrapper or extend existing pattern",
+			"When trace exists, add trace_id to invoke payload",
+			"Document pattern for using trace with backend calls",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Pattern: invoke('cmd', { trace_id: trace.id, ...params }). Backend can continue_from(trace_id) to link frontend and backend traces."
+	},
+	{
+		"category": "functional",
+		"description": "TypeScript - Integration test with existing component",
+		"steps": [
+			"Pick one simple user action to add tracing",
+			"Create trace at action start",
+			"Add trace.info() at key points",
+			"Use push() for sub-operations",
+			"Ensure trace.end() or 'using' cleanup",
+			"Run bun tsc --noEmit",
+			"Test manually: trigger action, check browser console for trace logs"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Choose an action that also calls backend to test full frontend→backend trace flow. Verify trace_id appears in both frontend console and backend jsonl."
 	},
 	{
 		"category": "test",
@@ -306,24 +237,18 @@
 		"steps": [
 			"Verify cargo check passes",
 			"Verify bun tsc --noEmit passes",
-			"Test creating new task with description and workingDirectory",
-			"Test workingDirectory remembers last used",
-			"Test adding subtasks manually",
-			"Test expanding subtask shows all fields",
-			"Test editing steps, notes, category, shouldCommit",
-			"Test drag to reorder subtasks",
-			"Test Run button executes subtask (check opencode server starts)",
-			"Test Stop button aborts execution",
-			"Test Run All loops through subtasks",
-			"Test execution log is created after run",
-			"Test History section shows aggregated logs",
-			"Test 'ver todos' expands log history in subtask",
-			"Test neon border animation during execution",
-			"Test Generate subtasks creates preview and confirms",
-			"Test migration: load old format tasks, verify they work"
+			"Trigger traced action from frontend",
+			"Check browser console for frontend trace logs with trace_id",
+			"Check ~/.local/share/jubby/logs/traces/YYYY-MM-DD.jsonl exists",
+			"Verify jsonl contains valid JSON lines with matching trace_id",
+			"Verify trace_end entry exists with duration_ms and status",
+			"Verify context accumulates correctly through push/pop",
+			"Test error path: trigger an error, verify has status='error'",
+			"Test cleanup: create old log file, restart app, verify deleted",
+			"Test concurrent traces: trigger multiple actions, verify separate trace_ids"
 		],
 		"shouldCommit": false,
 		"passes": false,
-		"notes": "Full end-to-end testing. Document any issues found for follow-up fixes."
+		"notes": "Full end-to-end validation. Document any issues found for follow-up fixes."
 	}
 ]

@@ -138,3 +138,28 @@ impl Trace {
 // Trace is Send + Sync for async usage
 unsafe impl Send for Trace {}
 unsafe impl Sync for Trace {}
+
+impl Drop for Trace {
+    fn drop(&mut self) {
+        let duration_ms = self.started_at.elapsed().as_millis() as u64;
+        let status = if self.has_error.load(Ordering::Relaxed) {
+            "error"
+        } else {
+            "ok"
+        };
+
+        let entry = LogEntry {
+            ts: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            trace: self.id.clone(),
+            level: LogLevel::TraceEnd,
+            msg: String::new(),
+            ctx: self.merged_context(),
+            err: None,
+            duration_ms: Some(duration_ms),
+            status: Some(status),
+        };
+
+        // Fire-and-forget: ignore send errors
+        let _ = self.writer_tx.send(entry);
+    }
+}

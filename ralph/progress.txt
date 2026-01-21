@@ -1,7 +1,7 @@
 # Contextual Logging System - PRD
 
 ## Current Status
-Task 6 of 16 completed
+Task 7 of 16 completed
 
 ## Tasks
 - [x] 1. Rust - Create tracing types and data structures
@@ -10,7 +10,7 @@ Task 6 of 16 completed
 - [x] 4. Rust - Implement Trace struct core
 - [x] 5. Rust - Implement Trace context methods
 - [x] 6. Rust - Implement Trace logging methods
-- [ ] 7. Rust - Implement Trace Drop for trace_end
+- [x] 7. Rust - Implement Trace Drop for trace_end
 - [ ] 8. Rust - Implement cleanup for old logs
 - [ ] 9. Rust - Create mod.rs and init_tracing()
 - [ ] 10. Rust - Add required dependencies
@@ -95,3 +95,15 @@ Trace 3 ──┘   └─────────────┘     │ - flus
   - Cargo.toml must be in current directory for `cargo check` - run from src-tauri/
   - The 20 "unused" warnings are expected since the tracing module isn't integrated yet (task 9 & 11)
   - chrono's `to_rfc3339_opts` with `SecondsFormat::Millis` and `true` for Z suffix gives compact ISO format
+
+## 2026-01-21 19:28 - Task 7: Rust - Implement Trace Drop for trace_end
+- Implemented `Drop` trait for `Trace` struct
+- On drop: calculates `duration_ms` from `started_at.elapsed().as_millis()`
+- Determines status: "error" if `has_error` is true, "ok" otherwise
+- Emits `LogLevel::TraceEnd` entry with `duration_ms` and `status` fields populated
+- Uses same fire-and-forget pattern as other emit calls
+- Files changed: `src-tauri/src/traces/trace.rs`
+- **Learnings for future iterations:**
+  - Drop trait ensures trace_end is emitted even if code panics (Drop still runs)
+  - Empty `msg` string for trace_end is fine - the level itself communicates intent
+  - `as_millis()` returns u128, cast to u64 is safe for durations under ~584 million years
