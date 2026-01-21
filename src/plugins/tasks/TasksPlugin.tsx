@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import {
 	Check,
 	FolderOpen,
@@ -38,6 +39,8 @@ import {
 	usePendingDelete,
 	useTasksStorage,
 } from "./useTasksStorage";
+
+const LAST_WORKING_DIR_KEY = "tasks_lastWorkingDirectory";
 
 const TAG_COLORS = [
 	{ name: "Red", hex: "#ef4444", contrastText: "white" },
@@ -240,16 +243,6 @@ function TasksPlugin(_props: PluginProps) {
 		}
 	};
 
-	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-		if (e.key === "Enter" && newTaskText.trim()) {
-			createTask(
-				newTaskText.trim(),
-				selectedTagIds.length > 0 ? selectedTagIds : undefined,
-			);
-			setNewTaskText("");
-		}
-	};
-
 	const handleToggleTagSelection = (tagId: string) => {
 		setSelectedTagIds((prev) =>
 			prev.includes(tagId)
@@ -418,7 +411,7 @@ function TasksPlugin(_props: PluginProps) {
 				<TasksPluginInputArea
 					value={newTaskText}
 					onChange={setNewTaskText}
-					onKeyDown={handleKeyDown}
+					onCreateTask={createTask}
 					onTagsClick={() => setIsManageTagsOpen(true)}
 					tags={tags}
 					selectedTagIds={selectedTagIds}
@@ -505,7 +498,12 @@ function TasksPlugin(_props: PluginProps) {
 interface TasksPluginInputAreaProps {
 	value: string;
 	onChange: (value: string) => void;
-	onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+	onCreateTask: (
+		text: string,
+		tagIds: string[] | undefined,
+		description: string,
+		workingDirectory: string,
+	) => void;
 	onTagsClick: () => void;
 	tags: TagType[];
 	selectedTagIds: string[];
@@ -515,44 +513,251 @@ interface TasksPluginInputAreaProps {
 function TasksPluginInputArea({
 	value,
 	onChange,
-	onKeyDown,
+	onCreateTask,
 	onTagsClick,
 	tags,
 	selectedTagIds,
 	onToggleTag,
 }: TasksPluginInputAreaProps) {
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [description, setDescription] = useState("");
+	const [workingDirectory, setWorkingDirectory] = useState(() => {
+		return localStorage.getItem(LAST_WORKING_DIR_KEY) ?? "";
+	});
+	const [workingDirectoryError, setWorkingDirectoryError] = useState("");
+	const inputRef = useRef<HTMLInputElement>(null);
+	const formRef = useRef<HTMLDivElement>(null);
+
+	const shouldShowExpandedForm = isExpanded || value.trim().length > 0;
+
+	const handleFocus = () => {
+		setIsExpanded(true);
+	};
+
+	const handleSelectFolder = async () => {
+		try {
+			const selected = await open({
+				directory: true,
+				multiple: false,
+				title: "Select working directory",
+			});
+			if (selected) {
+				setWorkingDirectory(selected);
+				setWorkingDirectoryError("");
+				localStorage.setItem(LAST_WORKING_DIR_KEY, selected);
+			}
+		} catch (error) {
+			console.error("Failed to open folder picker:", error);
+		}
+	};
+
+	const handleSubmit = () => {
+		if (!value.trim()) return;
+
+		if (!workingDirectory.trim()) {
+			setWorkingDirectoryError("Working directory is required");
+			return;
+		}
+
+		onCreateTask(
+			value.trim(),
+			selectedTagIds.length > 0 ? selectedTagIds : undefined,
+			description.trim(),
+			workingDirectory.trim(),
+		);
+
+		onChange("");
+		setDescription("");
+		setWorkingDirectoryError("");
+		setIsExpanded(false);
+	};
+
+	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+		if (e.key === "Enter" && value.trim()) {
+			e.preventDefault();
+			handleSubmit();
+		} else if (e.key === "Escape") {
+			handleCancel();
+		}
+	};
+
+	const handleCancel = useCallback(() => {
+		onChange("");
+		setDescription("");
+		setWorkingDirectoryError("");
+		setIsExpanded(false);
+		inputRef.current?.blur();
+	}, [onChange]);
+
+	useEffect(() => {
+		if (!shouldShowExpandedForm) return;
+
+		const handleClickOutside = (e: MouseEvent) => {
+			if (formRef.current && !formRef.current.contains(e.target as Node)) {
+				if (!value.trim()) {
+					handleCancel();
+				}
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [shouldShowExpandedForm, value, handleCancel]);
+
 	return (
-		<div className="flex shrink-0 flex-col gap-2">
-			<div className="flex gap-2">
-				<div className="relative flex-1">
-					<input
-						type="text"
-						placeholder="What needs to be done?"
-						value={value}
-						onChange={(e) => onChange(e.target.value)}
-						onKeyDown={onKeyDown}
-						onClick={(e) => e.stopPropagation()}
-						className="h-10 w-full rounded-[10px] border border-transparent bg-white/4 px-3.5 pr-9 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none transition-all duration-180ms ease-out placeholder:text-white/35 hover:bg-white/6 focus:border-white/15 focus:bg-white/6 focus:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-						autoComplete="off"
-					/>
-					<span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/25 opacity-0 transition-opacity duration-180ms ease-out peer-focus:opacity-100 [input:focus+&]:opacity-100 [input:not(:placeholder-shown)+&]:opacity-100">
-						↵
-					</span>
+		<div
+			ref={formRef}
+			className="flex shrink-0 flex-col"
+			onClick={(e) => e.stopPropagation()}
+		>
+			<motion.div
+				className="overflow-hidden rounded-[10px] border border-transparent bg-white/4 transition-colors duration-180ms ease-out"
+				animate={{
+					borderColor: shouldShowExpandedForm
+						? "rgba(255, 255, 255, 0.08)"
+						: "transparent",
+					backgroundColor: shouldShowExpandedForm
+						? "rgba(255, 255, 255, 0.06)"
+						: "rgba(255, 255, 255, 0.04)",
+				}}
+				transition={{ duration: 0.18 }}
+			>
+				<div className="flex gap-2 p-1.5">
+					<div className="relative flex-1">
+						<input
+							ref={inputRef}
+							type="text"
+							placeholder="What needs to be done?"
+							value={value}
+							onChange={(e) => {
+								onChange(e.target.value);
+								setWorkingDirectoryError("");
+							}}
+							onFocus={handleFocus}
+							onKeyDown={handleKeyDown}
+							className="h-8 w-full rounded-md bg-transparent px-2.5 text-[13px] font-normal tracking-[-0.01em] text-white/95 outline-none placeholder:text-white/35"
+							autoComplete="off"
+						/>
+					</div>
+					<TasksPluginTagButton onClick={onTagsClick} small />
 				</div>
-				<TasksPluginTagButton onClick={onTagsClick} />
-			</div>
-			{tags.length > 0 && (
-				<TasksPluginTagSelector
-					tags={tags}
-					selectedTagIds={selectedTagIds}
-					onToggleTag={onToggleTag}
-				/>
-			)}
+
+				<AnimatePresence>
+					{shouldShowExpandedForm && (
+						<motion.div
+							initial={{ height: 0, opacity: 0 }}
+							animate={{ height: "auto", opacity: 1 }}
+							exit={{ height: 0, opacity: 0 }}
+							transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+							className="overflow-hidden"
+						>
+							<div className="flex flex-col gap-2.5 px-1.5 pb-2.5">
+								<div className="h-px bg-white/6" />
+
+								<div className="flex flex-col gap-1.5">
+									<span className="px-1 text-[11px] font-medium text-white/40">
+										Description
+									</span>
+									<textarea
+										placeholder="Add more details..."
+										value={description}
+										onChange={(e) => setDescription(e.target.value)}
+										rows={2}
+										aria-label="Description"
+										className="w-full resize-none rounded-md border border-transparent bg-white/4 px-2.5 py-2 text-[12px] font-normal leading-relaxed text-white/90 outline-none transition-all duration-180ms ease-out placeholder:text-white/30 hover:bg-white/6 focus:border-white/10 focus:bg-white/6"
+									/>
+								</div>
+
+								<div className="flex flex-col gap-1.5">
+									<span className="px-1 text-[11px] font-medium text-white/40">
+										Working Directory
+									</span>
+									<div className="flex gap-1.5">
+										<input
+											type="text"
+											placeholder="/path/to/project"
+											value={workingDirectory}
+											onChange={(e) => {
+												setWorkingDirectory(e.target.value);
+												setWorkingDirectoryError("");
+												if (e.target.value) {
+													localStorage.setItem(
+														LAST_WORKING_DIR_KEY,
+														e.target.value,
+													);
+												}
+											}}
+											aria-label="Working directory"
+											className={cn(
+												"h-8 flex-1 rounded-md border bg-white/4 px-2.5 text-[12px] font-normal text-white/90 outline-none transition-all duration-180ms ease-out placeholder:text-white/30 hover:bg-white/6 focus:bg-white/6",
+												workingDirectoryError
+													? "border-red-500/50 focus:border-red-500/70"
+													: "border-transparent focus:border-white/10",
+											)}
+										/>
+										<button
+											type="button"
+											onClick={handleSelectFolder}
+											className="group flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-white/4 transition-all duration-180ms ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96]"
+											aria-label="Select folder"
+											title="Select folder"
+										>
+											<FolderOpen className="h-3.5 w-3.5 text-white/40 transition-colors duration-180ms ease-out group-hover:text-white/70" />
+										</button>
+									</div>
+									{workingDirectoryError && (
+										<span className="px-1 text-[11px] text-red-400">
+											{workingDirectoryError}
+										</span>
+									)}
+								</div>
+
+								{tags.length > 0 && (
+									<div className="flex flex-col gap-1.5">
+										<span className="px-1 text-[11px] font-medium text-white/40">
+											Tags
+										</span>
+										<TasksPluginTagSelector
+											tags={tags}
+											selectedTagIds={selectedTagIds}
+											onToggleTag={onToggleTag}
+										/>
+									</div>
+								)}
+
+								<div className="flex justify-end gap-1.5 pt-1">
+									<button
+										type="button"
+										onClick={handleCancel}
+										className="h-7 cursor-pointer rounded-md px-3 text-[11px] font-medium text-white/50 transition-all duration-180ms ease-out hover:bg-white/6 hover:text-white/70"
+									>
+										Cancel
+									</button>
+									<button
+										type="button"
+										onClick={handleSubmit}
+										disabled={!value.trim()}
+										className="h-7 cursor-pointer rounded-md bg-white/10 px-3 text-[11px] font-medium text-white/90 transition-all duration-180ms ease-out hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/10"
+									>
+										Create Task
+									</button>
+								</div>
+							</div>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</motion.div>
 		</div>
 	);
 }
 
-function TasksPluginTagButton({ onClick }: { onClick: () => void }) {
+function TasksPluginTagButton({
+	onClick,
+	small,
+}: {
+	onClick: () => void;
+	small?: boolean;
+}) {
 	return (
 		<button
 			type="button"
@@ -560,11 +765,21 @@ function TasksPluginTagButton({ onClick }: { onClick: () => void }) {
 				e.stopPropagation();
 				onClick();
 			}}
-			className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-transparent bg-white/4 transition-all duration-180ms ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+			className={cn(
+				"group flex shrink-0 cursor-pointer items-center justify-center border border-transparent transition-all duration-180ms ease-out hover:border-white/10 hover:bg-white/8 active:scale-[0.96] active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+				small
+					? "h-8 w-8 rounded-md bg-white/4"
+					: "h-10 w-10 rounded-[10px] bg-white/4",
+			)}
 			aria-label="Manage tags"
 			title="Manage tags"
 		>
-			<Tag className="h-4 w-4 text-white/40 transition-colors duration-180ms ease-out group-hover:text-white/70" />
+			<Tag
+				className={cn(
+					"text-white/40 transition-colors duration-180ms ease-out group-hover:text-white/70",
+					small ? "h-3.5 w-3.5" : "h-4 w-4",
+				)}
+			/>
 		</button>
 	);
 }

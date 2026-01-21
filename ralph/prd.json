@@ -1,184 +1,329 @@
 [
 	{
 		"category": "functional",
-		"description": "Backend - Add tasks_update_text command",
+		"description": "Backend - Update data model types",
 		"steps": [
-			"In commands.rs: create tasks_update_text command that takes id and text parameters",
-			"Validate that text is not empty",
-			"Find task by id, return error if not found",
-			"Update task.text with new value",
-			"Save to JSON and return Ok(())",
-			"In lib.rs: register tasks_update_text in invoke_handler",
+			"In src-tauri/src/plugins/tasks/types.rs: Update Task struct to add description: String and workingDirectory: String fields",
+			"Update Subtask struct: rename 'completed' to 'status' with enum TaskStatus (waiting, in_progress, completed)",
+			"Add 'order: u32' field to Subtask for drag reorder",
+			"Add 'category: SubtaskCategory' enum (functional, test) to Subtask",
+			"Add 'steps: Vec<Step>' to Subtask where Step has id, text, completed",
+			"Add 'shouldCommit: bool' and 'notes: String' to Subtask",
+			"Add 'executionLogs: Vec<ExecutionLog>' to Subtask",
+			"Create ExecutionLog struct with: id, startedAt, completedAt, duration, outcome (enum: success/partial/failed/aborted), summary, filesChanged, learnings (patterns/gotchas/context vecs), committed, commitHash, commitMessage, errorMessage",
 			"Run cargo check to verify compilation"
 		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "Follow the same pattern as tasks_update_status. This enables editing task names from the frontend."
+		"passes": false,
+		"notes": "This is the foundation. All other tasks depend on these types. Use serde for serialization. Make new fields Option where needed for migration compatibility."
 	},
 	{
 		"category": "functional",
-		"description": "Frontend Hook - Add updateTaskText function",
+		"description": "Backend - Data migration",
 		"steps": [
-			"In useTasksStorage.ts: add updateTaskText to UseTasksStorageReturn interface",
-			"Implement updateTaskText(id: string, text: string): optimistic update, invoke 'tasks_update_text', rollback on error",
-			"Follow existing pattern from updateTaskStatus for optimistic updates",
-			"Add updateTaskText to the return object",
-			"Run bun tsc --noEmit to verify"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Simple addition following existing patterns. The optimistic update pattern is already established in the hook."
-	},
-	{
-		"category": "functional",
-		"description": "State and Navigation - Add task detail view infrastructure",
-		"steps": [
-			"In TasksPlugin.tsx: expand TasksView type to include 'task': type TasksView = 'folders' | 'list' | 'task'",
-			"Add state: const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)",
-			"Derive currentTask from tasks array: const currentTask = currentTaskId ? tasks.find(t => t.id === currentTaskId) : null",
-			"Add handleNavigateToTask(taskId: string): sets currentTaskId, sets view to 'task'",
-			"Add handleNavigateToList(): sets currentTaskId to null, sets view to 'list'",
-			"Update useNavigationLevels to include third level when currentTask exists",
-			"The third level should have id: `task-${currentTaskId}`, label: currentTask.text (truncated if needed)",
-			"Add onNavigate callback to folder level to call handleNavigateToList",
-			"Run bun tsc --noEmit to verify"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "This establishes the navigation foundation. The breadcrumb will show: jubby / Tasks / {folderName} / {taskName}. Clicking folder in breadcrumb returns to list view."
-	},
-	{
-		"category": "functional",
-		"description": "Modify TasksPluginItem - Remove inline subtasks, add click navigation",
-		"steps": [
-			"Remove isExpanded state from TasksPluginItem",
-			"Remove TasksPluginSubtaskSection from TasksPluginItem render",
-			"Remove subtask-related props from TasksPluginItemProps: onCreateSubtask, onToggleSubtask, onDeleteSubtask, onReorderSubtasks",
-			"Keep TasksPluginProgressBadge - it shows the subtask count (e.g., '2/5')",
-			"Add onTaskClick prop to TasksPluginItemProps: (taskId: string) => void",
-			"Make the task text/row clickable to trigger onTaskClick(task.id)",
-			"Add cursor-pointer and hover state to indicate clickability",
-			"Update TasksPluginList to pass onTaskClick prop to TasksPluginItem",
-			"Update TasksPluginList props to include onTaskClick",
-			"Run bun tsc --noEmit to verify"
+			"In storage.rs: Create migrate_task_data function that detects old format",
+			"Old format detection: subtask has 'completed: bool' instead of 'status'",
+			"Migration logic: completed=true → status='completed', else 'waiting'",
+			"Add default values: description='', workingDirectory='', order=index, category='functional', steps=[], shouldCommit=true, notes='', executionLogs=[]",
+			"Call migration on load if old format detected",
+			"Save migrated data immediately after migration",
+			"Run cargo check and test with sample old-format data"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Subtasks move from inline display to dedicated detail view. The progress badge remains visible to show subtask status at a glance."
+		"notes": "Must be backward compatible. Test with existing tasks.json if it exists. Migration should be idempotent (safe to run multiple times)."
 	},
 	{
 		"category": "functional",
-		"description": "Create TasksPluginTaskDetail component - Layout structure",
+		"description": "Backend - CRUD commands for new fields",
 		"steps": [
-			"Create TasksPluginTaskDetail component with props: task, tags, all subtask operations, onDeleteTask, onUpdateTaskStatus, onUpdateTaskText, onSetTaskTags",
-			"Layout structure: Breadcrumb at top (already handled by parent), then scrollable content area",
-			"Add 'TASK' section header with delete button aligned to the right",
-			"Delete button uses existing two-click pattern (usePendingDelete hook)",
-			"When delete confirmed: call onDeleteTask, then navigate back to list",
-			"Add 'SUBTASKS' section header below task info",
-			"Use same header styling as existing: text-[12px] font-medium text-white/40 uppercase tracking-wide",
-			"No borders between sections - only headers as visual separators",
-			"Run bun tsc --noEmit to verify"
+			"Add tasks_update_description command: updates task.description",
+			"Add tasks_update_working_directory command: updates task.workingDirectory, validates path exists",
+			"Add subtasks_update_status command: updates subtask.status enum",
+			"Add subtasks_update_order command: updates subtask.order (for reorder)",
+			"Add subtasks_update_category command: updates subtask.category",
+			"Add subtasks_update_notes command: updates subtask.notes",
+			"Add subtasks_update_should_commit command: toggles shouldCommit",
+			"Add steps_create, steps_toggle, steps_delete, steps_update_text commands",
+			"Add execution_logs_create command: adds new log entry to subtask",
+			"Register all commands in lib.rs",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "USE THE frontend-design SKILL. Focus on clean layout with headers as separators, not borders. Delete button should be subtle but accessible."
+		"notes": "Follow existing patterns in commands.rs. Each command: validate input → get write lock → find entity → update → save_to_json."
 	},
 	{
 		"category": "functional",
-		"description": "TasksPluginTaskDetail - Task info section with inline editing",
+		"description": "Backend - OpenCode server management",
 		"steps": [
-			"Create TasksPluginTaskInfo sub-component for the task details",
-			"Display status checkbox (reuse existing toggle logic with 3 states)",
-			"Display task text with edit icon (Pencil from lucide) always aligned to the right",
-			"Use flex layout: checkbox | text (flex-1 truncate) | edit button (shrink-0)",
-			"Add isEditing state for inline text editing",
-			"Click on edit icon or text: switch to input mode",
-			"Input mode: show input field with current text, auto-focus and select all",
-			"Enter key: save changes via onUpdateTaskText, exit edit mode",
-			"Escape key: cancel edit, restore original text, exit edit mode",
-			"Click outside: save changes and exit edit mode",
-			"Display tags below text (reuse TasksPluginTagBadge components)",
-			"Tags should be clickable to open tag editor popover (reuse existing pattern)",
-			"Run bun tsc --noEmit to verify"
+			"Create src-tauri/src/plugins/tasks/opencode.rs module",
+			"Add opencode_ensure_server command: checks if server running on port 4096, starts if not",
+			"Use tokio::process::Command to spawn 'opencode serve --port 4096'",
+			"Add opencode_health_check command: GET http://localhost:4096/health",
+			"Add opencode_create_session command: POST /session with title",
+			"Add opencode_send_prompt command: POST /session/{id}/message with prompt parts",
+			"Add opencode_poll_status command: GET /session/status, returns session status",
+			"Add opencode_abort_session command: POST /session/{id}/abort",
+			"Add state to track server PID for cleanup on app exit",
+			"Register all commands in lib.rs",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "USE THE frontend-design SKILL. Edit icon must always be at the far right regardless of text length. Inline editing should feel smooth and responsive."
+		"notes": "Use reqwest for HTTP client. Handle errors gracefully: server not running, network issues. Implement auto-restart logic (try once, then report error)."
 	},
 	{
 		"category": "functional",
-		"description": "TasksPluginTaskDetail - Subtasks section with input on top",
+		"description": "Backend - Execution orchestration command",
 		"steps": [
-			"Place TasksPluginSubtaskInput at the TOP of subtasks section (before the list)",
-			"Reuse existing TasksPluginSubtaskInput component",
-			"Reuse existing TasksPluginSubtaskList component below the input",
-			"Pass all subtask operations: onCreateSubtask, onToggleSubtask, onDeleteSubtask, onReorderSubtasks",
-			"Subtasks appear below input in order (new subtasks will appear at the end of the list)",
-			"Run bun tsc --noEmit to verify"
+			"Add tasks_execute_subtask command that orchestrates full execution",
+			"Parameters: taskId, subtaskId",
+			"Logic: 1) ensure server running, 2) create session, 3) build prompt with task context + subtask + learnings, 4) send prompt, 5) poll until idle, 6) return session result",
+			"Build prompt template with: task.description, subtask.text, subtask.steps, subtask.notes, aggregated learnings from executionLogs, JSON path, schema",
+			"Include workingDirectory in prompt context",
+			"Handle abort: if session aborted, mark log as 'aborted'",
+			"Run cargo check"
 		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "Input on top is better UX - always visible without scrolling. Reuse existing subtask components, just reorganize their placement."
+		"passes": false,
+		"notes": "This is the core execution logic. The prompt must instruct AI to edit the JSON file directly. Include all learnings from previous executionLogs."
 	},
 	{
 		"category": "functional",
-		"description": "TasksPluginSubtaskItem - Add inline text editing",
+		"description": "Frontend - Update useTasksStorage hook with new types",
 		"steps": [
-			"Add onUpdateText prop to TasksPluginSubtaskItemProps: (text: string) => void",
-			"Add isEditing state to TasksPluginSubtaskItem",
-			"Add edit button (Pencil icon) always aligned to the right after delete button",
-			"Use flex layout: drag handle | checkbox | text (flex-1 truncate) | edit button (shrink-0) | delete button (shrink-0)",
-			"Click on edit icon: switch to input mode",
-			"Input mode: replace text span with input field, auto-focus and select all",
-			"Enter key: save changes via onUpdateText, exit edit mode",
-			"Escape key: cancel edit, restore original text, exit edit mode",
-			"Click outside (onBlur): save changes and exit edit mode",
-			"Update TasksPluginSubtaskList to pass onUpdateText to each item",
-			"Run bun tsc --noEmit to verify"
+			"Update Task interface in useTasksStorage.ts with description, workingDirectory",
+			"Update Subtask interface: status enum, order, category, steps[], shouldCommit, notes, executionLogs[]",
+			"Add Step interface: id, text, completed",
+			"Add ExecutionLog interface with all fields",
+			"Add updateTaskDescription(id, description) function",
+			"Add updateTaskWorkingDirectory(id, path) function",
+			"Add updateSubtaskStatus(taskId, subtaskId, status) function",
+			"Add updateSubtaskOrder(taskId, subtaskId, order) function",
+			"Add updateSubtaskCategory, updateSubtaskNotes, updateSubtaskShouldCommit functions",
+			"Add createStep, toggleStep, deleteStep, updateStepText functions",
+			"Add createExecutionLog function",
+			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "USE THE frontend-design SKILL. Edit icon must always be at the far right. Follow same inline editing pattern as task text editing for consistency."
+		"passes": false,
+		"notes": "Follow existing optimistic update patterns. All new functions follow same pattern: update state → invoke backend → rollback on error."
 	},
 	{
 		"category": "functional",
-		"description": "Wire up TasksPluginTaskDetail in main component",
+		"description": "Frontend - Update useTasksStorage hook with execution functions",
 		"steps": [
-			"In TasksPlugin: add conditional render for view === 'task'",
-			"Render TasksPluginTaskDetail when view is 'task' and currentTask exists",
-			"Pass all required props: task (currentTask), tags, all subtask operations from useTasksStorage",
-			"Pass updateTaskText, updateTaskStatus, setTaskTags, deleteTask from useTasksStorage",
-			"Handle delete: when task is deleted, automatically navigate back to list (handleNavigateToList)",
-			"Update the main list view: pass onTaskClick={handleNavigateToTask} to TasksPluginList",
-			"Ensure Breadcrumb is rendered in task detail view (same pattern as list view)",
-			"Run bun tsc --noEmit to verify"
+			"Add executeSubtask(taskId, subtaskId) async function",
+			"Add abortExecution(sessionId) function",
+			"Add state for currentSessionId and isExecuting",
+			"executeSubtask: set isExecuting=true, invoke tasks_execute_subtask, handle result",
+			"Track which subtask is currently executing (executingSubtaskId state)",
+			"Add ensureOpenCodeServer() function that calls backend",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Execution state is important for UI (disable other Run buttons, show Stop button). Consider using useRef for sessionId to avoid stale closures."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Task creation flow update",
+		"steps": [
+			"Update task creation UI to include description field (optional textarea)",
+			"Add workingDirectory field with file picker button",
+			"Store lastWorkingDirectory in localStorage, use as default",
+			"Validate workingDirectory is not empty on create",
+			"Update createTask to pass description and workingDirectory",
+			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
 		"passes": true,
-		"notes": "This connects everything together. The navigation flow should be seamless: click task -> detail view -> breadcrumb or delete -> back to list."
+		"notes": "USE THE frontend-design SKILL. Keep creation flow simple but complete. Description can be empty initially. WorkingDirectory is required."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Subtask expandable component",
+		"steps": [
+			"Create TasksPluginSubtaskExpandable component",
+			"Props: subtask, isExpanded, onToggleExpand, all CRUD callbacks",
+			"Collapsed state: shows text, status badge, category badge, Run/Stop button",
+			"Expanded state: shows steps checklist, details (category dropdown, commit toggle, notes), last execution log",
+			"Add smooth expand/collapse animation (height transition)",
+			"Steps section: checkboxes, add step input, delete step button",
+			"Details section: category dropdown, shouldCommit checkbox, notes textarea",
+			"Last run section: shows most recent executionLog summary, 'ver todos (N)' link",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Animation should be subtle and satisfying. No borders between sections, only title separators. Expand icon rotates on expand."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Running state animation",
+		"steps": [
+			"Create CSS animation for neon border effect (white/gray tones)",
+			"Animation: gradient that rotates around the border",
+			"Apply animation class when subtask.id === executingSubtaskId",
+			"Use Tailwind + custom CSS for the animation (exception for complex animation)",
+			"Ensure animation is performant (use transform/opacity)",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. The animation should feel premium and satisfying. Reference: neon glow effects, but subtle with white/gray palette."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Run/Stop button logic",
+		"steps": [
+			"Add Run button to each subtask (visible when not executing)",
+			"Run button: onClick calls executeSubtask(taskId, subtask.id)",
+			"When this subtask is executing: show Stop button instead",
+			"Stop button: onClick calls abortExecution(sessionId)",
+			"When OTHER subtask is executing: disable Run button (gray, not clickable)",
+			"Add loading spinner inside Stop button",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Button states must be clear. Disabled state should be visually distinct but not ugly."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Loop (Run All) button",
+		"steps": [
+			"Add 'Run All' button above subtasks list (next to section header)",
+			"Loop logic: find first subtask with status 'waiting', execute it",
+			"On completion: check if more 'waiting' subtasks exist, continue",
+			"Stop when: all subtasks completed OR user clicks Stop",
+			"During loop: button shows 'Stop' instead of 'Run All'",
+			"Add isLooping state to track loop mode",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Loop respects subtask order (order field). If a subtask fails, loop should continue to next (don't block on failures)."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Drag to reorder subtasks",
+		"steps": [
+			"Add drag handle to each subtask (grip icon on left)",
+			"Implement drag and drop using existing pattern (check if dnd-kit is already used)",
+			"On drop: update order field for affected subtasks",
+			"Call updateSubtaskOrder for each changed subtask",
+			"Visual feedback during drag (opacity, placeholder)",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Check existing drag implementation in the codebase (subtasks already have reorder). May just need to wire up to new order field."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - History section",
+		"steps": [
+			"Add HISTORY section at bottom of Task detail view",
+			"Aggregate all executionLogs from all subtasks, sort by startedAt desc",
+			"Each log entry shows: timestamp, subtask name, outcome badge",
+			"Clicking entry expands to show full details (summary, files, learnings)",
+			"Limit to last 20 entries, with 'show more' if needed",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Timeline style, clean and scannable. Outcome badges: success=green, partial=yellow, failed=red, aborted=gray."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - Execution log detail view in subtask",
+		"steps": [
+			"In expanded subtask, show 'Last run' section with most recent log",
+			"Display: timestamp, outcome, summary (truncated)",
+			"Add 'ver todos (N)' link that expands to show all logs for this subtask",
+			"Expanded view: list of all logs with full details",
+			"Each log shows: summary, filesChanged list, learnings (patterns/gotchas/context), commit info",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. Inline expansion, no navigation away. Learnings should be well formatted (bullet points)."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - OpenCode server lifecycle",
+		"steps": [
+			"In TasksPlugin main component: call ensureOpenCodeServer on mount",
+			"Show subtle indicator if server is starting (small spinner in header?)",
+			"Handle server error: show toast/notification with retry option",
+			"Add health check on interval (every 30s) to detect server crashes",
+			"Auto-restart once on crash, then show error",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Server management should be invisible when working. Only show UI on errors. Don't block plugin usage while server starts."
+	},
+	{
+		"category": "functional",
+		"description": "Frontend - AI Generate subtasks feature",
+		"steps": [
+			"Add 'Generate' button (sparkle icon) next to 'Run All' in subtasks header",
+			"On click: check if task has description, warn if empty",
+			"Call backend command that sends description to AI and asks for subtask structure",
+			"AI returns JSON with subtasks array (text, steps, category, notes)",
+			"Show preview modal/popover with generated subtasks",
+			"User can edit/remove subtasks in preview before confirming",
+			"On confirm: create all subtasks via createSubtask calls",
+			"Run bun tsc --noEmit"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "USE THE frontend-design SKILL. This is a power feature, should feel magical. Preview is important - user must be able to review before accepting."
+	},
+	{
+		"category": "functional",
+		"description": "Backend - AI Generate subtasks command",
+		"steps": [
+			"Add tasks_generate_subtasks command in opencode.rs",
+			"Parameters: taskId (to get description)",
+			"Create prompt that asks AI to analyze description and generate subtasks",
+			"Prompt should specify output format: JSON array of subtasks with text, steps[], category, notes",
+			"Parse AI response, extract JSON",
+			"Return parsed subtasks (don't create yet, frontend will confirm)",
+			"Handle parse errors gracefully",
+			"Run cargo check"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "The prompt must be clear about expected output format. Include example in prompt. Use structured output if opencode supports it."
 	},
 	{
 		"category": "test",
-		"description": "Verify implementation - Manual testing",
+		"description": "Manual testing - Full flow verification",
 		"steps": [
-			"Verify cargo check passes with no errors",
-			"Verify bun tsc --noEmit passes with no errors",
-			"Test clicking a task navigates to detail view",
-			"Test breadcrumb shows correct path: jubby / Tasks / {folder} / {task}",
-			"Test clicking folder in breadcrumb returns to list view",
-			"Test editing task text: click edit icon, modify, press Enter",
-			"Test editing task text: press Escape cancels edit",
-			"Test editing subtask text: same behavior as task text",
-			"Test delete task: two-click confirmation, returns to list",
-			"Test adding subtask: input at top works correctly",
-			"Test subtask operations: toggle, delete, drag reorder all work",
-			"Test status toggle: cycles through pending -> in_progress -> completed",
-			"Test tag editing: click tags opens popover, can add/remove tags",
-			"Test progress badge still shows in list view (e.g., '2/5')"
+			"Verify cargo check passes",
+			"Verify bun tsc --noEmit passes",
+			"Test creating new task with description and workingDirectory",
+			"Test workingDirectory remembers last used",
+			"Test adding subtasks manually",
+			"Test expanding subtask shows all fields",
+			"Test editing steps, notes, category, shouldCommit",
+			"Test drag to reorder subtasks",
+			"Test Run button executes subtask (check opencode server starts)",
+			"Test Stop button aborts execution",
+			"Test Run All loops through subtasks",
+			"Test execution log is created after run",
+			"Test History section shows aggregated logs",
+			"Test 'ver todos' expands log history in subtask",
+			"Test neon border animation during execution",
+			"Test Generate subtasks creates preview and confirms",
+			"Test migration: load old format tasks, verify they work"
 		],
 		"shouldCommit": false,
 		"passes": false,
-		"notes": "Manual testing required. Test the full navigation flow and all editing scenarios. Verify UX is smooth and responsive."
+		"notes": "Full end-to-end testing. Document any issues found for follow-up fixes."
 	}
 ]

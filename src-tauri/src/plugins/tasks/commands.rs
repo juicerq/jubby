@@ -182,6 +182,8 @@ pub fn tasks_create(
     folder_id: String,
     text: String,
     tag_ids: Option<Vec<String>>,
+    description: Option<String>,
+    working_directory: Option<String>,
 ) -> Result<TaskWithTags, String> {
     let mut data = store.write();
 
@@ -191,8 +193,8 @@ pub fn tasks_create(
         text: text.clone(),
         status: "pending".to_string(),
         created_at: now_ms(),
-        description: String::new(),
-        working_directory: String::new(),
+        description: description.unwrap_or_default(),
+        working_directory: working_directory.unwrap_or_default(),
         tag_ids: tag_ids.clone().unwrap_or_default(),
         subtasks: Vec::new(),
     };

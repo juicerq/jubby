@@ -327,14 +327,20 @@ function createDefaultSubtask(
 	};
 }
 
-function createDefaultTask(id: string, text: string, tagIds: string[]): Task {
+function createDefaultTask(
+	id: string,
+	text: string,
+	tagIds: string[],
+	description?: string,
+	workingDirectory?: string,
+): Task {
 	return {
 		id,
 		text,
 		status: "pending",
 		createdAt: Date.now(),
-		description: "",
-		workingDirectory: "",
+		description: description ?? "",
+		workingDirectory: workingDirectory ?? "",
 		tagIds,
 		subtasks: [],
 	};
@@ -371,9 +377,20 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	}, [folderId]);
 
 	const createTask = useCallback(
-		async (text: string, tagIds?: string[]) => {
+		async (
+			text: string,
+			tagIds?: string[],
+			description?: string,
+			workingDirectory?: string,
+		) => {
 			const tempId = `temp-${Date.now()}`;
-			const optimisticTask = createDefaultTask(tempId, text, tagIds ?? []);
+			const optimisticTask = createDefaultTask(
+				tempId,
+				text,
+				tagIds ?? [],
+				description,
+				workingDirectory,
+			);
 
 			setTasks((prev) => [optimisticTask, ...prev]);
 
@@ -382,6 +399,8 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 					folderId,
 					text,
 					tagIds: tagIds ?? null,
+					description: description ?? null,
+					workingDirectory: workingDirectory ?? null,
 				});
 				setTasks((prev) =>
 					prev.map((t) => (t.id === tempId ? mapBackendTask(newTask) : t)),

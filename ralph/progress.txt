@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 7 of 19 completed
+Task 8 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -11,7 +11,7 @@ Task 7 of 19 completed
 - [x] 5. Backend - Execution orchestration command
 - [x] 6. Frontend - Update useTasksStorage hook with new types
 - [x] 7. Frontend - Update useTasksStorage hook with execution functions
-- [ ] 8. Frontend - Task creation flow update
+- [x] 8. Frontend - Task creation flow update
 - [ ] 9. Frontend - Subtask expandable component
 - [ ] 10. Frontend - Running state animation
 - [ ] 11. Frontend - Run/Stop button logic
@@ -294,3 +294,39 @@ Task 7 of 19 completed
   - Execution functions are at lines 1090-1146 in useTasksStorage.ts
   - The hook now exports 30 functions total (27 CRUD + 3 execution)
   - UI components can use `executingSubtaskId` to show running state per-subtask
+
+## 2026-01-21 15:43 - Task 8: Frontend - Task creation flow update
+
+### What was implemented
+- Transformed TasksPluginInputArea into an expandable mini-form with smooth animations
+- Added description field: optional expandable textarea
+- Added workingDirectory field: input with folder picker button using Tauri's dialog plugin
+- localStorage persistence: saves lastWorkingDirectory (key: "tasks_lastWorkingDirectory"), pre-fills on mount
+- Validation: workingDirectory required before task creation, shows inline error if empty
+- Form behavior: expands on focus/typing, collapses on cancel or successful creation
+- Updated createTask signature to accept description and workingDirectory parameters
+- Updated backend tasks_create command to accept description and working_directory parameters
+
+### Files changed
+- `src/plugins/tasks/TasksPlugin.tsx` - TasksPluginInputArea component transformed into expandable form
+- `src/plugins/tasks/useTasksStorage.ts` - createTask and createDefaultTask updated with new parameters
+- `src-tauri/src/plugins/tasks/commands.rs` - tasks_create now accepts description and working_directory
+- `src-tauri/Cargo.toml` - Added tauri-plugin-dialog
+- `src-tauri/src/lib.rs` - Registered dialog plugin
+- `src-tauri/capabilities/default.json` - Added dialog:default permission
+- `package.json` - Added @tauri-apps/plugin-dialog dependency
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Use `motion/react` AnimatePresence for smooth expand/collapse animations
+  - localStorage can be read in useState initializer: `useState(() => localStorage.getItem(...) ?? "")`
+  - Click-outside detection pattern: useEffect with document.addEventListener("mousedown", handler)
+  - Import Tauri dialog plugin: `import { open } from '@tauri-apps/plugin-dialog'`
+- **Gotchas encountered:**
+  - Tauri plugins need 3 things: Cargo dependency, lib.rs registration, capabilities permission
+  - Backend tasks_create needed updating to accept new optional parameters
+  - Form should not collapse when user has typed text (check value.trim() before cancel)
+- **Useful context:**
+  - TasksPluginInputArea now at lines ~513-750 in TasksPlugin.tsx
+  - LAST_WORKING_DIR_KEY constant for localStorage key consistency
+  - createTask accepts (text, tagIds?, description?, workingDirectory?)
