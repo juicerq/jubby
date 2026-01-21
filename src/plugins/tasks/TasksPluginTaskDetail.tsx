@@ -1,4 +1,4 @@
-import { Check, Minus, Pencil, X } from "lucide-react";
+import { Check, Minus, Pencil, Play, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -76,6 +76,9 @@ interface TasksPluginTaskDetailProps {
 	onAbortExecution: () => void;
 	isExecuting: boolean;
 	executingSubtaskId: string | null;
+	isLooping: boolean;
+	onStartLoop: (taskId: string) => void;
+	onStopLoop: () => void;
 	onNavigateBack: () => void;
 }
 
@@ -102,6 +105,9 @@ function TasksPluginTaskDetail({
 	onAbortExecution,
 	isExecuting,
 	executingSubtaskId,
+	isLooping,
+	onStartLoop,
+	onStopLoop,
 	onNavigateBack,
 }: TasksPluginTaskDetailProps) {
 	const {
@@ -163,7 +169,20 @@ function TasksPluginTaskDetail({
 			</section>
 
 			<section className="flex flex-1 flex-col overflow-hidden">
-				<TasksPluginTaskDetailSectionHeader title="Subtasks" />
+				<TasksPluginTaskDetailSectionHeader
+					title="Subtasks"
+					right={
+						<TasksPluginRunAllButton
+							isLooping={isLooping}
+							isExecuting={isExecuting}
+							hasWaitingSubtasks={task.subtasks.some(
+								(s) => s.status === "waiting",
+							)}
+							onStartLoop={() => onStartLoop(task.id)}
+							onStopLoop={onStopLoop}
+						/>
+					}
+				/>
 
 				<div className="flex flex-1 flex-col gap-2 overflow-y-auto">
 					<TasksPluginSubtaskInput
@@ -415,6 +434,63 @@ function TasksPluginTaskInfo({
 				</div>
 			)}
 		</div>
+	);
+}
+
+interface TasksPluginRunAllButtonProps {
+	isLooping: boolean;
+	isExecuting: boolean;
+	hasWaitingSubtasks: boolean;
+	onStartLoop: () => void;
+	onStopLoop: () => void;
+}
+
+function TasksPluginRunAllButton({
+	isLooping,
+	isExecuting,
+	hasWaitingSubtasks,
+	onStartLoop,
+	onStopLoop,
+}: TasksPluginRunAllButtonProps) {
+	if (isLooping) {
+		return (
+			<button
+				type="button"
+				onClick={onStopLoop}
+				className="flex h-6 items-center gap-1.5 rounded-md bg-red-500/15 px-2 text-[11px] font-medium text-red-400 transition-all duration-150 ease-out hover:bg-red-500/25 active:scale-[0.96]"
+				aria-label="Stop loop"
+			>
+				<Square className="h-3 w-3 fill-red-400" />
+				Stop
+			</button>
+		);
+	}
+
+	const isDisabled = isExecuting || !hasWaitingSubtasks;
+
+	return (
+		<button
+			type="button"
+			onClick={onStartLoop}
+			disabled={isDisabled}
+			className={cn(
+				"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+				isDisabled
+					? "cursor-not-allowed bg-white/4 text-white/25"
+					: "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
+			)}
+			aria-label="Run all waiting subtasks"
+			title={
+				!hasWaitingSubtasks
+					? "No waiting subtasks"
+					: isExecuting
+						? "Execution in progress"
+						: "Run all waiting subtasks"
+			}
+		>
+			<Play className="h-3 w-3 fill-current" />
+			Run All
+		</button>
 	);
 }
 

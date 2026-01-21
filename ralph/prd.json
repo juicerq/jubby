@@ -203,7 +203,7 @@
 			"Run bun tsc --noEmit"
 		],
 		"shouldCommit": true,
-		"passes": false,
+		"passes": true,
 		"notes": "Loop respects subtask order (order field). If a subtask fails, loop should continue to next (don't block on failures)."
 	},
 	{

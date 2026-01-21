@@ -1,7 +1,7 @@
 # Tasks Plugin - PRD Automation Feature
 
 ## Current Status
-Task 13 of 19 completed
+Task 14 of 19 completed
 
 ## Tasks
 - [x] 1. Backend - Update data model types
@@ -15,7 +15,7 @@ Task 13 of 19 completed
 - [x] 9. Frontend - Subtask expandable component
 - [x] 10. Frontend - Running state animation
 - [x] 11. Frontend - Run/Stop button logic
-- [ ] 12. Frontend - Loop (Run All) button
+- [x] 12. Frontend - Loop (Run All) button
 - [ ] 13. Frontend - Drag to reorder subtasks
 - [ ] 14. Frontend - History section
 - [ ] 15. Frontend - Execution log detail view in subtask
@@ -466,3 +466,36 @@ Task 13 of 19 completed
   - Animation is at lines ~174-228 in src/index.css
   - Class applied in TasksPluginSubtaskExpandable at line ~1684 in TasksPlugin.tsx
   - CSS exceptions documented in file (complex gradient animation not achievable with Tailwind)
+
+## 2026-01-21 16:12 - Task 12: Frontend - Loop (Run All) button
+
+### What was implemented
+- Added `isLooping` state and `loopAbortedRef` ref to `useTasksStorage` hook
+- Created `startLoop(taskId)` function: iterates through subtasks sorted by order, executes each with status "waiting"
+- Created `stopLoop()` function: sets abort flag and clears looping state
+- Loop continues to next subtask even if one fails (non-blocking on failures)
+- Added `TasksPluginRunAllButton` component with two states:
+  - "Run All" button (emerald green Play icon) when not looping
+  - "Stop" button (red Square icon) when looping
+- Button disabled when execution in progress or no waiting subtasks
+- Added button to Subtasks section header in TasksPluginTaskDetail
+- Passed `isLooping`, `startLoop`, `stopLoop` through prop chain: TasksPlugin → TasksPluginTaskDetail
+
+### Files changed
+- `src/plugins/tasks/useTasksStorage.ts` - Added isLooping state, loopAbortedRef, startLoop, stopLoop functions
+- `src/plugins/tasks/TasksPluginTaskDetail.tsx` - Added TasksPluginRunAllButton component, updated props interface
+- `src/plugins/tasks/TasksPlugin.tsx` - Destructured loop functions and passed to TasksPluginTaskDetail
+
+### Learnings for future iterations
+- **Patterns discovered:**
+  - Loop logic uses `loopAbortedRef` to allow breaking out mid-loop (ref doesn't cause re-renders)
+  - Sort subtasks by `order` field before iterating to respect user-defined order
+  - Loop state (`isLooping`) is separate from execution state (`isExecuting`) to track overall loop vs individual subtask
+- **Gotchas encountered:**
+  - Must check `loopAbortedRef.current` BEFORE executing each subtask, not after
+  - Loop needs to reset `loopAbortedRef` both at start and after completing
+  - The `startLoop` callback depends on `tasks` array to find current task data
+- **Useful context:**
+  - Loop logic is at lines ~1175-1227 in useTasksStorage.ts
+  - TasksPluginRunAllButton component is at lines ~423-471 in TasksPluginTaskDetail.tsx
+  - Button placement is in Subtasks section header (right side)

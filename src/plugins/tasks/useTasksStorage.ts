@@ -143,6 +143,7 @@ interface UseTasksStorageReturn {
 	isExecuting: boolean;
 	executingSubtaskId: string | null;
 	currentSessionId: string | null;
+	isLooping: boolean;
 
 	createTask: (text: string, tagIds?: string[]) => Promise<void>;
 	updateTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
@@ -225,6 +226,10 @@ interface UseTasksStorageReturn {
 		subtaskId: string,
 	) => Promise<ExecutionResultFromBackend | null>;
 	abortExecution: () => Promise<void>;
+
+	// Loop functions
+	startLoop: (taskId: string) => Promise<void>;
+	stopLoop: () => void;
 }
 
 interface UseFolderStorageReturn {
@@ -356,6 +361,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		null,
 	);
 	const currentSessionIdRef = useRef<string | null>(null);
+
+	const [isLooping, setIsLooping] = useState(false);
+	const loopAbortedRef = useRef(false);
 
 	useEffect(() => {
 		const loadData = async () => {
@@ -1164,6 +1172,61 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		}
 	}, []);
 
+	const stopLoop = useCallback(() => {
+		loopAbortedRef.current = true;
+		setIsLooping(false);
+	}, []);
+
+	const startLoop = useCallback(
+		async (taskId: string): Promise<void> => {
+			if (isExecuting || isLooping) {
+				return;
+			}
+
+			const task = tasks.find((t) => t.id === taskId);
+			if (!task) {
+				toast.error("Task not found");
+				return;
+			}
+
+			setIsLooping(true);
+			loopAbortedRef.current = false;
+
+			const sortedSubtasks = [...task.subtasks].sort(
+				(a, b) => a.order - b.order,
+			);
+
+			for (const subtask of sortedSubtasks) {
+				if (loopAbortedRef.current) {
+					break;
+				}
+
+				if (subtask.status === "waiting") {
+					setIsExecuting(true);
+					setExecutingSubtaskId(subtask.id);
+
+					try {
+						const result = await invoke<ExecutionResultFromBackend>(
+							"tasks_execute_subtask",
+							{ taskId, subtaskId: subtask.id },
+						);
+						currentSessionIdRef.current = result.sessionId;
+					} catch (error) {
+						console.error("Failed to execute subtask in loop:", error);
+					} finally {
+						setIsExecuting(false);
+						setExecutingSubtaskId(null);
+						currentSessionIdRef.current = null;
+					}
+				}
+			}
+
+			setIsLooping(false);
+			loopAbortedRef.current = false;
+		},
+		[isExecuting, isLooping, tasks],
+	);
+
 	return {
 		tasks,
 		tags,
@@ -1171,6 +1234,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		isExecuting,
 		executingSubtaskId,
 		currentSessionId: currentSessionIdRef.current,
+		isLooping,
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
@@ -1198,6 +1262,8 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		ensureOpenCodeServer,
 		executeSubtask,
 		abortExecution,
+		startLoop,
+		stopLoop,
 	};
 }
 

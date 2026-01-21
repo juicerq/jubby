@@ -123,6 +123,9 @@ function TasksPlugin(_props: PluginProps) {
 		updateStepText,
 		executeSubtask,
 		abortExecution,
+		isLooping,
+		startLoop,
+		stopLoop,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	const isLoading =
@@ -436,6 +439,9 @@ function TasksPlugin(_props: PluginProps) {
 					onAbortExecution={abortExecution}
 					isExecuting={isExecuting}
 					executingSubtaskId={executingSubtaskId}
+					isLooping={isLooping}
+					onStartLoop={startLoop}
+					onStopLoop={stopLoop}
 					onNavigateBack={handleNavigateToList}
 				/>
 			</div>
