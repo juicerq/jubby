@@ -80,6 +80,79 @@ pub fn cleanup_write_registry() {
 }
 
 // ============================================================================
+// Filename Utilities
+// ============================================================================
+
+use unicode_normalization::UnicodeNormalization;
+
+/// Converts a string to a valid kebab-case filename.
+///
+/// This function:
+/// - Normalizes Unicode using NFD and removes combining marks (accents)
+/// - Converts to lowercase
+/// - Replaces spaces and underscores with hyphens
+/// - Removes invalid filename characters
+/// - Collapses multiple consecutive hyphens
+/// - Trims leading/trailing hyphens
+/// - Returns "unnamed" for empty or whitespace-only input
+///
+/// The output is safe for Linux, macOS, and Windows filenames.
+pub fn to_kebab_case(input: &str) -> String {
+    if input.trim().is_empty() {
+        return "unnamed".to_string();
+    }
+
+    let normalized: String = input
+        .nfd() // Decompose Unicode characters
+        .filter(|c| !c.is_ascii() || c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+        .filter(|c| {
+            // Remove combining diacritical marks (accents)
+            !('\u{0300}'..='\u{036f}').contains(c)
+        })
+        .collect();
+
+    let result: String = normalized
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c
+            } else if c == ' ' || c == '_' || c == '-' {
+                '-'
+            } else {
+                // Skip invalid filename characters: < > : " / \ | ? *
+                '\0'
+            }
+        })
+        .filter(|c| *c != '\0')
+        .collect();
+
+    // Collapse multiple consecutive hyphens and trim
+    let mut collapsed = String::with_capacity(result.len());
+    let mut prev_hyphen = false;
+
+    for c in result.chars() {
+        if c == '-' {
+            if !prev_hyphen {
+                collapsed.push('-');
+            }
+            prev_hyphen = true;
+        } else {
+            collapsed.push(c);
+            prev_hyphen = false;
+        }
+    }
+
+    let trimmed = collapsed.trim_matches('-').to_string();
+
+    if trimmed.is_empty() {
+        "unnamed".to_string()
+    } else {
+        trimmed
+    }
+}
+
+// ============================================================================
 // Path Helpers
 // ============================================================================
 
@@ -425,4 +498,75 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
         tasks,
         tags,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_kebab_case_basic() {
+        assert_eq!(to_kebab_case("Hello World"), "hello-world");
+        assert_eq!(to_kebab_case("My Folder Name"), "my-folder-name");
+        assert_eq!(to_kebab_case("simple"), "simple");
+    }
+
+    #[test]
+    fn test_to_kebab_case_accents() {
+        assert_eq!(to_kebab_case("Tarefas Básicas"), "tarefas-basicas");
+        assert_eq!(to_kebab_case("Café com Leite"), "cafe-com-leite");
+        assert_eq!(to_kebab_case("Ação Rápida"), "acao-rapida");
+        assert_eq!(to_kebab_case("über"), "uber");
+        assert_eq!(to_kebab_case("naïve"), "naive");
+        assert_eq!(to_kebab_case("résumé"), "resume");
+    }
+
+    #[test]
+    fn test_to_kebab_case_special_characters() {
+        assert_eq!(to_kebab_case("Hello: World!"), "hello-world");
+        assert_eq!(to_kebab_case("File<Name>Test"), "filenametest");
+        assert_eq!(to_kebab_case("Path/To/File"), "pathtofile");
+        assert_eq!(to_kebab_case("Question?"), "question");
+        assert_eq!(to_kebab_case("Star*Test"), "startest");
+    }
+
+    #[test]
+    fn test_to_kebab_case_multiple_spaces_and_hyphens() {
+        assert_eq!(to_kebab_case("Hello   World"), "hello-world");
+        assert_eq!(to_kebab_case("Hello---World"), "hello-world");
+        assert_eq!(to_kebab_case("Hello - - - World"), "hello-world");
+        assert_eq!(
+            to_kebab_case("  Leading and Trailing  "),
+            "leading-and-trailing"
+        );
+    }
+
+    #[test]
+    fn test_to_kebab_case_underscores() {
+        assert_eq!(to_kebab_case("snake_case_name"), "snake-case-name");
+        assert_eq!(to_kebab_case("mixed_Case Name"), "mixed-case-name");
+    }
+
+    #[test]
+    fn test_to_kebab_case_empty_and_whitespace() {
+        assert_eq!(to_kebab_case(""), "unnamed");
+        assert_eq!(to_kebab_case("   "), "unnamed");
+        assert_eq!(to_kebab_case("---"), "unnamed");
+        assert_eq!(to_kebab_case("!@#$%"), "unnamed");
+    }
+
+    #[test]
+    fn test_to_kebab_case_numbers() {
+        assert_eq!(to_kebab_case("Project 2024"), "project-2024");
+        assert_eq!(to_kebab_case("123 Test"), "123-test");
+        assert_eq!(to_kebab_case("v1.0.0"), "v100");
+    }
+
+    #[test]
+    fn test_to_kebab_case_mixed_unicode() {
+        // Non-Latin characters are preserved (they pass is_alphanumeric)
+        assert_eq!(to_kebab_case("日本語 Test"), "日本語-test");
+        // Pure non-Latin should still work
+        assert_eq!(to_kebab_case("日本語"), "日本語");
+    }
 }
