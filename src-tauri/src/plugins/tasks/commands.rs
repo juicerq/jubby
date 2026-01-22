@@ -1,9 +1,10 @@
 use super::helpers::{
-    find_folder, find_folder_mut, find_tag, with_folder_mut, with_step_mut, with_subtask_mut,
-    with_tag_mut, with_task_mut,
+    find_folder, find_folder_mut, find_tag, with_step_mut, with_subtask_mut, with_tag_mut,
+    with_task_mut,
 };
 use super::storage::{
-    delete_folder_file, generate_unique_filename, get_folder_filename, save_to_json,
+    delete_folder_file, generate_unique_filename, get_folder_filename, rename_folder_file,
+    save_to_json,
 };
 use super::types::*;
 use super::TasksStore;
@@ -126,18 +127,45 @@ pub fn folder_rename(store: State<TasksStore>, id: String, name: String) -> Resu
         return Err("Folder name cannot be empty".to_string());
     }
 
-    let result = with_folder_mut(store.inner(), &id, |folder| {
-        folder.name = name;
-        Ok(())
-    });
+    let mut data = store.write();
 
-    match &result {
-        Ok(_) => trace.info("folder renamed"),
-        Err(_) => trace.info("folder rename failed"),
+    let folder = match find_folder_mut(&mut data, &id) {
+        Some(f) => f,
+        None => {
+            trace.info("folder not found");
+            drop(trace);
+            return Err(format!("Folder not found: {}", id));
+        }
+    };
+
+    let old_filename = get_folder_filename(folder);
+
+    // Generate unique filename for the new name, excluding current folder
+    let existing_filenames: Vec<String> = data
+        .folders
+        .iter()
+        .filter(|f| f.id != id)
+        .map(|f| get_folder_filename(f))
+        .collect();
+    let new_filename = generate_unique_filename(&name, &existing_filenames);
+
+    // Get folder again after the borrow for existing_filenames ends
+    let folder = find_folder_mut(&mut data, &id).expect("Folder should exist");
+    folder.name = name;
+    folder.filename = new_filename.clone();
+
+    // Save the index first
+    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Rename the file on disk if the filename changed
+    if old_filename != new_filename {
+        rename_folder_file(&old_filename, &new_filename).map_err(|e| e.to_string())?;
     }
+
+    trace.info("folder renamed");
     drop(trace);
 
-    result
+    Ok(())
 }
 
 #[tauri::command]

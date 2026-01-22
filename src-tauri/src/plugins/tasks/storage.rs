@@ -462,6 +462,26 @@ pub fn delete_folder_file(filename: &str) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+/// Renames a folder data file on disk.
+///
+/// # Arguments
+/// * `old_filename` - The current kebab-case filename (without .json extension)
+/// * `new_filename` - The new kebab-case filename (without .json extension)
+pub fn rename_folder_file(
+    old_filename: &str,
+    new_filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let old_path = get_folder_data_path(old_filename);
+    let new_path = get_folder_data_path(new_filename);
+
+    if old_path.exists() {
+        std::fs::rename(&old_path, &new_path)?;
+        record_internal_write(&new_path);
+    }
+
+    Ok(())
+}
+
 fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::Error>> {
     use rusqlite::Connection;
 
@@ -627,5 +647,84 @@ mod tests {
         assert_eq!(to_kebab_case("日本語 Test"), "日本語-test");
         // Pure non-Latin should still work
         assert_eq!(to_kebab_case("日本語"), "日本語");
+    }
+
+    #[test]
+    fn test_generate_unique_filename_no_collision() {
+        let existing = vec!["other-folder".to_string(), "another-one".to_string()];
+        assert_eq!(
+            generate_unique_filename("My Folder", &existing),
+            "my-folder"
+        );
+    }
+
+    #[test]
+    fn test_generate_unique_filename_with_collision() {
+        let existing = vec!["my-folder".to_string(), "other-folder".to_string()];
+        assert_eq!(
+            generate_unique_filename("My Folder", &existing),
+            "my-folder-1"
+        );
+    }
+
+    #[test]
+    fn test_generate_unique_filename_multiple_collisions() {
+        let existing = vec![
+            "my-folder".to_string(),
+            "my-folder-1".to_string(),
+            "my-folder-2".to_string(),
+        ];
+        assert_eq!(
+            generate_unique_filename("My Folder", &existing),
+            "my-folder-3"
+        );
+    }
+
+    #[test]
+    fn test_generate_unique_filename_collision_with_gap() {
+        // If my-folder-1 doesn't exist but my-folder does, should use -1
+        let existing = vec![
+            "my-folder".to_string(),
+            "my-folder-2".to_string(),
+            "my-folder-3".to_string(),
+        ];
+        assert_eq!(
+            generate_unique_filename("My Folder", &existing),
+            "my-folder-1"
+        );
+    }
+
+    #[test]
+    fn test_generate_unique_filename_unnamed_collision() {
+        let existing = vec!["unnamed".to_string()];
+        assert_eq!(generate_unique_filename("", &existing), "unnamed-1");
+    }
+
+    #[test]
+    fn test_generate_unique_filename_accent_collision() {
+        // "Tarefas Básicas" normalizes to "tarefas-basicas"
+        let existing = vec!["tarefas-basicas".to_string()];
+        assert_eq!(
+            generate_unique_filename("Tarefas Básicas", &existing),
+            "tarefas-basicas-1"
+        );
+    }
+
+    #[test]
+    fn test_generate_unique_filename_same_kebab_different_original() {
+        // Different folder names that normalize to the same kebab-case
+        let existing = vec!["hello-world".to_string()];
+        assert_eq!(
+            generate_unique_filename("Hello World", &existing),
+            "hello-world-1"
+        );
+        assert_eq!(
+            generate_unique_filename("Hello   World", &existing),
+            "hello-world-1"
+        );
+        assert_eq!(
+            generate_unique_filename("hello_world", &existing),
+            "hello-world-1"
+        );
     }
 }
