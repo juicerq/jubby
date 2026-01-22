@@ -264,3 +264,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Wrap save_to_json errors to log and drop traces before returning
 - Useful context (e.g., "the evaluation panel is in component X")
 - Include tag_id/task_id/subtask_id in trace context for debugging lookups
+
+## 2026-01-22 18:10 - Task 9
+- What was implemented
+- Added trace instrumentation to OpenCode lifecycle and session commands, including server start/stop, health checks, prompt sends, status polling, aborts, and execution/generation phases
+- Files changed
+- `src-tauri/src/plugins/tasks/opencode.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- OpenCode traces follow the same Trace::new().with("plugin", "tasks") pattern used in other commands
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Use explicit drop(trace) before early returns to guarantee traceend entries
+- Useful context (e.g., "the evaluation panel is in component X")
+- Keep prompt content out of traces; log lengths and IDs instead

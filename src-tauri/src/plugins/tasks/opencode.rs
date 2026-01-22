@@ -5,19 +5,34 @@ use std::time::Duration;
 use tauri::State;
 use tokio::process::Command;
 
+use crate::traces::{Trace, TraceError};
+
 const OPENCODE_PORT: u16 = 4096;
 const OPENCODE_HOST: &str = "127.0.0.1";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+// Model configuration
+const DEFAULT_PROVIDER_ID: &str = "anthropic";
+const DEFAULT_MODEL_ID: &str = "claude-opus-4-5";
+
+// Permissions - allow external_directory to avoid permission prompts during subtask execution
+const OPENCODE_PERMISSIONS: &str = r#"{"external_directory":"allow","edit":"allow","bash":"allow","task":"allow"}"#;
+
+// Promise marker to detect if the agent truly completed its work
+const PROMISE_COMPLETED_MARKER: &str = "<promise>completed</promise>";
+const MAX_CONTINUE_ATTEMPTS: u32 = 5;
+
 pub struct OpenCodeServerState {
     pid: RwLock<Option<u32>>,
+    current_directory: RwLock<Option<String>>,
 }
 
 impl OpenCodeServerState {
     pub fn new() -> Self {
         Self {
             pid: RwLock::new(None),
+            current_directory: RwLock::new(None),
         }
     }
 
@@ -27,6 +42,14 @@ impl OpenCodeServerState {
 
     pub fn get_pid(&self) -> Option<u32> {
         *self.pid.read().unwrap()
+    }
+
+    pub fn set_directory(&self, dir: Option<String>) {
+        *self.current_directory.write().unwrap() = dir;
+    }
+
+    pub fn get_directory(&self) -> Option<String> {
+        self.current_directory.read().unwrap().clone()
     }
 }
 
@@ -76,7 +99,8 @@ pub struct CreateSessionResponse {
     pub title: String,
     pub version: String,
     pub time: SessionTime,
-    pub summary: SessionSummary,
+    #[serde(default)]
+    pub summary: Option<SessionSummary>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,10 +111,30 @@ pub struct MessagePart {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelConfig {
+    #[serde(rename = "providerID")]
+    pub provider_id: String,
+    #[serde(rename = "modelID")]
+    pub model_id: String,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            provider_id: DEFAULT_PROVIDER_ID.to_string(),
+            model_id: DEFAULT_MODEL_ID.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPromptRequest {
     pub parts: Vec<MessagePart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
 }
@@ -117,6 +161,16 @@ fn client() -> reqwest::Client {
         .expect("Failed to create HTTP client")
 }
 
+fn truncate_for_trace(value: &str) -> String {
+    const MAX_LEN: usize = 2000;
+    if value.chars().count() > MAX_LEN {
+        let truncated: String = value.chars().take(MAX_LEN).collect();
+        format!("{}...[truncated]", truncated)
+    } else {
+        value.to_string()
+    }
+}
+
 async fn check_server_running() -> bool {
     let client = reqwest::Client::builder()
         .timeout(HEALTH_TIMEOUT)
@@ -133,24 +187,100 @@ async fn check_server_running() -> bool {
     }
 }
 
+async fn stop_server_internal(state: &OpenCodeServerState) {
+    if let Some(pid) = state.get_pid() {
+        tracing::info!(target: "tasks", "Stopping OpenCode server with PID: {}", pid);
+
+        #[cfg(unix)]
+        {
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+
+        state.set_pid(None);
+        state.set_directory(None);
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 #[tauri::command]
 pub async fn opencode_ensure_server(state: State<'_, OpenCodeServerState>) -> Result<bool, String> {
-    if check_server_running().await {
+    opencode_ensure_server_with_dir(state, None).await
+}
+
+pub async fn opencode_ensure_server_with_dir(
+    state: State<'_, OpenCodeServerState>,
+    working_directory: Option<String>,
+) -> Result<bool, String> {
+    let trace = if let Some(ref dir) = working_directory {
+        Trace::new()
+            .with("plugin", "tasks")
+            .with("action", "opencode_ensure_server")
+            .with("has_working_directory", true)
+            .with("working_directory", dir.clone())
+    } else {
+        Trace::new()
+            .with("plugin", "tasks")
+            .with("action", "opencode_ensure_server")
+            .with("has_working_directory", false)
+    };
+
+    trace.info("Ensuring OpenCode server is running");
+
+    let current_dir = state.get_directory();
+    let needs_restart = match (&current_dir, &working_directory) {
+        (Some(current), Some(new)) if current != new => {
+            tracing::info!(target: "tasks", "Working directory changed from {} to {}, restarting server", current, new);
+            true
+        }
+        _ => false,
+    };
+
+    if needs_restart {
+        trace.info("Working directory changed, restarting server");
+        stop_server_internal(&state).await;
+    }
+
+    if check_server_running().await && !needs_restart {
         tracing::debug!(target: "tasks", "OpenCode server already running on port {}", OPENCODE_PORT);
+        trace.info("OpenCode server already running");
+        drop(trace);
         return Ok(true);
     }
 
+    trace.info("Starting OpenCode server");
     tracing::info!(target: "tasks", "Starting OpenCode server on port {}", OPENCODE_PORT);
 
-    let child = Command::new("opencode")
-        .args(["serve", "--port", &OPENCODE_PORT.to_string()])
+    let mut cmd = Command::new("opencode");
+    cmd.args(["serve", "--port", &OPENCODE_PORT.to_string()])
+        .env("OPENCODE_PERMISSION", OPENCODE_PERMISSIONS)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn opencode server: {}", e))?;
+        .stderr(std::process::Stdio::null());
+
+    tracing::info!(target: "tasks", "OpenCode server will use permissions: {}", OPENCODE_PERMISSIONS);
+
+    if let Some(ref dir) = working_directory {
+        cmd.current_dir(dir);
+        tracing::info!(target: "tasks", "OpenCode server will run in directory: {}", dir);
+    }
+
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            trace.error(
+                "Failed to spawn OpenCode server",
+                TraceError::new(e.to_string(), "OPENCODE_SPAWN_FAILED"),
+            );
+            drop(trace);
+            return Err(format!("Failed to spawn opencode server: {}", e));
+        }
+    };
 
     let pid = child.id();
     state.set_pid(pid);
+    state.set_directory(working_directory);
     tracing::info!(target: "tasks", "OpenCode server process started with PID: {:?}", pid);
 
     let start = std::time::Instant::now();
@@ -161,41 +291,83 @@ pub async fn opencode_ensure_server(state: State<'_, OpenCodeServerState>) -> Re
 
         if check_server_running().await {
             tracing::info!(target: "tasks", "OpenCode server is ready after {:?}", start.elapsed());
+            trace.info("OpenCode server is ready");
+            drop(trace);
             return Ok(true);
         }
     }
 
     tracing::error!(target: "tasks", "OpenCode server failed to start within {:?}", max_wait);
+    trace.error(
+        "OpenCode server failed to start within timeout",
+        TraceError::new(max_wait.as_secs().to_string(), "OPENCODE_START_TIMEOUT"),
+    );
+    drop(trace);
     Err("OpenCode server failed to start in time".to_string())
 }
 
 #[tauri::command]
 pub async fn opencode_health_check() -> Result<HealthResponse, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_health_check");
+    trace.info("Checking OpenCode server health");
+
     let client = client();
 
     let response = client
         .get(format!("{}/global/health", base_url()))
         .send()
         .await
-        .map_err(|e| format!("Health check failed: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Health check request failed",
+                TraceError::new(e.to_string(), "OPENCODE_HEALTH_REQUEST_FAILED"),
+            );
+            format!("Health check failed: {}", e)
+        })?;
 
     if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        trace.error(
+            "Health check returned non-success status",
+            TraceError::new(body.clone(), "OPENCODE_HEALTH_STATUS"),
+        );
+        drop(trace);
         return Err(format!(
             "Health check returned status: {}",
-            response.status()
+            status
         ));
     }
 
-    response
+    let health = response
         .json::<HealthResponse>()
         .await
-        .map_err(|e| format!("Failed to parse health response: {}", e))
+        .map_err(|e| {
+            trace.error(
+                "Failed to parse health response",
+                TraceError::new(e.to_string(), "OPENCODE_HEALTH_PARSE_FAILED"),
+            );
+            format!("Failed to parse health response: {}", e)
+        })?;
+
+    trace.info(&format!("Health check succeeded: {}", health.version));
+    drop(trace);
+    Ok(health)
 }
 
 #[tauri::command]
 pub async fn opencode_create_session(
     title: Option<String>,
 ) -> Result<CreateSessionResponse, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_create_session")
+        .with("has_title", title.is_some());
+
+    trace.info("Creating OpenCode session");
+
     let client = client();
 
     let request = CreateSessionRequest { title };
@@ -205,21 +377,60 @@ pub async fn opencode_create_session(
         .json(&request)
         .send()
         .await
-        .map_err(|e| format!("Failed to create session: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Failed to create session",
+                TraceError::new(e.to_string(), "OPENCODE_CREATE_SESSION_REQUEST_FAILED"),
+            );
+            format!("Failed to create session: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        trace.error(
+            "Create session returned non-success status",
+            TraceError::new(body.clone(), "OPENCODE_CREATE_SESSION_FAILED"),
+        );
+        drop(trace);
         return Err(format!(
             "Create session failed with status {}: {}",
             status, body
         ));
     }
 
-    response
-        .json::<CreateSessionResponse>()
-        .await
-        .map_err(|e| format!("Failed to parse create session response: {}", e))
+    let response_text = response.text().await.unwrap_or_default();
+    #[derive(Debug, Deserialize)]
+    struct CreateSessionWrappedResponse {
+        data: CreateSessionResponse,
+    }
+
+    let parsed = serde_json::from_str::<CreateSessionResponse>(&response_text)
+        .or_else(|direct_err| {
+            serde_json::from_str::<CreateSessionWrappedResponse>(&response_text)
+                .map(|wrapped| wrapped.data)
+                .map_err(|wrapped_err| (direct_err, wrapped_err))
+        })
+        .map_err(|(direct_err, wrapped_err)| {
+            trace.error(
+                "Failed to parse create session response",
+                TraceError::new(
+                    format!(
+                        "direct_error={} wrapped_error={} response={}",
+                        direct_err,
+                        wrapped_err,
+                        truncate_for_trace(&response_text)
+                    ),
+                    "OPENCODE_CREATE_SESSION_PARSE_FAILED",
+                ),
+            );
+            format!("Failed to parse create session response: {}", direct_err)
+        })?;
+
+    trace.info(&format!("Create session succeeded: {}", parsed.id));
+    drop(trace);
+
+    Ok(parsed)
 }
 
 #[tauri::command]
@@ -227,7 +438,18 @@ pub async fn opencode_send_prompt(
     session_id: String,
     prompt: String,
     agent: Option<String>,
+    model: Option<ModelConfig>,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_send_prompt")
+        .with("session_id", session_id.clone())
+        .with("prompt_length", prompt.len())
+        .with("has_agent", agent.is_some())
+        .with("has_model", model.is_some());
+
+    trace.info("Sending prompt to OpenCode session");
+
     let client = client();
 
     let request = SendPromptRequest {
@@ -235,6 +457,7 @@ pub async fn opencode_send_prompt(
             part_type: "text".to_string(),
             text: prompt,
         }],
+        model: Some(model.unwrap_or_default()),
         agent,
     };
 
@@ -247,33 +470,63 @@ pub async fn opencode_send_prompt(
         .json(&request)
         .send()
         .await
-        .map_err(|e| format!("Failed to send prompt: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Failed to send prompt",
+                TraceError::new(e.to_string(), "OPENCODE_SEND_PROMPT_FAILED"),
+            );
+            format!("Failed to send prompt: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        trace.error(
+            "Send prompt returned non-success status",
+            TraceError::new(body.clone(), "OPENCODE_SEND_PROMPT_STATUS"),
+        );
+        drop(trace);
         return Err(format!(
             "Send prompt failed with status {}: {}",
             status, body
         ));
     }
 
+    trace.info("Prompt sent successfully");
+    drop(trace);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn opencode_poll_status(session_id: String) -> Result<SessionStatus, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_poll_status")
+        .with("session_id", session_id.clone());
+    trace.debug("Polling OpenCode session status");
+
     let client = client();
 
     let response = client
         .get(format!("{}/session/status", base_url()))
         .send()
         .await
-        .map_err(|e| format!("Failed to poll status: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Failed to poll session status",
+                TraceError::new(e.to_string(), "OPENCODE_POLL_STATUS_FAILED"),
+            );
+            format!("Failed to poll status: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        trace.error(
+            "Poll status returned non-success status",
+            TraceError::new(body.clone(), "OPENCODE_POLL_STATUS_STATUS"),
+        );
+        drop(trace);
         return Err(format!(
             "Poll status failed with status {}: {}",
             status, body
@@ -293,60 +546,90 @@ pub async fn opencode_poll_status(session_id: String) -> Result<SessionStatus, S
     let statuses: HashMap<String, RawStatus> = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse status response: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Failed to parse poll status response",
+                TraceError::new(e.to_string(), "OPENCODE_POLL_STATUS_PARSE_FAILED"),
+            );
+            format!("Failed to parse status response: {}", e)
+        })?;
 
     match statuses.get(&session_id) {
-        Some(raw) => Ok(SessionStatus {
-            session_id: session_id.clone(),
-            status: raw.status_type.clone(),
-            attempt: raw.attempt,
-            message: raw.message.clone(),
-        }),
-        None => Ok(SessionStatus {
-            session_id,
-            status: "idle".to_string(),
-            attempt: None,
-            message: None,
-        }),
+        Some(raw) => {
+            trace.debug(&format!("Session status: {}", raw.status_type));
+            drop(trace);
+            Ok(SessionStatus {
+                session_id: session_id.clone(),
+                status: raw.status_type.clone(),
+                attempt: raw.attempt,
+                message: raw.message.clone(),
+            })
+        }
+        None => {
+            trace.debug("Session status not found, defaulting to idle");
+            drop(trace);
+            Ok(SessionStatus {
+                session_id,
+                status: "idle".to_string(),
+                attempt: None,
+                message: None,
+            })
+        }
     }
 }
 
 #[tauri::command]
 pub async fn opencode_abort_session(session_id: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_abort_session")
+        .with("session_id", session_id.clone());
+    trace.info("Aborting OpenCode session");
+
     let client = client();
 
     let response = client
         .post(format!("{}/session/{}/abort", base_url(), session_id))
         .send()
         .await
-        .map_err(|e| format!("Failed to abort session: {}", e))?;
+        .map_err(|e| {
+            trace.error(
+                "Failed to abort session",
+                TraceError::new(e.to_string(), "OPENCODE_ABORT_FAILED"),
+            );
+            format!("Failed to abort session: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        trace.error(
+            "Abort session returned non-success status",
+            TraceError::new(body.clone(), "OPENCODE_ABORT_STATUS"),
+        );
+        drop(trace);
         return Err(format!(
             "Abort session failed with status {}: {}",
             status, body
         ));
     }
 
+    trace.info("Abort request accepted");
+    drop(trace);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn opencode_stop_server(state: State<'_, OpenCodeServerState>) -> Result<(), String> {
-    if let Some(pid) = state.get_pid() {
-        tracing::info!(target: "tasks", "Stopping OpenCode server with PID: {}", pid);
-
-        #[cfg(unix)]
-        {
-            let _ = std::process::Command::new("kill")
-                .args(["-TERM", &pid.to_string()])
-                .status();
-        }
-
-        state.set_pid(None);
-    }
+    let pid = state.get_pid();
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "opencode_stop_server")
+        .with("had_pid", pid.is_some());
+    trace.info("Stopping OpenCode server");
+    stop_server_internal(&state).await;
+    trace.info("OpenCode server stopped");
+    drop(trace);
     Ok(())
 }
 
@@ -363,27 +646,110 @@ pub struct ExecutionResult {
     pub error_message: Option<String>,
 }
 
-fn build_execution_prompt(task: &super::types::Task) -> String {
+fn get_tasks_json_path() -> String {
+    crate::shared::paths::get_plugin_dir("tasks")
+        .join("tasks.json")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn format_steps(steps: &[super::types::Step]) -> String {
+    if steps.is_empty() {
+        return "None".to_string();
+    }
+    steps
+        .iter()
+        .enumerate()
+        .map(|(i, step)| {
+            let status = if step.completed { "[x]" } else { "[ ]" };
+            format!("  {}. {} {}", i + 1, status, step.text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn build_execution_prompt(
+    task: &super::types::Task,
+    subtask: &super::types::Subtask,
+) -> String {
+    let tasks_json_path = get_tasks_json_path();
+
     format!(
-        "@{}/prd.json @{}/progress.txt\n\
-1. Decide which task to work on next.\n\
-This should be the one YOU decide has the highest priority,\n\
-- not necessarily the first in the list.\n\
-2. Check any feedback loops, such as types and tests.\n\
-3. Append your progress to the progress.txt file in this structure:\n\
-## [Date/Time] - [Story ID]\n\
-- What was implemented\n\
-- Files changed\n\
-- **Learnings for future iterations:**\n\
-  - Patterns discovered (e.g., \"this codebase uses X for Y\")\n\
-  - Gotchas encountered (e.g., \"don't forget to update Z when changing W\")\n\
-  - Useful context (e.g., \"the evaluation panel is in component X\")\n\
-4. Make a git commit of that feature if the shouldCommit field is true.\n\
-ONLY WORK ON A SINGLE FEATURE.\n\
-If, while implementing the feature, you notice that all work\n\
-is complete, output <promise>COMPLETE</promise>.\n",
-        task.working_directory, task.working_directory
+        r#"You are executing a single subtask for the Jubby Tasks plugin.
+
+Rules:
+- ONLY work on this subtask. Do not start other subtasks.
+- You MUST edit the tasks.json file directly to record your changes and execution log.
+- If shouldCommit = true, you MUST create a git commit for this subtask.
+- After completion, update the subtask status in tasks.json:
+  - "completed" if successful
+  - "failed" if you could not complete or hit an error
+
+Data source (single source of truth):
+- tasks.json path: {tasks_json_path}
+
+Task context:
+- taskId: {task_id}
+- subtaskId: {subtask_id}
+- taskText: {task_text}
+- taskDescription: {task_description}
+- subtaskText: {subtask_text}
+- subtaskNotes: {subtask_notes}
+- subtaskSteps:
+{subtask_steps}
+- shouldCommit: {should_commit}
+
+What you must do:
+1) Implement only this subtask.
+2) Update tasks.json:
+   - set the subtask status ("completed" or "failed")
+   - append a new execution log entry under this subtask's executionLogs array:
+     - id: generate a UUID
+     - startedAt: current timestamp in milliseconds
+     - completedAt: completion timestamp in milliseconds
+     - duration: duration in milliseconds
+     - outcome: "success" | "partial" | "failed" | "aborted"
+     - summary: short summary of what was done
+     - filesChanged: list of files you modified
+     - learnings: {{ patterns: [], gotchas: [], context: [] }}
+     - committed: true/false
+     - commitHash: the commit hash (only if committed)
+     - commitMessage: the commit message (only if committed)
+     - errorMessage: error description (only if failed)
+3) If shouldCommit = true, create a git commit for this subtask.
+
+IMPORTANT: When you have fully completed all work for this subtask, you MUST end your final message with:
+<promise>completed</promise>
+
+This marker signals that you are truly done. Do NOT include this marker if you still have pending work or if you encountered an error that prevents completion.
+"#,
+        tasks_json_path = tasks_json_path,
+        task_id = task.id,
+        subtask_id = subtask.id,
+        task_text = task.text,
+        task_description = task.description,
+        subtask_text = subtask.text,
+        subtask_notes = subtask.notes,
+        subtask_steps = format_steps(&subtask.steps),
+        should_commit = subtask.should_commit,
     )
+}
+
+fn update_subtask_status(
+    store: &super::TasksStore,
+    task_id: &str,
+    subtask_id: &str,
+    status: super::types::TaskStatus,
+) {
+    let mut data = store.write();
+    if let Some(task) = data.tasks.iter_mut().find(|t| t.id == task_id) {
+        if let Some(subtask) = task.subtasks.iter_mut().find(|s| s.id == subtask_id) {
+            subtask.status = status;
+        }
+    }
+    if let Err(e) = super::storage::save_to_json(&data) {
+        tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
+    }
 }
 
 #[tauri::command]
@@ -393,8 +759,6 @@ pub async fn tasks_execute_subtask(
     task_id: String,
     subtask_id: String,
 ) -> Result<ExecutionResult, String> {
-    opencode_ensure_server(server_state).await?;
-
     let (task, subtask) = {
         let data = store.read();
         let task = data
@@ -412,32 +776,64 @@ pub async fn tasks_execute_subtask(
             .clone();
 
         if task.working_directory.is_empty() {
+            let trace = Trace::new()
+                .with("plugin", "tasks")
+                .with("action", "tasks_execute_subtask")
+                .with("task_id", task_id.clone())
+                .with("subtask_id", subtask_id.clone());
+            trace.error(
+                "Working directory missing for task execution",
+                TraceError::new("Task working directory is not set", "WORKING_DIRECTORY_MISSING"),
+            );
+            drop(trace);
             return Err("Task working directory is not set".to_string());
         }
 
         (task, subtask)
     };
 
-    let prompt = build_execution_prompt(&task);
+    opencode_ensure_server_with_dir(server_state, Some(task.working_directory.clone())).await?;
 
-    tracing::info!(target: "tasks", "Executing subtask '{}' with prompt length: {}", subtask.text, prompt.len());
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_execute_subtask")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone())
+        .with("working_directory", task.working_directory.clone());
+
+    trace.info("OpenCode server ready for execution");
+
+    let prompt = build_execution_prompt(&task, &subtask);
+
+    trace.info(&format!(
+        "Executing subtask '{}' with prompt length: {}",
+        subtask.text,
+        prompt.len()
+    ));
 
     let session = opencode_create_session(Some(format!("{}: {}", task.text, subtask.text))).await?;
     let session_id = session.id.clone();
 
-    tracing::info!(target: "tasks", "Created session: {}", session_id);
+    trace.info(&format!("Created session: {}", session_id));
 
-    opencode_send_prompt(session_id.clone(), prompt, None).await?;
+    opencode_send_prompt(session_id.clone(), prompt, None, None).await?;
 
-    tracing::info!(target: "tasks", "Sent prompt to session: {}", session_id);
+    trace.info(&format!("Sent prompt to session: {}", session_id));
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(EXECUTION_TIMEOUT_SECS);
+    let mut continue_attempts: u32 = 0;
+
+    trace.info("Polling for execution completion");
 
     loop {
         if start.elapsed() > timeout {
-            tracing::warn!(target: "tasks", "Execution timeout for session: {}", session_id);
+            trace.warn(&format!("Execution timeout for session: {}", session_id));
             let _ = opencode_abort_session(session_id.clone()).await;
+
+            update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Failed);
+
+            drop(trace);
             return Ok(ExecutionResult {
                 session_id,
                 outcome: "failed".to_string(),
@@ -450,11 +846,60 @@ pub async fn tasks_execute_subtask(
 
         match opencode_poll_status(session_id.clone()).await {
             Ok(status) => {
-                tracing::debug!(target: "tasks", "Session {} status: {}", session_id, status.status);
+                trace.debug(&format!("Session {} status: {}", session_id, status.status));
 
                 match status.status.as_str() {
                     "idle" => {
-                        tracing::info!(target: "tasks", "Session {} completed successfully", session_id);
+                        // Check if the agent truly completed by looking for the promise marker
+                        let has_promise = match check_session_has_promise(&session_id).await {
+                            Ok(has) => has,
+                            Err(e) => {
+                                trace.warn(&format!("Failed to check promise marker: {}", e));
+                                // Assume completed if we can't check
+                                true
+                            }
+                        };
+
+                        if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
+                            continue_attempts += 1;
+                            trace.info(&format!(
+                                "Session {} idle without promise marker, sending continue ({}/{})",
+                                session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
+                            ));
+
+                            if let Err(e) = send_continue(&session_id).await {
+                                trace.warn(&format!("Failed to send continue: {}", e));
+                            }
+                            // Continue polling
+                            continue;
+                        }
+
+                        if !has_promise {
+                            trace.warn(&format!(
+                                "Session {} idle without promise marker after {} continue attempts, treating as completed",
+                                session_id, MAX_CONTINUE_ATTEMPTS
+                            ));
+                        }
+
+                        trace.info(&format!(
+                            "Session {} completed successfully",
+                            session_id
+                        ));
+
+                        match super::storage::reload_from_disk() {
+                            Ok(new_data) => {
+                                let mut current_data = store.write();
+                                *current_data = new_data;
+                                trace.info("Reloaded tasks data from disk after AI edits");
+                            }
+                            Err(e) => {
+                                trace.warn(&format!("Failed to reload from disk: {}", e));
+                            }
+                        }
+
+                        update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed);
+
+                        drop(trace);
                         return Ok(ExecutionResult {
                             session_id,
                             outcome: "success".to_string(),
@@ -464,112 +909,86 @@ pub async fn tasks_execute_subtask(
                     }
                     "busy" => {}
                     "retry" => {
-                        tracing::debug!(target: "tasks", "Session {} is retrying (attempt: {:?})", session_id, status.attempt);
+                        trace.debug(&format!(
+                            "Session {} is retrying (attempt: {:?})",
+                            session_id, status.attempt
+                        ));
                     }
                     other => {
-                        tracing::warn!(target: "tasks", "Unexpected session status: {}", other);
+                        trace.warn(&format!("Unexpected session status: {}", other));
                     }
                 }
             }
             Err(e) => {
-                tracing::error!(target: "tasks", "Failed to poll session status: {}", e);
+                trace.error(
+                    "Failed to poll session status",
+                    TraceError::new(e, "OPENCODE_POLL_FAILED"),
+                );
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GeneratedStep {
-    pub text: String,
-    pub completed: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GeneratedSubtask {
-    pub text: String,
-    #[serde(default)]
-    pub steps: Vec<GeneratedStep>,
-    #[serde(default)]
-    pub category: String,
-    #[serde(default)]
-    pub notes: String,
-    #[serde(default = "default_should_commit")]
-    pub should_commit: bool,
-}
-
-fn default_should_commit() -> bool {
-    true
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateSubtasksResult {
-    pub subtasks: Vec<GeneratedSubtask>,
     pub session_id: String,
+    pub message: String,
 }
 
 fn build_generate_prompt(task: &super::types::Task) -> String {
+    let tasks_json_path = get_tasks_json_path();
+
     format!(
-        r#"Analyze the following task description and generate a list of subtasks.
+        r#"You are generating subtasks for the Jubby Tasks plugin.
 
-TASK NAME: {}
-TASK DESCRIPTION:
-{}
+Rules:
+- Create a full plan BEFORE updating tasks.json (keep it short).
+- Do NOT edit any file except tasks.json.
+- Do NOT implement code or change the repo.
+- Do NOT return a JSON array in the response.
+- You MUST edit the tasks.json file directly to append the subtasks.
+- Keep subtasks atomic and ordered by dependency (prerequisites first).
+- For ALL id fields, you MUST generate UUIDs using: uuidgen (run this command in bash for each id you need)
+- NEVER manually type or invent UUID strings - always use the uuidgen command.
 
-Generate subtasks as a JSON array. Each subtask should have:
-- text: Brief description of what to do (1 sentence)
-- steps: Array of detailed implementation steps (each step is an object with "text" and "completed": false)
-- category: Either "functional" or "test"
-- notes: Additional context or considerations (can be empty)
-- shouldCommit: Whether this subtask should be committed separately (usually true)
+Data source (single source of truth):
+- tasks.json path: {tasks_json_path}
 
-IMPORTANT:
-1. Order subtasks by logical dependency (prerequisites first)
-2. Keep subtasks atomic and focused on a single concern
-3. Include test subtasks where appropriate
-4. Steps should be concrete and actionable
+Task context:
+- taskId: {task_id}
+- taskText: {task_text}
+- taskDescription: {task_description}
 
-Respond with ONLY the JSON array, no explanation. Example format:
-```json
-[
-  {{
-    "text": "Backend - Create user model",
-    "steps": [
-      {{"text": "Define User struct with id, email, password_hash fields", "completed": false}},
-      {{"text": "Add serde serialization", "completed": false}},
-      {{"text": "Create validation methods", "completed": false}}
-    ],
-    "category": "functional",
-    "notes": "Use bcrypt for password hashing",
-    "shouldCommit": true
-  }}
-]
-```"#,
-        task.text, task.description
+Subtask schema (append to this task's subtasks array):
+- id: run `uuidgen` to generate
+- text: short 1-sentence description
+- status: "waiting"
+- order: next order number (count existing subtasks)
+- category: "functional" or "test"
+- steps: array of steps, each {{ id: run `uuidgen`, text: string, completed: false }}
+- shouldCommit: true/false
+- notes: optional extra context (can be empty string)
+- executionLogs: empty array []
+
+What you must do:
+1) Create a full plan for the task (written in your response).
+2) Open tasks.json and locate the task by taskId.
+3) For each subtask and step, run `uuidgen` to get a proper UUID for the id field.
+4) Append new subtasks to task.subtasks following the schema above.
+5) Do NOT modify other tasks.
+6) Do NOT return JSON. Respond with a brief confirmation and how many subtasks were added.
+
+IMPORTANT: When you have fully completed generating all subtasks and updated tasks.json, you MUST end your final message with:
+<promise>completed</promise>
+
+This marker signals that you are truly done. Do NOT include this marker if you still have pending work.
+"#,
+        tasks_json_path = tasks_json_path,
+        task_id = task.id,
+        task_text = task.text,
+        task_description = task.description,
     )
-}
-
-fn extract_json_from_response(response: &str) -> Result<Vec<GeneratedSubtask>, String> {
-    let cleaned = response
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-
-    let start = cleaned.find('[').ok_or("No JSON array found in response")?;
-    let end = cleaned.rfind(']').ok_or("No closing bracket found in response")?;
-
-    if end < start {
-        return Err("Invalid JSON structure".to_string());
-    }
-
-    let json_str = &cleaned[start..=end];
-
-    serde_json::from_str::<Vec<GeneratedSubtask>>(json_str)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))
 }
 
 #[tauri::command]
@@ -578,7 +997,10 @@ pub async fn tasks_generate_subtasks(
     server_state: State<'_, OpenCodeServerState>,
     task_id: String,
 ) -> Result<GenerateSubtasksResult, String> {
-    opencode_ensure_server(server_state).await?;
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_generate_subtasks")
+        .with("task_id", task_id.clone());
 
     let task = {
         let data = store.read();
@@ -590,27 +1012,46 @@ pub async fn tasks_generate_subtasks(
     };
 
     if task.description.trim().is_empty() {
+        trace.error(
+            "Task description is empty",
+            TraceError::new("Please add a description first", "DESCRIPTION_EMPTY"),
+        );
+        drop(trace);
         return Err("Task description is empty. Please add a description first.".to_string());
     }
 
+    opencode_ensure_server_with_dir(server_state, Some(task.working_directory.clone())).await?;
+
+    trace.info("OpenCode server ready for subtask generation");
+
     let prompt = build_generate_prompt(&task);
 
-    tracing::info!(target: "tasks", "Generating subtasks for task '{}' with prompt length: {}", task.text, prompt.len());
+    trace.info(&format!(
+        "Generating subtasks for task '{}' with prompt length: {}",
+        task.text,
+        prompt.len()
+    ));
 
     let session = opencode_create_session(Some(format!("Generate subtasks: {}", task.text))).await?;
     let session_id = session.id.clone();
 
-    tracing::info!(target: "tasks", "Created session for generation: {}", session_id);
+    trace.info(&format!("Created session for generation: {}", session_id));
 
-    opencode_send_prompt(session_id.clone(), prompt, None).await?;
+    opencode_send_prompt(session_id.clone(), prompt, None, None).await?;
+
+    trace.info("Prompt sent for subtask generation");
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(GENERATE_TIMEOUT_SECS);
+    let mut continue_attempts: u32 = 0;
+
+    trace.info("Polling for generation completion");
 
     loop {
         if start.elapsed() > timeout {
-            tracing::warn!(target: "tasks", "Generation timeout for session: {}", session_id);
+            trace.warn(&format!("Generation timeout for session: {}", session_id));
             let _ = opencode_abort_session(session_id.clone()).await;
+            drop(trace);
             return Err(format!(
                 "Generation timed out after {} seconds",
                 GENERATE_TIMEOUT_SECS
@@ -621,25 +1062,72 @@ pub async fn tasks_generate_subtasks(
 
         match opencode_poll_status(session_id.clone()).await {
             Ok(status) => {
-                tracing::debug!(target: "tasks", "Generation session {} status: {}", session_id, status.status);
+                trace.debug(&format!(
+                    "Generation session {} status: {}",
+                    session_id, status.status
+                ));
 
                 if status.status == "idle" {
-                    tracing::info!(target: "tasks", "Generation session {} completed", session_id);
+                    // Check if the agent truly completed by looking for the promise marker
+                    let has_promise = match check_session_has_promise(&session_id).await {
+                        Ok(has) => has,
+                        Err(e) => {
+                            trace.warn(&format!("Failed to check promise marker: {}", e));
+                            // Assume completed if we can't check
+                            true
+                        }
+                    };
+
+                    if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
+                        continue_attempts += 1;
+                        trace.info(&format!(
+                            "Generation session {} idle without promise marker, sending continue ({}/{})",
+                            session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
+                        ));
+
+                        if let Err(e) = send_continue(&session_id).await {
+                            trace.warn(&format!("Failed to send continue: {}", e));
+                        }
+                        // Continue polling
+                        continue;
+                    }
+
+                    if !has_promise {
+                        trace.warn(&format!(
+                            "Generation session {} idle without promise marker after {} continue attempts, treating as completed",
+                            session_id, MAX_CONTINUE_ATTEMPTS
+                        ));
+                    }
+
+                    trace.info(&format!("Generation session {} completed", session_id));
 
                     let response = get_session_last_message(&session_id).await?;
 
-                    let subtasks = extract_json_from_response(&response)?;
+                    match super::storage::reload_from_disk() {
+                        Ok(new_data) => {
+                            let mut current_data = store.write();
+                            *current_data = new_data;
+                            trace.info("Reloaded tasks data from disk after AI edits");
+                        }
+                        Err(e) => {
+                            trace.warn(&format!("Failed to reload from disk: {}", e));
+                        }
+                    }
 
-                    tracing::info!(target: "tasks", "Generated {} subtasks for task '{}'", subtasks.len(), task.text);
+                    trace.info(&format!("Subtasks generated for task '{}'", task.text));
 
+                    drop(trace);
                     return Ok(GenerateSubtasksResult {
-                        subtasks,
                         session_id,
+                        message: response,
                     });
                 }
             }
             Err(e) => {
-                tracing::error!(target: "tasks", "Failed to poll generation status: {}", e);
+                trace.error(
+                    "Failed to poll generation status",
+                    TraceError::new(e, "OPENCODE_POLL_FAILED"),
+                );
             }
         }
     }
@@ -715,4 +1203,44 @@ async fn get_session_last_message(session_id: &str) -> Result<String, String> {
     }
 
     Ok(text)
+}
+
+async fn check_session_has_promise(session_id: &str) -> Result<bool, String> {
+    let last_message = get_session_last_message(session_id).await?;
+    Ok(last_message.contains(PROMISE_COMPLETED_MARKER))
+}
+
+async fn send_continue(session_id: &str) -> Result<(), String> {
+    let client = client();
+
+    let request = SendPromptRequest {
+        parts: vec![MessagePart {
+            part_type: "text".to_string(),
+            text: "continue".to_string(),
+        }],
+        model: Some(ModelConfig::default()),
+        agent: None,
+    };
+
+    let response = client
+        .post(format!(
+            "{}/session/{}/prompt_async",
+            base_url(),
+            session_id
+        ))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send continue: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Send continue failed with status {}: {}",
+            status, body
+        ));
+    }
+
+    Ok(())
 }
