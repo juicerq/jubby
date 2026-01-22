@@ -1,6 +1,7 @@
 //! File watcher for tasks directory.
 //!
-//! Watches task JSON files for changes and emits Tauri events when modifications are detected.
+//! Watches task JSON files for changes, reloads from disk, updates the in-memory store,
+//! and emits Tauri events when modifications are detected.
 //! Uses debouncing to avoid rapid event spam when editors write files in multiple operations.
 
 use notify::{RecommendedWatcher, RecursiveMode};
@@ -8,21 +9,31 @@ use notify_debouncer_mini::{new_debouncer, DebouncedEvent, Debouncer};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Mutex;
-use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager};
 
-use super::storage::get_tasks_dir;
+use super::storage::{
+    cleanup_write_registry, get_tasks_dir, load_folder_data, should_suppress_event,
+};
+use super::TasksStore;
 
 const DEBOUNCE_DURATION_MS: u64 = 200;
-const EVENT_NAME: &str = "tasks:file-changed";
+const EVENT_NAME: &str = "tasks:storage-updated";
 
-/// Payload emitted when a tasks file changes.
+/// Maximum number of retries for JSON parse when file is mid-write.
+const MAX_PARSE_RETRIES: u32 = 3;
+/// Backoff duration between parse retries in milliseconds.
+const PARSE_RETRY_BACKOFF_MS: u64 = 50;
+
+/// Payload emitted when a tasks storage file changes and is reloaded.
 #[derive(Clone, serde::Serialize)]
-pub struct FileChangedPayload {
-    /// The folder ID whose file changed (extracted from filename).
+#[serde(rename_all = "camelCase")]
+pub struct StorageUpdatedPayload {
+    /// The folder ID whose storage was updated (extracted from filename).
     pub folder_id: String,
-    /// The path of the changed file.
-    pub path: String,
+    /// Version timestamp (milliseconds since UNIX epoch) for cache invalidation.
+    pub version: i64,
 }
 
 /// Manages file watchers for the tasks directory.
@@ -97,7 +108,7 @@ impl TasksFileWatcher {
     }
 }
 
-/// Handles debounced file events and emits Tauri events.
+/// Handles debounced file events, reloads storage, and emits Tauri events.
 fn handle_events(rx: Receiver<Result<Vec<DebouncedEvent>, notify::Error>>, app_handle: AppHandle) {
     loop {
         match rx.recv() {
@@ -125,8 +136,19 @@ fn handle_events(rx: Receiver<Result<Vec<DebouncedEvent>, notify::Error>>, app_h
     }
 }
 
-/// Processes a single file event.
+/// Returns current timestamp in milliseconds since UNIX epoch.
+fn current_version() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Processes a single file event: reloads storage and emits event.
 fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
+    // Clean up expired write records periodically
+    cleanup_write_registry();
+
     let path = &event.path;
 
     // Only process JSON files
@@ -142,6 +164,16 @@ fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
         return;
     }
 
+    // Check if this is a self-write that should be suppressed
+    if should_suppress_event(&path.to_path_buf()) {
+        tracing::debug!(
+            target: "tasks::watcher",
+            path = %path.display(),
+            "Event suppressed (self-write)"
+        );
+        return;
+    }
+
     // Extract folder ID from filename (e.g., "abc-123.json" -> "abc-123")
     let folder_id = match path.file_stem().and_then(|s| s.to_str()) {
         Some(id) => id.to_string(),
@@ -152,21 +184,113 @@ fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
         target: "tasks::watcher",
         folder_id = %folder_id,
         path = %path.display(),
-        "File changed detected"
+        "File changed detected (external write)"
     );
 
-    let payload = FileChangedPayload {
+    // Reload folder data with retry for mid-write scenarios
+    let folder_data = match load_folder_data_with_retry(&folder_id) {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::error!(
+                target: "tasks::watcher",
+                folder_id = %folder_id,
+                error = %e,
+                "Failed to reload folder data after retries"
+            );
+            return;
+        }
+    };
+
+    // Update the in-memory store
+    if let Some(store) = app_handle.try_state::<TasksStore>() {
+        let mut data = store.write();
+
+        // Remove old tasks and tags for this folder
+        data.tasks.retain(|t| t.folder_id != folder_id);
+        data.tags.retain(|t| t.folder_id != folder_id);
+
+        // Add reloaded tasks and tags
+        data.tasks.extend(folder_data.tasks);
+        data.tags.extend(folder_data.tags);
+
+        tracing::debug!(
+            target: "tasks::watcher",
+            folder_id = %folder_id,
+            "In-memory store updated"
+        );
+    } else {
+        tracing::warn!(
+            target: "tasks::watcher",
+            "TasksStore not available in app state"
+        );
+    }
+
+    // Emit event with version for frontend cache invalidation
+    let payload = StorageUpdatedPayload {
         folder_id,
-        path: path.to_string_lossy().to_string(),
+        version: current_version(),
     };
 
     if let Err(e) = app_handle.emit(EVENT_NAME, payload) {
         tracing::error!(
             target: "tasks::watcher",
             error = %e,
-            "Failed to emit file changed event"
+            "Failed to emit storage updated event"
         );
     }
+}
+
+/// Loads folder data with retry logic for mid-write scenarios.
+///
+/// When an external process (like an AI) writes to the JSON file, there may be
+/// a brief moment where the file is incomplete or invalid. This function retries
+/// with exponential backoff to handle such cases.
+fn load_folder_data_with_retry(
+    folder_id: &str,
+) -> Result<super::types::FolderData, Box<dyn std::error::Error + Send + Sync>> {
+    let mut last_error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+
+    for attempt in 0..MAX_PARSE_RETRIES {
+        match load_folder_data(folder_id) {
+            Ok(data) => {
+                if attempt > 0 {
+                    tracing::debug!(
+                        target: "tasks::watcher",
+                        folder_id = %folder_id,
+                        attempt = attempt + 1,
+                        "Successfully loaded folder data after retry"
+                    );
+                }
+                return Ok(data);
+            }
+            Err(e) => {
+                let is_parse_error = e.to_string().contains("expected")
+                    || e.to_string().contains("EOF")
+                    || e.to_string().contains("syntax");
+
+                if !is_parse_error || attempt == MAX_PARSE_RETRIES - 1 {
+                    last_error = Some(e.to_string().into());
+                    break;
+                }
+
+                tracing::debug!(
+                    target: "tasks::watcher",
+                    folder_id = %folder_id,
+                    attempt = attempt + 1,
+                    error = %e,
+                    "JSON parse failed, retrying..."
+                );
+
+                // Exponential backoff: 50ms, 100ms, 150ms
+                thread::sleep(Duration::from_millis(
+                    PARSE_RETRY_BACKOFF_MS * (attempt as u64 + 1),
+                ));
+                last_error = Some(e.to_string().into());
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "Unknown error".into()))
 }
 
 /// Thread-safe wrapper for managing the tasks file watcher.

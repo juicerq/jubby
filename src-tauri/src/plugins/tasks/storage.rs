@@ -1,6 +1,87 @@
 use super::types::{Folder, FolderData, FoldersIndex, Tag, Task, TaskStatus, TasksData};
 use crate::shared::paths::{ensure_dir, get_plugin_dir};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+// ============================================================================
+// Write Suppression Registry
+// ============================================================================
+
+/// Duration to suppress watcher events after an internal write.
+const WRITE_SUPPRESSION_WINDOW_MS: u64 = 300;
+
+/// Global registry of recent internal writes (file path -> last write timestamp).
+static WRITE_REGISTRY: once_cell::sync::Lazy<Mutex<HashMap<PathBuf, Instant>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Records an internal write for a file path.
+/// Called after saving to prevent the watcher from reacting to our own writes.
+pub fn record_internal_write(path: &PathBuf) {
+    if let Ok(mut registry) = WRITE_REGISTRY.lock() {
+        registry.insert(path.clone(), Instant::now());
+        tracing::trace!(
+            target: "tasks::storage",
+            path = %path.display(),
+            "Recorded internal write"
+        );
+    }
+}
+
+/// Checks if a file path was recently written by the app (within suppression window).
+/// Returns true if the event should be suppressed, false if it should be processed.
+pub fn should_suppress_event(path: &PathBuf) -> bool {
+    let suppression_window = Duration::from_millis(WRITE_SUPPRESSION_WINDOW_MS);
+
+    if let Ok(mut registry) = WRITE_REGISTRY.lock() {
+        if let Some(write_time) = registry.get(path) {
+            let elapsed = write_time.elapsed();
+            if elapsed < suppression_window {
+                tracing::debug!(
+                    target: "tasks::storage",
+                    path = %path.display(),
+                    elapsed_ms = elapsed.as_millis(),
+                    window_ms = WRITE_SUPPRESSION_WINDOW_MS,
+                    "Suppressing event for self-write"
+                );
+                return true;
+            } else {
+                // Expired entry, remove it
+                registry.remove(path);
+                tracing::trace!(
+                    target: "tasks::storage",
+                    path = %path.display(),
+                    "Write record expired, allowing event"
+                );
+            }
+        }
+    }
+    false
+}
+
+/// Cleans up expired entries from the write registry.
+/// Call periodically to prevent memory buildup.
+pub fn cleanup_write_registry() {
+    let suppression_window = Duration::from_millis(WRITE_SUPPRESSION_WINDOW_MS);
+
+    if let Ok(mut registry) = WRITE_REGISTRY.lock() {
+        let before = registry.len();
+        registry.retain(|_, write_time| write_time.elapsed() < suppression_window);
+        let removed = before - registry.len();
+        if removed > 0 {
+            tracing::trace!(
+                target: "tasks::storage",
+                removed = removed,
+                "Cleaned up expired write records"
+            );
+        }
+    }
+}
+
+// ============================================================================
+// Path Helpers
+// ============================================================================
 
 pub fn get_tasks_dir() -> PathBuf {
     get_plugin_dir("tasks")
@@ -194,7 +275,8 @@ pub fn save_folders_index(data: &FoldersIndex) -> Result<(), Box<dyn std::error:
 
     let path = get_folders_index_path();
     let content = serde_json::to_string_pretty(data)?;
-    std::fs::write(&path, content)?;
+    std::fs::write(&path, &content)?;
+    record_internal_write(&path);
     Ok(())
 }
 
@@ -245,7 +327,8 @@ pub fn save_folder_data(
 
     let path = get_folder_data_path(folder_id);
     let content = serde_json::to_string_pretty(&data)?;
-    std::fs::write(&path, content)?;
+    std::fs::write(&path, &content)?;
+    record_internal_write(&path);
     Ok(())
 }
 
