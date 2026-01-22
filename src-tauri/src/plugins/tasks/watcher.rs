@@ -156,11 +156,41 @@ fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
         return;
     }
 
-    // Skip folders.json - we only care about folder data files
-    if path
+    // Handle folders.json specially - emit with folder_id = "folders"
+    let is_folders_index = path
         .file_name()
-        .map_or(false, |name| name == "folders.json")
-    {
+        .map_or(false, |name| name == "folders.json");
+
+    if is_folders_index {
+        // Check if this is a self-write that should be suppressed
+        if should_suppress_event(&path.to_path_buf()) {
+            tracing::debug!(
+                target: "tasks::watcher",
+                path = %path.display(),
+                "Folders index event suppressed (self-write)"
+            );
+            return;
+        }
+
+        tracing::debug!(
+            target: "tasks::watcher",
+            path = %path.display(),
+            "Folders index changed (external write)"
+        );
+
+        // Emit event with folder_id = "folders" for frontend to reload folder list
+        let payload = StorageUpdatedPayload {
+            folder_id: "folders".to_string(),
+            version: current_version(),
+        };
+
+        if let Err(e) = app_handle.emit(EVENT_NAME, payload) {
+            tracing::error!(
+                target: "tasks::watcher",
+                error = %e,
+                "Failed to emit folders index updated event"
+            );
+        }
         return;
     }
 
