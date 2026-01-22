@@ -1,4 +1,7 @@
-use super::helpers::{find_folder, find_folder_mut, with_folder_mut};
+use super::helpers::{
+    find_folder, find_folder_mut, find_tag, with_folder_mut, with_step_mut, with_subtask_mut,
+    with_tag_mut, with_task_mut,
+};
 use super::storage::save_to_json;
 use super::types::*;
 use super::TasksStore;
@@ -223,26 +226,18 @@ pub fn tasks_update_status(
         return Err(format!("Invalid status: {}", status));
     }
 
-    let mut data = store.write();
+    with_task_mut(store.inner(), &id, |task| {
+        task.status = status.clone();
 
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| format!("Task not found: {}", id))?;
-
-    task.status = status.clone();
-
-    // Cascade: when task is completed, mark all subtasks as completed
-    if status == "completed" {
-        for subtask in &mut task.subtasks {
-            subtask.status = TaskStatus::Completed;
+        // Cascade: when task is completed, mark all subtasks as completed
+        if status == "completed" {
+            for subtask in &mut task.subtasks {
+                subtask.status = TaskStatus::Completed;
+            }
         }
-    }
 
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -252,18 +247,10 @@ pub fn tasks_update_text(store: State<TasksStore>, id: String, text: String) -> 
         return Err("Task text cannot be empty".to_string());
     }
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| format!("Task not found: {}", id))?;
-
-    task.text = text;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_task_mut(store.inner(), &id, |task| {
+        task.text = text;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -287,18 +274,10 @@ pub fn tasks_set_tags(
     task_id: String,
     tag_ids: Vec<String>,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    task.tag_ids = tag_ids;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_task_mut(store.inner(), &task_id, |task| {
+        task.tag_ids = tag_ids;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -344,32 +323,26 @@ pub fn tag_update(
     name: String,
     color: String,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let tag = data
-        .tags
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| format!("Tag not found: {}", id))?;
+    let data = store.read();
+    let tag = find_tag(&data, &id).ok_or_else(|| format!("Tag not found: {}", id))?;
 
     // Check for duplicate name in folder (excluding self)
-    let folder_id = tag.folder_id.clone();
     let exists = data
         .tags
         .iter()
-        .any(|t| t.folder_id == folder_id && t.name == name && t.id != id);
+        .any(|t| t.folder_id == tag.folder_id && t.name == name && t.id != id);
 
     if exists {
         return Err("Tag name already exists in this folder".to_string());
     }
 
-    let tag = data.tags.iter_mut().find(|t| t.id == id).unwrap();
-    tag.name = name;
-    tag.color = color;
+    drop(data);
 
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_tag_mut(store.inner(), &id, |tag| {
+        tag.name = name;
+        tag.color = color;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -444,29 +417,14 @@ pub fn subtasks_toggle(
     task_id: String,
     subtask_id: String,
 ) -> Result<bool, String> {
-    let mut data = store.write();
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.status = match subtask.status {
+            TaskStatus::Completed => TaskStatus::Waiting,
+            _ => TaskStatus::Completed,
+        };
 
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.status = match subtask.status {
-        TaskStatus::Completed => TaskStatus::Waiting,
-        _ => TaskStatus::Completed,
-    };
-    let new_state = matches!(subtask.status, TaskStatus::Completed);
-
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(new_state)
+        Ok(matches!(subtask.status, TaskStatus::Completed))
+    })
 }
 
 #[tauri::command]
@@ -531,24 +489,10 @@ pub fn subtasks_update_text(
         return Err("Subtask text cannot be empty".to_string());
     }
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.text = text;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.text = text;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -557,18 +501,10 @@ pub fn tasks_update_description(
     id: String,
     description: String,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| format!("Task not found: {}", id))?;
-
-    task.description = description;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_task_mut(store.inner(), &id, |task| {
+        task.description = description;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -606,16 +542,10 @@ pub fn tasks_update_working_directory(
         }
     }
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == id)
-        .ok_or_else(|| format!("Task not found: {}", id))?;
-
-    task.working_directory = working_directory.clone();
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    with_task_mut(store.inner(), &id, |task| {
+        task.working_directory = working_directory.clone();
+        Ok(())
+    })?;
 
     trace.info("Working directory updated");
     drop(trace);
@@ -637,24 +567,10 @@ pub fn subtasks_update_status(
         _ => return Err(format!("Invalid status: {}", status)),
     };
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.status = status;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.status = status;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -664,24 +580,10 @@ pub fn subtasks_update_order(
     subtask_id: String,
     order: u32,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.order = order;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.order = order;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -697,24 +599,10 @@ pub fn subtasks_update_category(
         _ => return Err(format!("Invalid category: {}", category)),
     };
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.category = category;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.category = category;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -724,24 +612,10 @@ pub fn subtasks_update_notes(
     subtask_id: String,
     notes: String,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.notes = notes;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.notes = notes;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -751,24 +625,10 @@ pub fn subtasks_update_should_commit(
     subtask_id: String,
     should_commit: bool,
 ) -> Result<(), String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    subtask.should_commit = should_commit;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+        subtask.should_commit = should_commit;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -816,32 +676,10 @@ pub fn steps_toggle(
     subtask_id: String,
     step_id: String,
 ) -> Result<bool, String> {
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    let step = subtask
-        .steps
-        .iter_mut()
-        .find(|s| s.id == step_id)
-        .ok_or_else(|| format!("Step not found: {}", step_id))?;
-
-    step.completed = !step.completed;
-    let new_state = step.completed;
-
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(new_state)
+    with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
+        step.completed = !step.completed;
+        Ok(step.completed)
+    })
 }
 
 #[tauri::command]
@@ -889,30 +727,10 @@ pub fn steps_update_text(
         return Err("Step text cannot be empty".to_string());
     }
 
-    let mut data = store.write();
-
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let subtask = task
-        .subtasks
-        .iter_mut()
-        .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
-
-    let step = subtask
-        .steps
-        .iter_mut()
-        .find(|s| s.id == step_id)
-        .ok_or_else(|| format!("Step not found: {}", step_id))?;
-
-    step.text = text;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
+        step.text = text;
+        Ok(())
+    })
 }
 
 #[tauri::command]

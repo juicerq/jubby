@@ -199,3 +199,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Use `store.inner()` to pass `State<TasksStore>` into helpers expecting `&TasksStore`
 - Useful context (e.g., "the evaluation panel is in component X")
 - Folder reorder can rely on helpers without changing persistence behavior
+
+## 2026-01-22 16:35 - Task 4
+- What was implemented
+- Refactored task, subtask, step, and tag update commands to use with_*_mut helpers for shared lock/mutate/save flow
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Use read locks for validation (like tag duplication checks) before entering helper write locks
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Drop read guards before calling helpers to avoid lock contention
+- Useful context (e.g., "the evaluation panel is in component X")
+- with_*_mut helpers can return values for toggles without extra save logic
