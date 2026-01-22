@@ -212,3 +212,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Drop read guards before calling helpers to avoid lock contention
 - Useful context (e.g., "the evaluation panel is in component X")
 - with_*_mut helpers can return values for toggles without extra save logic
+
+## 2026-01-22 17:05 - Task 5
+- What was implemented
+- Added tracing to folder_create, folder_rename, folder_delete, and folder_reorder with plugin/action context and start/finish info logs
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Folder commands now follow the trace pattern from folder_get_all with explicit drop(trace)
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Early returns should log and drop the trace to ensure traceend entries are emitted
+- Useful context (e.g., "the evaluation panel is in component X")
+- Use Trace::with("folder_id", id.clone()) for per-folder context

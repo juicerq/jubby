@@ -68,8 +68,15 @@ pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>
 
 #[tauri::command]
 pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_create");
+    trace.info("folder create requested");
+
     let name = name.trim().to_string();
     if name.is_empty() {
+        trace.info("folder name empty");
+        drop(trace);
         return Err("Folder name cannot be empty".to_string());
     }
 
@@ -87,27 +94,54 @@ pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, S
     data.folders.push(folder.clone());
     save_to_json(&data).map_err(|e| e.to_string())?;
 
+    trace.info("folder created");
+    drop(trace);
+
     Ok(folder)
 }
 
 #[tauri::command]
 pub fn folder_rename(store: State<TasksStore>, id: String, name: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_rename")
+        .with("folder_id", id.clone());
+    trace.info("folder rename requested");
+
     let name = name.trim().to_string();
     if name.is_empty() {
+        trace.info("folder name empty");
+        drop(trace);
         return Err("Folder name cannot be empty".to_string());
     }
 
-    with_folder_mut(store.inner(), &id, |folder| {
+    let result = with_folder_mut(store.inner(), &id, |folder| {
         folder.name = name;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("folder renamed"),
+        Err(_) => trace.info("folder rename failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
 pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_delete")
+        .with("folder_id", id.clone());
+    trace.info("folder delete requested");
+
     let mut data = store.write();
 
     if find_folder(&data, &id).is_none() {
+        trace.info("folder not found");
+        drop(trace);
         return Err(format!("Folder not found: {}", id));
     }
 
@@ -118,11 +152,19 @@ pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String>
 
     save_to_json(&data).map_err(|e| e.to_string())?;
 
+    trace.info("folder deleted");
+    drop(trace);
+
     Ok(())
 }
 
 #[tauri::command]
 pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_reorder");
+    trace.info("folder reorder requested");
+
     let mut data = store.write();
 
     for (index, folder_id) in folder_ids.iter().enumerate() {
@@ -132,6 +174,9 @@ pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Resu
     }
 
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("folder reorder complete");
+    drop(trace);
 
     Ok(())
 }
