@@ -366,3 +366,19 @@ Branch dedicada. Se falhar, git checkout main.
 - SDK responses expose data under `.data`, so hooks unwrap results to keep call sites consistent
 - Useful context (e.g., "the evaluation panel is in component X")
 - OpenCode hooks live in `src/lib/opencode/hooks.ts` and are re-exported via the module index
+
+## 2026-01-22 17:07 - Task 16
+- What was implemented
+- Extracted OpenCode server lifecycle into a dedicated `opencode/` module with separate state and server files, keeping commands and helpers in the main module
+- Files changed
+- `src-tauri/src/plugins/tasks/opencode/mod.rs`
+- `src-tauri/src/plugins/tasks/opencode/server.rs`
+- `src-tauri/src/plugins/tasks/opencode/state.rs`
+- `src-tauri/src/lib.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Tauri command macros keep their generated handlers in the defining module, so `generate_handler!` must reference the module where the command lives
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Re-exports are not enough for `tauri::command`; update handler paths when moving command functions into submodules
+- Useful context (e.g., "the evaluation panel is in component X")
+- OpenCode server state lives in `src-tauri/src/plugins/tasks/opencode/state.rs` and is re-exported from the opencode module
