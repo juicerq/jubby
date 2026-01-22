@@ -497,8 +497,16 @@ pub fn subtasks_create(
     task_id: String,
     text: String,
 ) -> Result<Subtask, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_create")
+        .with("task_id", task_id.clone());
+    trace.info("subtask create requested");
+
     let text = text.trim().to_string();
     if text.is_empty() {
+        trace.info("subtask text empty");
+        drop(trace);
         return Err("Subtask text cannot be empty".to_string());
     }
 
@@ -508,7 +516,10 @@ pub fn subtasks_create(
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     let order = task
         .subtasks
@@ -535,6 +546,9 @@ pub fn subtasks_create(
     task.subtasks.push(subtask.clone());
     save_to_json(&data).map_err(|e| e.to_string())?;
 
+    trace.info("subtask created");
+    drop(trace);
+
     Ok(subtask)
 }
 
@@ -544,14 +558,29 @@ pub fn subtasks_toggle(
     task_id: String,
     subtask_id: String,
 ) -> Result<bool, String> {
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_toggle")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask toggle requested");
+
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.status = match subtask.status {
             TaskStatus::Completed => TaskStatus::Waiting,
             _ => TaskStatus::Completed,
         };
 
         Ok(matches!(subtask.status, TaskStatus::Completed))
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask toggled"),
+        Err(_) => trace.info("subtask toggle failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -560,21 +589,36 @@ pub fn subtasks_delete(
     task_id: String,
     subtask_id: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_delete")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask delete requested");
+
     let mut data = store.write();
 
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     let existed = task.subtasks.iter().any(|s| s.id == subtask_id);
     if !existed {
+        trace.info("subtask not found");
+        drop(trace);
         return Err(format!("Subtask not found: {}", subtask_id));
     }
 
     task.subtasks.retain(|s| s.id != subtask_id);
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("subtask deleted");
+    drop(trace);
 
     Ok(())
 }
@@ -585,13 +629,22 @@ pub fn subtasks_reorder(
     task_id: String,
     subtask_ids: Vec<String>,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_reorder")
+        .with("task_id", task_id.clone());
+    trace.info("subtask reorder requested");
+
     let mut data = store.write();
 
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     for (index, subtask_id) in subtask_ids.iter().enumerate() {
         if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
@@ -600,6 +653,9 @@ pub fn subtasks_reorder(
     }
 
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("subtask reorder complete");
+    drop(trace);
 
     Ok(())
 }
@@ -611,15 +667,32 @@ pub fn subtasks_update_text(
     subtask_id: String,
     text: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_text")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask text update requested");
+
     let text = text.trim().to_string();
     if text.is_empty() {
+        trace.info("subtask text empty");
+        drop(trace);
         return Err("Subtask text cannot be empty".to_string());
     }
 
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.text = text;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask text updated"),
+        Err(_) => trace.info("subtask text update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -702,17 +775,36 @@ pub fn subtasks_update_status(
     subtask_id: String,
     status: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_status")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask status update requested");
+
     let status = match status.as_str() {
         "waiting" => TaskStatus::Waiting,
         "in_progress" => TaskStatus::InProgress,
         "completed" => TaskStatus::Completed,
-        _ => return Err(format!("Invalid status: {}", status)),
+        _ => {
+            trace.info("invalid status provided");
+            drop(trace);
+            return Err(format!("Invalid status: {}", status));
+        }
     };
 
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.status = status;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask status updated"),
+        Err(_) => trace.info("subtask status update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -722,10 +814,25 @@ pub fn subtasks_update_order(
     subtask_id: String,
     order: u32,
 ) -> Result<(), String> {
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_order")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask order update requested");
+
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.order = order;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask order updated"),
+        Err(_) => trace.info("subtask order update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -735,16 +842,35 @@ pub fn subtasks_update_category(
     subtask_id: String,
     category: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_category")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask category update requested");
+
     let category = match category.as_str() {
         "functional" => SubtaskCategory::Functional,
         "test" => SubtaskCategory::Test,
-        _ => return Err(format!("Invalid category: {}", category)),
+        _ => {
+            trace.info("invalid category provided");
+            drop(trace);
+            return Err(format!("Invalid category: {}", category));
+        }
     };
 
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.category = category;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask category updated"),
+        Err(_) => trace.info("subtask category update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -754,10 +880,25 @@ pub fn subtasks_update_notes(
     subtask_id: String,
     notes: String,
 ) -> Result<(), String> {
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_notes")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask notes update requested");
+
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.notes = notes;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask notes updated"),
+        Err(_) => trace.info("subtask notes update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -767,10 +908,25 @@ pub fn subtasks_update_should_commit(
     subtask_id: String,
     should_commit: bool,
 ) -> Result<(), String> {
-    with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "subtasks_update_should_commit")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("subtask should_commit update requested");
+
+    let result = with_subtask_mut(store.inner(), &task_id, &subtask_id, |subtask| {
         subtask.should_commit = should_commit;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask should_commit updated"),
+        Err(_) => trace.info("subtask should_commit update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -780,8 +936,17 @@ pub fn steps_create(
     subtask_id: String,
     text: String,
 ) -> Result<Step, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "steps_create")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("step create requested");
+
     let text = text.trim().to_string();
     if text.is_empty() {
+        trace.info("step text empty");
+        drop(trace);
         return Err("Step text cannot be empty".to_string());
     }
 
@@ -791,13 +956,19 @@ pub fn steps_create(
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     let subtask = task
         .subtasks
         .iter_mut()
         .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+        .ok_or_else(|| {
+            trace.info("subtask not found");
+            format!("Subtask not found: {}", subtask_id)
+        })?;
 
     let step = Step {
         id: Uuid::new_v4().to_string(),
@@ -807,6 +978,9 @@ pub fn steps_create(
 
     subtask.steps.push(step.clone());
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("step created");
+    drop(trace);
 
     Ok(step)
 }
@@ -818,10 +992,26 @@ pub fn steps_toggle(
     subtask_id: String,
     step_id: String,
 ) -> Result<bool, String> {
-    with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "steps_toggle")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone())
+        .with("step_id", step_id.clone());
+    trace.info("step toggle requested");
+
+    let result = with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
         step.completed = !step.completed;
         Ok(step.completed)
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("step toggled"),
+        Err(_) => trace.info("step toggle failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -831,27 +1021,46 @@ pub fn steps_delete(
     subtask_id: String,
     step_id: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "steps_delete")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone())
+        .with("step_id", step_id.clone());
+    trace.info("step delete requested");
+
     let mut data = store.write();
 
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     let subtask = task
         .subtasks
         .iter_mut()
         .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+        .ok_or_else(|| {
+            trace.info("subtask not found");
+            format!("Subtask not found: {}", subtask_id)
+        })?;
 
     let existed = subtask.steps.iter().any(|s| s.id == step_id);
     if !existed {
+        trace.info("step not found");
+        drop(trace);
         return Err(format!("Step not found: {}", step_id));
     }
 
     subtask.steps.retain(|s| s.id != step_id);
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("step deleted");
+    drop(trace);
 
     Ok(())
 }
@@ -864,15 +1073,33 @@ pub fn steps_update_text(
     step_id: String,
     text: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "steps_update_text")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone())
+        .with("step_id", step_id.clone());
+    trace.info("step text update requested");
+
     let text = text.trim().to_string();
     if text.is_empty() {
+        trace.info("step text empty");
+        drop(trace);
         return Err("Step text cannot be empty".to_string());
     }
 
-    with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
+    let result = with_step_mut(store.inner(), &task_id, &subtask_id, &step_id, |step| {
         step.text = text;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("step text updated"),
+        Err(_) => trace.info("step text update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]

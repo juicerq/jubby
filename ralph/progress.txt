@@ -238,3 +238,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Validate input before mutating and log early returns to keep traceend entries consistent
 - Useful context (e.g., "the evaluation panel is in component X")
 - Include tag counts in trace info when updating task tags for extra context
+
+## 2026-01-22 16:41 - Task 7
+- What was implemented
+- Added trace instrumentation across subtask and step commands, including updates, toggles, deletes, and reorder flows with task/subtask/step context
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Subtask/step commands can follow the same trace start/finish pattern as folder/task commands
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Log and drop traces on validation errors (empty text/invalid status) to keep traceend entries consistent
+- Useful context (e.g., "the evaluation panel is in component X")
+- Include task_id/subtask_id/step_id in trace context for debugging nested operations
