@@ -193,6 +193,13 @@ pub fn run() {
                 .map_err(|e| format!("Failed to initialize tasks store: {}", e))?;
             app.manage(tasks_store);
 
+            // Start tasks file watcher for hot-reload
+            let watcher_state = plugins::tasks::watcher::WatcherState::new();
+            if let Err(e) = watcher_state.start(app.handle().clone()) {
+                tracing::warn!(target: "tasks", "Failed to start tasks file watcher: {}", e);
+            }
+            app.manage(watcher_state);
+
             app.manage(plugins::tasks::opencode::OpenCodeServerState::new());
             app.manage(plugins::tasks::opencode::ActiveSessions::new());
 
