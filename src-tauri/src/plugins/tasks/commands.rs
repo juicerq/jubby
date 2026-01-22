@@ -1,7 +1,8 @@
+use super::helpers::{find_folder, find_folder_mut, with_folder_mut};
 use super::storage::save_to_json;
 use super::types::*;
 use super::TasksStore;
-use crate::traces::Trace;
+use crate::traces::{Trace, TraceError};
 use tauri::State;
 use uuid::Uuid;
 
@@ -14,8 +15,10 @@ fn now_ms() -> i64 {
 
 #[tauri::command]
 pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>, String> {
-    let trace = Trace::new().with("plugin", "tasks").with("action", "folder_get_all");
-    
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_get_all");
+
     let data = store.read();
     trace.info("store read acquired");
 
@@ -23,11 +26,8 @@ pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>
         .folders
         .iter()
         .map(|f| {
-            let folder_tasks: Vec<&Task> = data
-                .tasks
-                .iter()
-                .filter(|t| t.folder_id == f.id)
-                .collect();
+            let folder_tasks: Vec<&Task> =
+                data.tasks.iter().filter(|t| t.folder_id == f.id).collect();
 
             let task_count = folder_tasks.len() as i32;
 
@@ -56,10 +56,10 @@ pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>
         .collect();
 
     result.sort_by_key(|f| f.position);
-    
+
     trace.info(&format!("returning {} folders", result.len()));
     drop(trace);
-    
+
     Ok(result)
 }
 
@@ -94,26 +94,17 @@ pub fn folder_rename(store: State<TasksStore>, id: String, name: String) -> Resu
         return Err("Folder name cannot be empty".to_string());
     }
 
-    let mut data = store.write();
-
-    let folder = data
-        .folders
-        .iter_mut()
-        .find(|f| f.id == id)
-        .ok_or_else(|| format!("Folder not found: {}", id))?;
-
-    folder.name = name;
-    save_to_json(&data).map_err(|e| e.to_string())?;
-
-    Ok(())
+    with_folder_mut(store.inner(), &id, |folder| {
+        folder.name = name;
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     let mut data = store.write();
 
-    let existed = data.folders.iter().any(|f| f.id == id);
-    if !existed {
+    if find_folder(&data, &id).is_none() {
         return Err(format!("Folder not found: {}", id));
     }
 
@@ -132,7 +123,7 @@ pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Resu
     let mut data = store.write();
 
     for (index, folder_id) in folder_ids.iter().enumerate() {
-        if let Some(folder) = data.folders.iter_mut().find(|f| &f.id == folder_id) {
+        if let Some(folder) = find_folder_mut(&mut data, folder_id) {
             folder.position = index as i32;
         }
     }
@@ -223,7 +214,11 @@ pub fn tasks_create(
 }
 
 #[tauri::command]
-pub fn tasks_update_status(store: State<TasksStore>, id: String, status: String) -> Result<(), String> {
+pub fn tasks_update_status(
+    store: State<TasksStore>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
     if !["pending", "in_progress", "completed"].contains(&status.as_str()) {
         return Err(format!("Invalid status: {}", status));
     }
@@ -582,15 +577,32 @@ pub fn tasks_update_working_directory(
     id: String,
     working_directory: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_update_working_directory")
+        .with("task_id", id.clone());
+
     let working_directory = working_directory.trim().to_string();
 
     if !working_directory.is_empty() {
         let path = std::path::Path::new(&working_directory);
         if !path.exists() {
-            return Err(format!("Path does not exist: {}", working_directory));
+            let message = format!("Path does not exist: {}", working_directory);
+            trace.error(
+                "Working directory update failed",
+                TraceError::new(message.clone(), "WORKING_DIRECTORY_NOT_FOUND"),
+            );
+            drop(trace);
+            return Err(message);
         }
         if !path.is_dir() {
-            return Err(format!("Path is not a directory: {}", working_directory));
+            let message = format!("Path is not a directory: {}", working_directory);
+            trace.error(
+                "Working directory update failed",
+                TraceError::new(message.clone(), "WORKING_DIRECTORY_NOT_DIR"),
+            );
+            drop(trace);
+            return Err(message);
         }
     }
 
@@ -602,8 +614,11 @@ pub fn tasks_update_working_directory(
         .find(|t| t.id == id)
         .ok_or_else(|| format!("Task not found: {}", id))?;
 
-    task.working_directory = working_directory;
+    task.working_directory = working_directory.clone();
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("Working directory updated");
+    drop(trace);
 
     Ok(())
 }

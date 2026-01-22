@@ -186,3 +186,16 @@ Branch dedicada. Se falhar, git checkout main.
 - save_to_json should be called after successful mutation to keep persistence consistent
 - Useful context (e.g., "the evaluation panel is in component X")
 - with_*_mut helpers follow the same not-found error strings used in commands.rs
+
+## 2026-01-22 16:32 - Task 3
+- What was implemented
+- Refactored folder rename/delete/reorder commands to use shared helper functions for lookup and mutation
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Helper functions can be mixed with direct store writes when cascade deletes are needed
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Use `store.inner()` to pass `State<TasksStore>` into helpers expecting `&TasksStore`
+- Useful context (e.g., "the evaluation panel is in component X")
+- Folder reorder can rely on helpers without changing persistence behavior
