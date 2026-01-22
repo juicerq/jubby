@@ -80,6 +80,141 @@ pub fn cleanup_write_registry() {
 }
 
 // ============================================================================
+// UUID-to-Kebab Migration
+// ============================================================================
+
+/// Migrates folder data files from UUID-based names to kebab-case names.
+///
+/// This migration is idempotent - safe to run multiple times:
+/// - Skips folders that already have a non-empty `filename` field
+/// - Only renames files that still use UUID naming
+/// - Handles errors gracefully without aborting the entire migration
+///
+/// The migration:
+/// 1. Loads the folders index
+/// 2. For each folder with empty `filename`, checks if a UUID-named file exists
+/// 3. Generates a unique kebab-case filename from the folder name
+/// 4. Renames the file and updates the folder's `filename` field
+/// 5. Saves the updated folders index
+fn migrate_uuid_filenames_to_kebab() -> Result<(), Box<dyn std::error::Error>> {
+    let mut index = load_folders_index()?;
+
+    // Collect existing filenames to avoid collisions
+    let mut existing_filenames: Vec<String> = index
+        .folders
+        .iter()
+        .filter(|f| !f.filename.is_empty())
+        .map(|f| f.filename.clone())
+        .collect();
+
+    // Find folders that need migration (empty filename field)
+    let folders_to_migrate: Vec<(usize, String, String)> = index
+        .folders
+        .iter()
+        .enumerate()
+        .filter(|(_, folder)| folder.filename.is_empty())
+        .map(|(idx, folder)| (idx, folder.id.clone(), folder.name.clone()))
+        .collect();
+
+    if folders_to_migrate.is_empty() {
+        tracing::debug!(
+            target: "tasks::migration",
+            "No folders need UUID-to-kebab filename migration"
+        );
+        return Ok(());
+    }
+
+    tracing::info!(
+        target: "tasks::migration",
+        "Starting UUID-to-kebab filename migration for {} folders",
+        folders_to_migrate.len()
+    );
+
+    let tasks_dir = get_tasks_dir();
+    let mut migrated_count = 0;
+    let mut skipped_count = 0;
+    let mut error_count = 0;
+
+    for (idx, folder_id, folder_name) in folders_to_migrate {
+        let old_path = tasks_dir.join(format!("{}.json", folder_id));
+
+        // Check if the UUID-named file exists
+        if !old_path.exists() {
+            tracing::debug!(
+                target: "tasks::migration",
+                folder_id = %folder_id,
+                folder_name = %folder_name,
+                "UUID file does not exist, skipping (may already be migrated or new folder)"
+            );
+            skipped_count += 1;
+            continue;
+        }
+
+        // Generate unique kebab-case filename
+        let new_filename = generate_unique_filename(&folder_name, &existing_filenames);
+        let new_path = tasks_dir.join(format!("{}.json", new_filename));
+
+        tracing::info!(
+            target: "tasks::migration",
+            folder_id = %folder_id,
+            folder_name = %folder_name,
+            old_file = %old_path.display(),
+            new_file = %new_path.display(),
+            "Migrating folder file from UUID to kebab-case"
+        );
+
+        // Rename the file
+        match std::fs::rename(&old_path, &new_path) {
+            Ok(_) => {
+                // Update the folder's filename in the index
+                index.folders[idx].filename = new_filename.clone();
+                existing_filenames.push(new_filename.clone());
+                record_internal_write(&new_path);
+                migrated_count += 1;
+
+                tracing::info!(
+                    target: "tasks::migration",
+                    folder_id = %folder_id,
+                    new_filename = %new_filename,
+                    "Successfully migrated folder file"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    target: "tasks::migration",
+                    folder_id = %folder_id,
+                    error = %e,
+                    "Failed to rename folder file, keeping UUID-based name"
+                );
+                error_count += 1;
+                // Don't fail the entire migration - the folder will still work with UUID name
+            }
+        }
+    }
+
+    // Save the updated index if any folders were migrated
+    if migrated_count > 0 {
+        save_folders_index(&index)?;
+        tracing::info!(
+            target: "tasks::migration",
+            migrated = migrated_count,
+            skipped = skipped_count,
+            errors = error_count,
+            "UUID-to-kebab filename migration completed"
+        );
+    } else if error_count > 0 {
+        tracing::warn!(
+            target: "tasks::migration",
+            skipped = skipped_count,
+            errors = error_count,
+            "UUID-to-kebab filename migration completed with errors"
+        );
+    }
+
+    Ok(())
+}
+
+// ============================================================================
 // Filename Utilities
 // ============================================================================
 
@@ -225,6 +360,8 @@ pub fn load_or_migrate() -> Result<TasksData, Box<dyn std::error::Error>> {
     let sqlite_path = get_sqlite_path();
 
     if folders_index_path.exists() {
+        // Run UUID-to-kebab migration for existing installations
+        migrate_uuid_filenames_to_kebab()?;
         return load_from_storage();
     }
 
