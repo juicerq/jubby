@@ -7,6 +7,7 @@ pub enum TaskStatus {
     Waiting,
     InProgress,
     Completed,
+    Failed,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
@@ -119,6 +120,9 @@ fn default_should_commit() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
+    /// Folder ID - only used during migration from old tasks.json format.
+    /// In per-folder storage, this field is implicit from the file path.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub folder_id: String,
     pub text: String,
     pub status: String,
@@ -137,16 +141,41 @@ pub struct Task {
 #[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub id: String,
+    /// Folder ID - only used during migration from old tasks.json format.
+    /// In per-folder storage, this field is implicit from the file path.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub folder_id: String,
     pub name: String,
     pub color: String,
 }
 
+/// Legacy data structure - used during migration from single tasks.json file.
+/// After migration, use FoldersIndex + FolderData instead.
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TasksData {
     #[serde(default)]
     pub folders: Vec<Folder>,
+    #[serde(default)]
+    pub tasks: Vec<Task>,
+    #[serde(default)]
+    pub tags: Vec<Tag>,
+}
+
+/// Index of all folders - stored in folders.json
+/// This is the entry point for the per-folder storage system.
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldersIndex {
+    #[serde(default)]
+    pub folders: Vec<Folder>,
+}
+
+/// Data for a specific folder - stored in {folderId}.json
+/// Contains all tasks and tags belonging to this folder.
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderData {
     #[serde(default)]
     pub tasks: Vec<Task>,
     #[serde(default)]
