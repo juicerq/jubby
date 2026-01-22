@@ -277,3 +277,18 @@ Branch dedicada. Se falhar, git checkout main.
 - Use explicit drop(trace) before early returns to guarantee traceend entries
 - Useful context (e.g., "the evaluation panel is in component X")
 - Keep prompt content out of traces; log lengths and IDs instead
+
+## 2026-01-22 16:49 - Task 10
+- What was implemented
+- Installed the OpenCode SDK dependency and added a spike helper using the v2 client with health/session/event calls
+- Files changed
+- `package.json`
+- `bun.lock`
+- `src/lib/opencode/spike.ts`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- SDK v2 exposes `global.health()` and `global.event()` plus session creation via parameter objects (no body wrapper)
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Root `@opencode-ai/sdk` export lacks `global.health()`, so import from `@opencode-ai/sdk/v2` for health/event APIs
+- Useful context (e.g., "the evaluation panel is in component X")
+- Runtime verification still needs a running server to exercise health/session/event calls
