@@ -382,3 +382,18 @@ Branch dedicada. Se falhar, git checkout main.
 - Re-exports are not enough for `tauri::command`; update handler paths when moving command functions into submodules
 - Useful context (e.g., "the evaluation panel is in component X")
 - OpenCode server state lives in `src-tauri/src/plugins/tasks/opencode/state.rs` and is re-exported from the opencode module
+
+## 2026-01-22 19:45 - Task 17
+- What was implemented
+- Added in-memory persistence commands for OpenCode sessions and wired the state into the Tauri setup
+- Files changed
+- `src-tauri/src/plugins/tasks/opencode/persistence.rs`
+- `src-tauri/src/plugins/tasks/opencode/mod.rs`
+- `src-tauri/src/lib.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Session persistence can live in a simple `RwLock<HashMap<...>>` managed via `app.manage` for fast in-memory lookups
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- `tauri::command` functions still need explicit module paths in `generate_handler!` even when types are re-exported
+- Useful context (e.g., "the evaluation panel is in component X")
+- Persisted sessions are keyed by `session_id` and stored in `src-tauri/src/plugins/tasks/opencode/persistence.rs`

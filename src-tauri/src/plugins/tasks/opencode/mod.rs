@@ -1,4 +1,5 @@
 pub mod server;
+pub mod persistence;
 mod state;
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ use tauri::State;
 use crate::traces::{Trace, TraceError};
 
 pub use server::opencode_ensure_server_with_dir;
+pub use persistence::ActiveSessions;
 pub use state::OpenCodeServerState;
 
 const OPENCODE_PORT: u16 = 4096;

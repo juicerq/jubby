@@ -148,6 +148,9 @@ pub fn run() {
             plugins::tasks::opencode::server::opencode_stop_server,
             plugins::tasks::opencode::tasks_execute_subtask,
             plugins::tasks::opencode::tasks_generate_subtasks,
+            plugins::tasks::opencode::persistence::opencode_persist_session,
+            plugins::tasks::opencode::persistence::opencode_get_persisted_sessions,
+            plugins::tasks::opencode::persistence::opencode_clear_session,
             plugins::tasks::commands::tag_create,
             plugins::tasks::commands::tag_update,
             plugins::tasks::commands::tag_delete,
@@ -188,6 +191,7 @@ pub fn run() {
             app.manage(tasks_store);
 
             app.manage(plugins::tasks::opencode::OpenCodeServerState::new());
+            app.manage(plugins::tasks::opencode::ActiveSessions::new());
 
             let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new(app.handle().clone());
             let handle = plugins::quickclip::recorder::coordinator::CoordinatorHandle::new(command_tx);
