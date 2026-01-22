@@ -414,6 +414,12 @@ pub fn tag_create(
     name: String,
     color: String,
 ) -> Result<TagResponse, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tag_create")
+        .with("folder_id", folder_id.clone());
+    trace.info("tag create requested");
+
     let mut data = store.write();
 
     // Check for duplicate name in folder
@@ -423,6 +429,8 @@ pub fn tag_create(
         .any(|t| t.folder_id == folder_id && t.name == name);
 
     if exists {
+        trace.info("tag name duplicate");
+        drop(trace);
         return Err("Tag name already exists in this folder".to_string());
     }
 
@@ -434,7 +442,14 @@ pub fn tag_create(
     };
 
     data.tags.push(tag.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    if let Err(error) = save_to_json(&data) {
+        trace.info("tag create save failed");
+        drop(trace);
+        return Err(error.to_string());
+    }
+
+    trace.info("tag created");
+    drop(trace);
 
     Ok(TagResponse {
         id: tag.id,
@@ -450,8 +465,21 @@ pub fn tag_update(
     name: String,
     color: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tag_update")
+        .with("tag_id", id.clone());
+    trace.info("tag update requested");
+
     let data = store.read();
-    let tag = find_tag(&data, &id).ok_or_else(|| format!("Tag not found: {}", id))?;
+    let tag = match find_tag(&data, &id) {
+        Some(tag) => tag,
+        None => {
+            trace.info("tag not found");
+            drop(trace);
+            return Err(format!("Tag not found: {}", id));
+        }
+    };
 
     // Check for duplicate name in folder (excluding self)
     let exists = data
@@ -460,24 +488,42 @@ pub fn tag_update(
         .any(|t| t.folder_id == tag.folder_id && t.name == name && t.id != id);
 
     if exists {
+        trace.info("tag name duplicate");
+        drop(trace);
         return Err("Tag name already exists in this folder".to_string());
     }
 
     drop(data);
 
-    with_tag_mut(store.inner(), &id, |tag| {
+    let result = with_tag_mut(store.inner(), &id, |tag| {
         tag.name = name;
         tag.color = color;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("tag updated"),
+        Err(_) => trace.info("tag update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
 pub fn tag_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tag_delete")
+        .with("tag_id", id.clone());
+    trace.info("tag delete requested");
+
     let mut data = store.write();
 
     let existed = data.tags.iter().any(|t| t.id == id);
     if !existed {
+        trace.info("tag not found");
+        drop(trace);
         return Err(format!("Tag not found: {}", id));
     }
 
@@ -486,7 +532,14 @@ pub fn tag_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
     }
 
     data.tags.retain(|t| t.id != id);
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    if let Err(error) = save_to_json(&data) {
+        trace.info("tag delete save failed");
+        drop(trace);
+        return Err(error.to_string());
+    }
+
+    trace.info("tag deleted");
+    drop(trace);
 
     Ok(())
 }
@@ -1118,12 +1171,23 @@ pub fn execution_logs_create(
     commit_message: Option<String>,
     error_message: Option<String>,
 ) -> Result<ExecutionLog, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "execution_logs_create")
+        .with("task_id", task_id.clone())
+        .with("subtask_id", subtask_id.clone());
+    trace.info("execution log create requested");
+
     let outcome = match outcome.as_str() {
         "success" => ExecutionOutcome::Success,
         "partial" => ExecutionOutcome::Partial,
         "failed" => ExecutionOutcome::Failed,
         "aborted" => ExecutionOutcome::Aborted,
-        _ => return Err(format!("Invalid outcome: {}", outcome)),
+        _ => {
+            trace.info("invalid execution outcome");
+            drop(trace);
+            return Err(format!("Invalid outcome: {}", outcome));
+        }
     };
 
     let mut data = store.write();
@@ -1132,13 +1196,19 @@ pub fn execution_logs_create(
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+        .ok_or_else(|| {
+            trace.info("task not found");
+            format!("Task not found: {}", task_id)
+        })?;
 
     let subtask = task
         .subtasks
         .iter_mut()
         .find(|s| s.id == subtask_id)
-        .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
+        .ok_or_else(|| {
+            trace.info("subtask not found");
+            format!("Subtask not found: {}", subtask_id)
+        })?;
 
     let now = now_ms();
     let log = ExecutionLog {
@@ -1161,7 +1231,14 @@ pub fn execution_logs_create(
     };
 
     subtask.execution_logs.push(log.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    if let Err(error) = save_to_json(&data) {
+        trace.info("execution log save failed");
+        drop(trace);
+        return Err(error.to_string());
+    }
+
+    trace.info("execution log created");
+    drop(trace);
 
     Ok(log)
 }

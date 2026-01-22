@@ -251,3 +251,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Log and drop traces on validation errors (empty text/invalid status) to keep traceend entries consistent
 - Useful context (e.g., "the evaluation panel is in component X")
 - Include task_id/subtask_id/step_id in trace context for debugging nested operations
+
+## 2026-01-22 17:40 - Task 8
+- What was implemented
+- Added trace instrumentation to tag_create, tag_update, tag_delete, and execution_logs_create with task/folder/tag context and start/finish info logs
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Tag and execution log commands follow the same trace start/finish pattern with explicit drop(trace)
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Wrap save_to_json errors to log and drop traces before returning
+- Useful context (e.g., "the evaluation panel is in component X")
+- Include tag_id/task_id/subtask_id in trace context for debugging lookups
