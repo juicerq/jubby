@@ -225,3 +225,16 @@ Branch dedicada. Se falhar, git checkout main.
 - Early returns should log and drop the trace to ensure traceend entries are emitted
 - Useful context (e.g., "the evaluation panel is in component X")
 - Use Trace::with("folder_id", id.clone()) for per-folder context
+
+## 2026-01-22 17:22 - Task 6
+- What was implemented
+- Added trace instrumentation to tasks_get_by_folder, tasks_create, tasks_update_status, tasks_update_text, tasks_delete, tasks_set_tags, and tasks_update_description with task/folder context and start/finish info logs
+- Files changed
+- `src-tauri/src/plugins/tasks/commands.rs`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Task commands follow the same trace pattern with explicit drop(trace) before returning
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Validate input before mutating and log early returns to keep traceend entries consistent
+- Useful context (e.g., "the evaluation panel is in component X")
+- Include tag counts in trace info when updating task tags for extra context

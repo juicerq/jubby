@@ -186,6 +186,12 @@ pub fn tasks_get_by_folder(
     store: State<TasksStore>,
     folder_id: String,
 ) -> Result<TasksDataResponse, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_get_by_folder")
+        .with("folder_id", folder_id.clone());
+    trace.info("tasks get by folder requested");
+
     let data = store.read();
 
     let mut folder_tasks: Vec<TaskWithTags> = data
@@ -217,10 +223,19 @@ pub fn tasks_get_by_folder(
         })
         .collect();
 
-    Ok(TasksDataResponse {
+    let response = TasksDataResponse {
         tasks: folder_tasks,
         tags: folder_tags,
-    })
+    };
+
+    trace.info(&format!(
+        "returning {} tasks and {} tags",
+        response.tasks.len(),
+        response.tags.len()
+    ));
+    drop(trace);
+
+    Ok(response)
 }
 
 #[tauri::command]
@@ -232,6 +247,12 @@ pub fn tasks_create(
     description: Option<String>,
     working_directory: Option<String>,
 ) -> Result<TaskWithTags, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_create")
+        .with("folder_id", folder_id.clone());
+    trace.info("task create requested");
+
     let mut data = store.write();
 
     let task = Task {
@@ -248,6 +269,9 @@ pub fn tasks_create(
 
     data.tasks.push(task.clone());
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("task created");
+    drop(trace);
 
     Ok(TaskWithTags {
         id: task.id,
@@ -267,11 +291,19 @@ pub fn tasks_update_status(
     id: String,
     status: String,
 ) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_update_status")
+        .with("task_id", id.clone());
+    trace.info("task status update requested");
+
     if !["pending", "in_progress", "completed"].contains(&status.as_str()) {
+        trace.info("invalid status provided");
+        drop(trace);
         return Err(format!("Invalid status: {}", status));
     }
 
-    with_task_mut(store.inner(), &id, |task| {
+    let result = with_task_mut(store.inner(), &id, |task| {
         task.status = status.clone();
 
         // Cascade: when task is completed, mark all subtasks as completed
@@ -282,33 +314,68 @@ pub fn tasks_update_status(
         }
 
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("task status updated"),
+        Err(_) => trace.info("task status update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
 pub fn tasks_update_text(store: State<TasksStore>, id: String, text: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_update_text")
+        .with("task_id", id.clone());
+    trace.info("task text update requested");
+
     let text = text.trim().to_string();
     if text.is_empty() {
+        trace.info("task text empty");
+        drop(trace);
         return Err("Task text cannot be empty".to_string());
     }
 
-    with_task_mut(store.inner(), &id, |task| {
+    let result = with_task_mut(store.inner(), &id, |task| {
         task.text = text;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("task text updated"),
+        Err(_) => trace.info("task text update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
 pub fn tasks_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_delete")
+        .with("task_id", id.clone());
+    trace.info("task delete requested");
+
     let mut data = store.write();
 
     let existed = data.tasks.iter().any(|t| t.id == id);
     if !existed {
+        trace.info("task not found");
+        drop(trace);
         return Err(format!("Task not found: {}", id));
     }
 
     data.tasks.retain(|t| t.id != id);
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    trace.info("task deleted");
+    drop(trace);
 
     Ok(())
 }
@@ -319,10 +386,25 @@ pub fn tasks_set_tags(
     task_id: String,
     tag_ids: Vec<String>,
 ) -> Result<(), String> {
-    with_task_mut(store.inner(), &task_id, |task| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_set_tags")
+        .with("task_id", task_id.clone());
+    trace.info("task tags update requested");
+
+    let tag_count = tag_ids.len();
+    let result = with_task_mut(store.inner(), &task_id, |task| {
         task.tag_ids = tag_ids;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info(&format!("task tags updated ({})", tag_count)),
+        Err(_) => trace.info("task tags update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -546,10 +628,24 @@ pub fn tasks_update_description(
     id: String,
     description: String,
 ) -> Result<(), String> {
-    with_task_mut(store.inner(), &id, |task| {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_update_description")
+        .with("task_id", id.clone());
+    trace.info("task description update requested");
+
+    let result = with_task_mut(store.inner(), &id, |task| {
         task.description = description;
         Ok(())
-    })
+    });
+
+    match &result {
+        Ok(_) => trace.info("task description updated"),
+        Err(_) => trace.info("task description update failed"),
+    }
+    drop(trace);
+
+    result
 }
 
 #[tauri::command]
@@ -562,6 +658,7 @@ pub fn tasks_update_working_directory(
         .with("plugin", "tasks")
         .with("action", "tasks_update_working_directory")
         .with("task_id", id.clone());
+    trace.info("working directory update requested");
 
     let working_directory = working_directory.trim().to_string();
 
@@ -592,7 +689,7 @@ pub fn tasks_update_working_directory(
         Ok(())
     })?;
 
-    trace.info("Working directory updated");
+    trace.info("working directory updated");
     drop(trace);
 
     Ok(())
