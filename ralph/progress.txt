@@ -352,3 +352,17 @@ Branch dedicada. Se falhar, git checkout main.
 - Session events only include metadata; message content arrives via message part updates
 - Useful context (e.g., "the evaluation panel is in component X")
 - `client.event.subscribe()` returns an async generator, so reconnect logic must wrap the stream loop
+
+## 2026-01-22 17:03 - Task 15
+- What was implemented
+- Added React hooks for OpenCode sessions, status, and SDK-backed mutations for create/prompt/abort
+- Files changed
+- `src/lib/opencode/hooks.ts`
+- `src/lib/opencode/index.ts`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Hooks use Zustand selectors to keep session state reactive without extra context providers
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- SDK responses expose data under `.data`, so hooks unwrap results to keep call sites consistent
+- Useful context (e.g., "the evaluation panel is in component X")
+- OpenCode hooks live in `src/lib/opencode/hooks.ts` and are re-exported via the module index
