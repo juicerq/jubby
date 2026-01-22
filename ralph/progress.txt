@@ -308,3 +308,17 @@ Branch dedicada. Se falhar, git checkout main.
 - Keep shared constants aligned with Rust opencode defaults (host/port) to avoid drift
 - Useful context (e.g., "the evaluation panel is in component X")
 - Start with minimal, generic session types to avoid premature coupling to SDK schemas
+
+## 2026-01-22 16:53 - Task 12
+- What was implemented
+- Added an OpenCode SDK client singleton with connection checks and a wait-for-server retry helper
+- Files changed
+- `src/lib/opencode/client.ts`
+- `src/lib/opencode/index.ts`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Use the SDK's `global.health()` response fields (`result.data`) to confirm connectivity
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- `global.health()` always returns a fields response, so `responseStyle: "data"` is not accepted
+- Useful context (e.g., "the evaluation panel is in component X")
+- waitForServer() uses exponential backoff to avoid tight health-check loops
