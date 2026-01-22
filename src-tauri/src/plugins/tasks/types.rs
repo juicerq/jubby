@@ -82,6 +82,10 @@ pub struct ExecutionLog {
 pub struct Folder {
     pub id: String,
     pub name: String,
+    /// Kebab-case filename (without .json extension) used for storage.
+    /// Generated from folder name on creation.
+    #[serde(default)]
+    pub filename: String,
     pub position: i32,
     pub created_at: i64,
 }

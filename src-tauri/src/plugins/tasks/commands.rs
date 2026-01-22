@@ -2,7 +2,9 @@ use super::helpers::{
     find_folder, find_folder_mut, find_tag, with_folder_mut, with_step_mut, with_subtask_mut,
     with_tag_mut, with_task_mut,
 };
-use super::storage::save_to_json;
+use super::storage::{
+    delete_folder_file, generate_unique_filename, get_folder_filename, save_to_json,
+};
 use super::types::*;
 use super::TasksStore;
 use crate::traces::{Trace, TraceError};
@@ -84,9 +86,18 @@ pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, S
 
     let position = data.folders.iter().map(|f| f.position).max().unwrap_or(-1) + 1;
 
+    // Generate unique kebab-case filename
+    let existing_filenames: Vec<String> = data
+        .folders
+        .iter()
+        .map(|f| get_folder_filename(f))
+        .collect();
+    let filename = generate_unique_filename(&name, &existing_filenames);
+
     let folder = Folder {
         id: Uuid::new_v4().to_string(),
         name,
+        filename,
         position,
         created_at: now_ms(),
     };
@@ -139,11 +150,17 @@ pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String>
 
     let mut data = store.write();
 
-    if find_folder(&data, &id).is_none() {
-        trace.info("folder not found");
-        drop(trace);
-        return Err(format!("Folder not found: {}", id));
-    }
+    let folder = match find_folder(&data, &id) {
+        Some(f) => f,
+        None => {
+            trace.info("folder not found");
+            drop(trace);
+            return Err(format!("Folder not found: {}", id));
+        }
+    };
+
+    // Get filename before removing folder from data
+    let filename = get_folder_filename(folder);
 
     // Cascade delete: remove tasks, tags, and the folder
     data.tasks.retain(|t| t.folder_id != id);
@@ -151,6 +168,9 @@ pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String>
     data.folders.retain(|f| f.id != id);
 
     save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Delete the folder data file
+    delete_folder_file(&filename).map_err(|e| e.to_string())?;
 
     trace.info("folder deleted");
     drop(trace);

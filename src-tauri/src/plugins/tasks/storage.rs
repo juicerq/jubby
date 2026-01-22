@@ -168,8 +168,38 @@ fn get_folders_index_path() -> PathBuf {
     get_tasks_dir().join("folders.json")
 }
 
-fn get_folder_data_path(folder_id: &str) -> PathBuf {
-    get_tasks_dir().join(format!("{}.json", folder_id))
+fn get_folder_data_path(filename: &str) -> PathBuf {
+    get_tasks_dir().join(format!("{}.json", filename))
+}
+
+/// Generates a unique kebab-case filename for a folder.
+/// If the base name already exists, appends a numeric suffix (-1, -2, etc.).
+pub fn generate_unique_filename(name: &str, existing_filenames: &[String]) -> String {
+    let base = to_kebab_case(name);
+
+    if !existing_filenames.contains(&base) {
+        return base;
+    }
+
+    let mut counter = 1;
+    loop {
+        let candidate = format!("{}-{}", base, counter);
+        if !existing_filenames.contains(&candidate) {
+            return candidate;
+        }
+        counter += 1;
+    }
+}
+
+/// Gets the effective filename for a folder.
+/// Returns the filename field if set, otherwise falls back to the folder id.
+/// This provides backward compatibility with folders created before the filename field existed.
+pub fn get_folder_filename(folder: &Folder) -> String {
+    if folder.filename.is_empty() {
+        folder.id.clone()
+    } else {
+        folder.filename.clone()
+    }
 }
 
 fn get_legacy_data_path() -> PathBuf {
@@ -249,7 +279,8 @@ fn load_from_storage() -> Result<TasksData, Box<dyn std::error::Error>> {
     let mut tags = Vec::new();
 
     for folder in &index.folders {
-        let folder_data = load_folder_data(&folder.id)?;
+        let filename = get_folder_filename(folder);
+        let folder_data = load_folder_data(&filename, &folder.id)?;
         tasks.extend(folder_data.tasks);
         tags.extend(folder_data.tags);
     }
@@ -296,6 +327,7 @@ fn save_to_storage(data: &TasksData) -> Result<(), Box<dyn std::error::Error>> {
     save_folders_index(&index)?;
 
     for folder in &data.folders {
+        let filename = get_folder_filename(folder);
         let folder_data = FolderData {
             tasks: data
                 .tasks
@@ -310,7 +342,7 @@ fn save_to_storage(data: &TasksData) -> Result<(), Box<dyn std::error::Error>> {
                 .cloned()
                 .collect(),
         };
-        save_folder_data(&folder.id, &folder_data)?;
+        save_folder_data(&filename, &folder_data)?;
     }
 
     Ok(())
@@ -353,8 +385,16 @@ pub fn save_folders_index(data: &FoldersIndex) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-pub fn load_folder_data(folder_id: &str) -> Result<FolderData, Box<dyn std::error::Error>> {
-    let path = get_folder_data_path(folder_id);
+/// Loads folder data from disk.
+///
+/// # Arguments
+/// * `filename` - The kebab-case filename (without .json extension)
+/// * `folder_id` - The folder's UUID, used to set folder_id on tasks/tags
+pub fn load_folder_data(
+    filename: &str,
+    folder_id: &str,
+) -> Result<FolderData, Box<dyn std::error::Error>> {
+    let path = get_folder_data_path(filename);
     if !path.exists() {
         return Ok(FolderData::default());
     }
@@ -370,8 +410,13 @@ pub fn load_folder_data(folder_id: &str) -> Result<FolderData, Box<dyn std::erro
     Ok(data)
 }
 
+/// Saves folder data to disk.
+///
+/// # Arguments
+/// * `filename` - The kebab-case filename (without .json extension)
+/// * `data` - The folder data to save
 pub fn save_folder_data(
-    folder_id: &str,
+    filename: &str,
     data: &FolderData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = get_tasks_dir();
@@ -398,15 +443,19 @@ pub fn save_folder_data(
             .collect(),
     };
 
-    let path = get_folder_data_path(folder_id);
+    let path = get_folder_data_path(filename);
     let content = serde_json::to_string_pretty(&data)?;
     std::fs::write(&path, &content)?;
     record_internal_write(&path);
     Ok(())
 }
 
-pub fn delete_folder_file(folder_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = get_folder_data_path(folder_id);
+/// Deletes the folder data file from disk.
+///
+/// # Arguments
+/// * `filename` - The kebab-case filename (without .json extension)
+pub fn delete_folder_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_folder_data_path(filename);
     if path.exists() {
         std::fs::remove_file(path)?;
     }
@@ -419,19 +468,29 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
     let conn = Connection::open(path)?;
 
     let mut folders = Vec::new();
+    let mut existing_filenames: Vec<String> = Vec::new();
     {
         let mut stmt = conn
             .prepare("SELECT id, name, position, created_at FROM folders ORDER BY position ASC")?;
         let rows = stmt.query_map([], |row| {
-            Ok(Folder {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                position: row.get(2)?,
-                created_at: row.get(3)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
         })?;
         for row in rows {
-            folders.push(row?);
+            let (id, name, position, created_at) = row?;
+            let filename = generate_unique_filename(&name, &existing_filenames);
+            existing_filenames.push(filename.clone());
+            folders.push(Folder {
+                id,
+                name,
+                filename,
+                position,
+                created_at,
+            });
         }
     }
 
