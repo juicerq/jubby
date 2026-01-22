@@ -3,6 +3,7 @@ pub mod helpers;
 pub mod opencode;
 pub mod storage;
 pub mod types;
+pub mod watcher;
 
 use std::sync::RwLock;
 use types::TasksData;

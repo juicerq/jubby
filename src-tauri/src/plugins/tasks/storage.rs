@@ -2,7 +2,7 @@ use super::types::{Folder, FolderData, FoldersIndex, Tag, Task, TaskStatus, Task
 use crate::shared::paths::{ensure_dir, get_plugin_dir};
 use std::path::PathBuf;
 
-fn get_tasks_dir() -> PathBuf {
+pub fn get_tasks_dir() -> PathBuf {
     get_plugin_dir("tasks")
 }
 
