@@ -14,7 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::storage::{
-    cleanup_write_registry, get_tasks_dir, load_folder_data, should_suppress_event,
+    cleanup_write_registry, get_folder_filename, get_tasks_dir, load_folder_data,
+    load_folders_index, should_suppress_event,
 };
 use super::TasksStore;
 
@@ -204,26 +205,41 @@ fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
         return;
     }
 
-    // Extract folder ID from filename (e.g., "abc-123.json" -> "abc-123")
-    let folder_id = match path.file_stem().and_then(|s| s.to_str()) {
-        Some(id) => id.to_string(),
+    // Extract filename from path (e.g., "my-folder.json" -> "my-folder")
+    let filename = match path.file_stem().and_then(|s| s.to_str()) {
+        Some(name) => name.to_string(),
         None => return,
+    };
+
+    // Look up the folder by filename to get the folder_id
+    let folder_id = match find_folder_id_by_filename(&filename) {
+        Some(id) => id,
+        None => {
+            tracing::debug!(
+                target: "tasks::watcher",
+                filename = %filename,
+                "No folder found for filename, may be a new or orphaned file"
+            );
+            return;
+        }
     };
 
     tracing::debug!(
         target: "tasks::watcher",
         folder_id = %folder_id,
+        filename = %filename,
         path = %path.display(),
         "File changed detected (external write)"
     );
 
     // Reload folder data with retry for mid-write scenarios
-    let folder_data = match load_folder_data_with_retry(&folder_id) {
+    let folder_data = match load_folder_data_with_retry(&filename, &folder_id) {
         Ok(data) => data,
         Err(e) => {
             tracing::error!(
                 target: "tasks::watcher",
                 folder_id = %folder_id,
+                filename = %filename,
                 error = %e,
                 "Failed to reload folder data after retries"
             );
@@ -270,23 +286,51 @@ fn process_event(event: &DebouncedEvent, app_handle: &AppHandle) {
     }
 }
 
+/// Finds a folder ID by its filename.
+///
+/// Loads the folders index and searches for a folder whose effective filename matches.
+fn find_folder_id_by_filename(filename: &str) -> Option<String> {
+    let index = match load_folders_index() {
+        Ok(idx) => idx,
+        Err(e) => {
+            tracing::error!(
+                target: "tasks::watcher",
+                error = %e,
+                "Failed to load folders index"
+            );
+            return None;
+        }
+    };
+
+    for folder in &index.folders {
+        let folder_filename = get_folder_filename(folder);
+        if folder_filename == filename {
+            return Some(folder.id.clone());
+        }
+    }
+
+    None
+}
+
 /// Loads folder data with retry logic for mid-write scenarios.
 ///
 /// When an external process (like an AI) writes to the JSON file, there may be
 /// a brief moment where the file is incomplete or invalid. This function retries
 /// with exponential backoff to handle such cases.
 fn load_folder_data_with_retry(
+    filename: &str,
     folder_id: &str,
 ) -> Result<super::types::FolderData, Box<dyn std::error::Error + Send + Sync>> {
     let mut last_error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
 
     for attempt in 0..MAX_PARSE_RETRIES {
-        match load_folder_data(folder_id) {
+        match load_folder_data(filename, folder_id) {
             Ok(data) => {
                 if attempt > 0 {
                     tracing::debug!(
                         target: "tasks::watcher",
                         folder_id = %folder_id,
+                        filename = %filename,
                         attempt = attempt + 1,
                         "Successfully loaded folder data after retry"
                     );
@@ -306,6 +350,7 @@ fn load_folder_data_with_retry(
                 tracing::debug!(
                     target: "tasks::watcher",
                     folder_id = %folder_id,
+                    filename = %filename,
                     attempt = attempt + 1,
                     error = %e,
                     "JSON parse failed, retrying..."
