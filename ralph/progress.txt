@@ -1,212 +1,175 @@
-# Contextual Logging System - PRD
+# Refatoração Backend Rust + Migração OpenCode Híbrido
 
-## Current Status
-Task 15 of 16 completed
+## Why This PRD Exists
 
-## Tasks
-- [x] 1. Rust - Create tracing types and data structures
-- [x] 2. Rust - Implement LogWriter with buffered channel
-- [x] 3. Rust - Implement ContextGuard with RAII
-- [x] 4. Rust - Implement Trace struct core
-- [x] 5. Rust - Implement Trace context methods
-- [x] 6. Rust - Implement Trace logging methods
-- [x] 7. Rust - Implement Trace Drop for trace_end
-- [x] 8. Rust - Implement cleanup for old logs
-- [x] 9. Rust - Create mod.rs and init_tracing()
-- [x] 10. Rust - Add required dependencies (already present)
-- [x] 11. Rust - Integration test with existing command
-- [x] 12. TypeScript - Create trace types
-- [x] 13. TypeScript - Implement createTrace and Trace class
-- [x] 14. TypeScript - Add trace propagation to invoke wrapper
-- [ ] 15. TypeScript - Integration test with existing component
-- [ ] 16. Manual testing - Full flow verification
+**Context:** ralph/loop.sh runs prd.json tasks via opencode CLI. Each task = new session = zero context.
+**Problem:** bash loop = manual work, bad UX, no visibility, cant skip/pause subtasks.
+**Solution:** Make Tasks plugin work with OpenCode SDK. Then: UI shows progress, can pause mid-task, see which subtask running, navigate away and back.
 
-## Architecture Summary
-
-### Core Concept
-Contextual logging where logs accumulate context as code executes. Context is added via `trace.push({ key: value })` and removed automatically via RAII guards.
-
-### Key Decisions
-- **Scope**: Stack-based with RAII (context auto-removed when guard drops)
-- **Propagation**: Explicit `Arc<Trace>` parameter passing (async-safe)
-- **Emission**: Logs anytime + automatic trace_end summary on Drop
-- **Storage**: JSON-lines files (one per day: `YYYY-MM-DD.jsonl`)
-- **Retention**: 1 day (cleanup on app startup)
-- **Trace ID**: 8 hex chars (e.g., `a3f8b2c1`)
-- **Error detail**: Medium (message + code, no backtrace)
-- **Granularity**: One trace per Tauri command
-
-### File Structure
-```
-src-tauri/src/tracing/
-├── mod.rs        # pub use, init_tracing(), get_writer()
-├── types.rs      # LogLevel, LogEntry, TraceError
-├── trace.rs      # Trace struct, push/pop, log methods
-├── guard.rs      # ContextGuard with Drop
-├── writer.rs     # LogWriter with buffered channel
-└── cleanup.rs    # cleanup_old_traces()
-
-src/lib/
-└── trace.ts      # createTrace(), Trace class
-```
-
-### Log Format (JSON-lines)
-```jsonl
-{"ts":"2026-01-21T14:32:01.123Z","trace":"a3f8b2c1","level":"info","msg":"Recording started","ctx":{"plugin":"quickclip"}}
-{"ts":"2026-01-21T14:32:01.456Z","trace":"a3f8b2c1","level":"error","msg":"FFmpeg failed","ctx":{"plugin":"quickclip","stage":"encode"},"err":{"message":"Process exited","code":"FFMPEG_EXIT"}}
-{"ts":"2026-01-21T14:32:01.457Z","trace":"a3f8b2c1","level":"trace_end","duration_ms":334,"status":"error","ctx":{"plugin":"quickclip"}}
-```
-
-### Writer Architecture
-```
-Trace 1 ──┐
-          │   ┌─────────────┐     ┌─────────────────────┐
-Trace 2 ──┼──▶│ Log Channel │────▶│ Writer Thread       │
-          │   │ (mpsc)      │     │ - buffer 32 entries │
-Trace 3 ──┘   └─────────────┘     │ - flush every 100ms │
-                                  └──────────┬──────────┘
-                                             │
-                                             ▼
-                                   YYYY-MM-DD.jsonl
-```
+**This file:** Preserves learnings between sessions. Next session reads this to not repeat mistakes.
 
 ---
 
-## 2026-01-21 - Task 5: Rust - Implement Trace context methods
-- Implemented `push(self: &Arc<Self>, ctx: Value) -> ContextGuard` method that adds context to stack and returns RAII guard
-- Implemented `merged_context(&self) -> Value` that merges all context stack entries into single object (later values override earlier keys)
-- Added Arc import and ContextGuard import to trace.rs
-- Files changed: `src-tauri/src/traces/trace.rs`
-- **Learnings for future iterations:**
-  - Tasks 1-4 were already implemented in previous sessions but progress.txt wasn't updated
-  - The `push()` method requires `&Arc<Self>` receiver to create the ContextGuard with a cloned Arc
-  - Context merging iterates through stack in order, so later pushes naturally override earlier ones for same keys
+## Current Status
+Task 0 of 26 - Starting
 
-## 2026-01-21 - Task 6: Rust - Implement Trace logging methods
-- Implemented `emit(&self, level, msg, err)` internal method that creates LogEntry and sends via channel
-- Uses `chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)` for ISO 8601 timestamps
-- Sets `has_error` AtomicBool to true when error is present
-- Fire-and-forget pattern: ignores send errors (writer may have shut down)
-- Implemented convenience methods: `debug(&self, msg)`, `info(&self, msg)`, `warn(&self, msg)`
-- Implemented `error(&self, msg, err: TraceError)` that wraps emit with LogLevel::Error
-- Added imports: `AtomicBool::Ordering`, `chrono::{SecondsFormat, Utc}`, `LogLevel`, `TraceError`
-- Files changed: `src-tauri/src/traces/trace.rs`
-- **Learnings for future iterations:**
-  - Cargo.toml must be in current directory for `cargo check` - run from src-tauri/
-  - The 20 "unused" warnings are expected since the tracing module isn't integrated yet (task 9 & 11)
-  - chrono's `to_rfc3339_opts` with `SecondsFormat::Millis` and `true` for Z suffix gives compact ISO format
+## Rollback Plan
+Branch dedicada. Se falhar, git checkout main.
 
-## 2026-01-21 19:28 - Task 7: Rust - Implement Trace Drop for trace_end
-- Implemented `Drop` trait for `Trace` struct
-- On drop: calculates `duration_ms` from `started_at.elapsed().as_millis()`
-- Determines status: "error" if `has_error` is true, "ok" otherwise
-- Emits `LogLevel::TraceEnd` entry with `duration_ms` and `status` fields populated
-- Uses same fire-and-forget pattern as other emit calls
-- Files changed: `src-tauri/src/traces/trace.rs`
-- **Learnings for future iterations:**
-  - Drop trait ensures trace_end is emitted even if code panics (Drop still runs)
-  - Empty `msg` string for trace_end is fine - the level itself communicates intent
-  - `as_millis()` returns u128, cast to u64 is safe for durations under ~584 million years
+---
 
-## 2026-01-21 19:49 - Task 8: Rust - Implement cleanup for old logs
-- Created `src-tauri/src/traces/cleanup.rs` with `cleanup_old_traces()` function
-- Gets traces directory from `get_log_dir().join("traces")`
-- Calculates cutoff date: today - 1 day using `chrono::Days::new(1)`
-- Iterates directory, parses YYYY-MM-DD from filename, deletes files older than cutoff
-- Graceful error handling: logs warnings but doesn't fail app startup
-- Added `mod cleanup` and `pub use cleanup::cleanup_old_traces` to mod.rs
-- Files changed: `src-tauri/src/traces/cleanup.rs`, `src-tauri/src/traces/mod.rs`
-- **Learnings for future iterations:**
-  - YYYY-MM-DD format allows lexicographic string comparison for dates
-  - Use `path.file_stem()` to get filename without extension
-  - `entries.flatten()` handles read_dir errors per-entry gracefully
+## Key Files (read first)
 
-## 2026-01-21 19:49 - Task 10: Rust - Add required dependencies
-- All required dependencies already present in Cargo.toml:
-  - `once_cell = "1"` (for global state)
-  - `rand = "0.8"` (for trace ID generation)
-  - `chrono` with serde feature (for timestamps)
-  - `serde_json = "1"` (for JSON serialization)
-- No changes needed
-- **Learnings for future iterations:**
-  - Always check existing Cargo.toml before assuming deps need to be added
+### Backend Rust (refactor targets)
+- `src-tauri/src/plugins/tasks/commands.rs` - 986 lines, repetitive, needs helpers
+- `src-tauri/src/plugins/tasks/opencode.rs` - 1092 lines, will be split/simplified
+- `src-tauri/src/plugins/tasks/types.rs` - Task, Subtask, Folder types
+- `src-tauri/src/traces/` - Tracing system already exists, use Trace::new().with()
 
-## 2026-01-21 19:52 - Task 9: Rust - Create mod.rs and init_tracing()
-- Added global `LOG_WRITER: OnceCell<LogWriter>` to mod.rs
-- Implemented `init_tracing()` that: creates `~/.local/share/jubby/logs/traces/` directory, runs `cleanup_old_traces()`, spawns `LogWriter`, stores in OnceCell
-- Implemented `get_writer_tx()` that returns `Sender<LogEntry>` from global writer (panics if not initialized)
-- Simplified `Trace::new()` and `Trace::continue_from()` to use `get_writer_tx()` instead of requiring sender parameter
-- Added `#[derive(Debug)]` to `LogWriter` (required by OnceCell's expect)
-- Added `sender()` method to `LogWriter` to expose the sender
-- Called `init_tracing()` in `lib.rs` setup before logging initialization
-- Files changed: `src-tauri/src/traces/mod.rs`, `src-tauri/src/traces/trace.rs`, `src-tauri/src/traces/writer.rs`, `src-tauri/src/lib.rs`
-- **Learnings for future iterations:**
-  - OnceCell::set() returns Result<(), T> where T is the value - requires T: Debug for expect()
-  - Simplifying Trace API to not require sender makes it much easier to use (just `Trace::new()`)
-  - init_tracing() must be called before any Trace is created - enforced by panic in get_writer_tx()
+### Frontend (already working, will add SDK)
+- `src/plugins/tasks/TasksPlugin.tsx` - Main component, has views: folders/list/task
+- `src/plugins/tasks/useTasksStorage.ts` - Hooks, already has useOpenCodeServer
+- `src/plugins/tasks/components/SubtaskItem.tsx` - Shows subtask, has Run/Stop buttons
 
-## 2026-01-21 19:55 - Task 11: Rust - Integration test with existing command
-- Added tracing to `folder_get_all` command in tasks plugin
-- Added `use crate::traces::Trace` import
-- Created trace at command start with `plugin: "tasks"` and `action: "folder_get_all"` context
-- Added `trace.info()` calls at key points: after store read, before returning with folder count
-- Explicit `drop(trace)` ensures trace_end emits before Ok() return
-- Files changed: `src-tauri/src/plugins/tasks/commands.rs`
-- **Learnings for future iterations:**
-  - The `.with()` builder pattern makes adding initial context clean and readable
-  - Explicit `drop(trace)` is clearer than relying on implicit drop at end of function
-  - Unused warnings in traces module are expected until more commands adopt tracing
-  - Command chosen was read-only and simple - good for validating the full flow without side effects
+### Config
+- `src-tauri/src/lib.rs` - invoke_handler registers all commands
+- `CLAUDE.md` - Project conventions, must follow
 
-## 2026-01-21 19:57 - Task 12: TypeScript - Create trace types
-- Created `src/lib/trace.ts` with type definitions
-- Defined `TraceContext` as `Record<string, string | number | boolean>`
-- Defined `TraceError` interface with `message` and `code` fields
-- Defined `ContextCleanup` type alias for cleanup functions returned by `push()`
-- Defined `Trace` interface with: `id`, `push()`, `debug()`, `info()`, `warn()`, `error()`, `end()`, `[Symbol.dispose]`
-- Updated `tsconfig.json` lib from ES2020 to ESNext (required for Symbol.dispose)
-- Files changed: `src/lib/trace.ts`, `tsconfig.json`
-- **Learnings for future iterations:**
-  - `Symbol.dispose` requires ESNext lib in tsconfig (ES2020 doesn't have it)
-  - tsconfig.json LSP errors about comments are false positives (JSONC format)
-  - Keep types minimal and self-documenting per CLAUDE.md code philosophy
+## Gotchas
 
-## 2026-01-21 19:59 - Task 13: TypeScript - Implement createTrace and Trace class
-- Implemented `generateTraceId()` using Math.random().toString(16) for 8 hex chars
-- Implemented `createTrace(initialContext?: TraceContext): Trace` factory function
-- Created `TraceImpl` class with: id, contextStack, startedAt, hasError, ended
-- Implemented `push(ctx)`: adds to stack, returns cleanup function that removes by reference
-- Implemented `emit()` internal method that logs to console with structured format
-- Implemented `debug/info/warn/error` methods calling emit with appropriate level
-- Implemented `end()` that emits trace_end with duration_ms and status, guards against double-end
-- Implemented `[Symbol.dispose]()` that calls end() for `using` keyword support
-- Added internal types: `LogLevel`, `LogEntry` (not exported - internal use only)
-- Files changed: `src/lib/trace.ts`
-- **Learnings for future iterations:**
-  - `performance.now()` gives sub-millisecond precision for duration tracking
-  - `lastIndexOf` + splice pattern allows safe removal even if same ctx object pushed multiple times
-  - `ended` flag prevents duplicate trace_end emissions from both explicit end() and Symbol.dispose
+- `cargo check` must run from `src-tauri/` directory
+- Trace system exists: `use crate::traces::Trace` then `Trace::new().with("key", "val")`
+- UI already works! Don't rebuild it. Focus on backend refactor + SDK migration.
+- OpenCode server runs on port 4096, started as child process by Rust
+- SDK docs: https://opencode.ai/docs/sdk/
 
-## 2026-01-21 20:01 - Task 14: TypeScript - Add trace propagation to invoke wrapper
-- Added `tracedInvoke<T>(cmd, args?, trace?)` function that wraps `@tauri-apps/api/core` invoke
-- When trace is provided, automatically adds `trace_id: trace.id` to the payload
-- Re-exported `baseInvoke` for cases where raw invoke without trace is preferred
-- Backend can continue trace via `Trace::continue_from(trace_id)` to link frontend→backend traces
-- Files changed: `src/lib/trace.ts`
-- **Learnings for future iterations:**
-  - Simple wrapper pattern keeps existing invoke calls working while adding trace support
-  - JSDoc with @example is useful for documenting the usage pattern (required by PRD)
-  - Spread operator `{ ...args, trace_id }` handles undefined args gracefully
+---
 
-## 2026-01-21 20:03 - Task 15: TypeScript - Integration test with existing component
-- Added tracing to `loadFolders` function in `useFolderStorage` hook
-- Created trace at action start with `plugin: "tasks"` and `action: "load_folders"` context
-- Added `trace.info()` calls: at load start and after successful load with folder count
-- Added `trace.error()` call for error cases with `LOAD_FOLDERS_FAILED` code
-- Uses `tracedInvoke` to propagate trace_id to backend `folder_get_all` command
-- Explicit `trace.end()` in finally block ensures trace always completes
-- Files changed: `src/plugins/tasks/useTasksStorage.ts`
+## Tasks
+
+### Fase 1: Helpers para commands.rs (4 tarefas)
+- [ ] 1. Criar tasks/helpers.rs com funções find_*
+- [ ] 2. Criar helpers with_*_mut para mutações com save automático
+- [ ] 3. Refatorar comandos de folder usando helpers
+- [ ] 4. Refatorar comandos de task/subtask/step/tag usando helpers
+
+### Fase 2: Traces em todos os comandos (5 tarefas)
+- [ ] 5. Adicionar traces aos comandos de folder
+- [ ] 6. Adicionar traces aos comandos de tasks
+- [ ] 7. Adicionar traces aos comandos de subtasks e steps
+- [ ] 8. Adicionar traces aos comandos de tags e execution_logs
+- [ ] 9. Adicionar traces aos comandos de opencode
+
+### Fase 3: Migração OpenCode Híbrido (18 tarefas)
+
+#### 3.1 Spike e Setup (6 tarefas)
+- [ ] 10. [SPIKE] Validar SDK OpenCode - instalar e testar básico
+- [ ] 11. Criar estrutura base do módulo opencode no frontend
+- [ ] 12. Criar client wrapper singleton
+- [ ] 13. Criar estado global para sessões (Zustand)
+- [ ] 14. Implementar listener de eventos SSE
+- [ ] 15. Criar hooks React para OpenCode
+
+#### 3.2 Backend Rust (2 tarefas)
+- [ ] 16. Simplificar opencode.rs - extrair server lifecycle
+- [ ] 17. Criar comandos Rust para persistência de sessões
+
+#### 3.3 Migração Frontend (4 tarefas)
+- [ ] 18. Migrar frontend - criar sessão via SDK
+- [ ] 19. Migrar frontend - send prompt via SDK
+- [ ] 20. Migrar frontend - abort e status via SDK
+- [ ] 21. Remover código Rust obsoleto
+
+### Fase 4: Limpeza e Documentação (3 tarefas)
+- [ ] 22. Remover shared/errors.rs
+- [ ] 23. Atualizar CLAUDE.md com nova arquitetura
+
+### Fase 5: Testes e Validação (3 tarefas)
+- [ ] 24. Testes de integração - Fase 1 e 2 (helpers + traces)
+- [ ] 25. Testes de integração - Fase 3 (OpenCode híbrido)
+- [ ] 26. Verificação final e merge
+
+---
+
+## Architecture Summary
+
+### Arquitetura Híbrida Final
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Frontend (React + SDK)                    │
+│                                                             │
+│  src/lib/opencode/                                          │
+│  ├── index.ts        # Re-exports                          │
+│  ├── client.ts       # Singleton SDK client                │
+│  ├── state.ts        # Zustand store para sessões          │
+│  ├── events.ts       # SSE listener + handlers             │
+│  ├── hooks.ts        # useOpenCodeSession, useSendPrompt   │
+│  ├── actions.ts      # createSession, sendPrompt, abort    │
+│  └── types.ts        # Tipos locais                        │
+│                                                             │
+│  Responsabilidades:                                         │
+│  - Todas as operações de sessão via SDK                    │
+│  - SSE events para updates real-time                       │
+│  - Estado global persiste entre navegações                 │
+└─────────────────────────────────────────────────────────────┘
+                              ↕ IPC (Tauri invoke)
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (Rust)                          │
+│                                                             │
+│  src-tauri/src/plugins/tasks/opencode/                     │
+│  ├── mod.rs          # Re-exports                          │
+│  ├── state.rs        # OpenCodeServerState                 │
+│  ├── server.rs       # ensure_server, stop_server, health  │
+│  └── persistence.rs  # persist_session, get_sessions       │
+│                                                             │
+│  Responsabilidades:                                         │
+│  - Start/stop servidor OpenCode (processo filho)           │
+│  - Health check                                            │
+│  - Persistir session_id para recuperar ao navegar          │
+│  - ~200 linhas (vs 1092 original)                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Comandos Tauri
+
+#### Mantidos (lifecycle + persistence)
+- `opencode_ensure_server` - inicia servidor
+- `opencode_stop_server` - para servidor  
+- `opencode_health_check` - verifica saúde
+- `opencode_persist_session` - salva session para recuperar
+- `opencode_get_persisted_sessions` - lista sessões ativas
+- `opencode_clear_session` - remove sessão persistida
+
+#### Removidos (SDK faz no frontend)
+- `opencode_create_session` → `client.session.create()`
+- `opencode_send_prompt` → `client.session.prompt()`
+- `opencode_poll_status` → SSE events
+- `opencode_abort_session` → `client.session.abort()`
+
+### Benefícios
+- SDK TypeScript dá acesso a TODAS as funcionalidades do OpenCode
+- SSE events substituem polling (real-time, menor latência)
+- Estado persiste entre navegações de plugins
+- Backend Rust 5x menor e mais focado
+- Tipos gerados do OpenAPI spec (type-safe)
+
+---
+
+## Progress Log
+
+(Entries will be added as tasks are completed)
+
+## 2026-01-22 16:28 - Task 1
+- What was implemented
+- Added tasks/helpers.rs with pub find_* helpers for folders, tasks, subtasks, steps, and tags
+- Files changed
+- `src-tauri/src/plugins/tasks/helpers.rs`
+- `src-tauri/src/plugins/tasks/mod.rs`
 - **Learnings for future iterations:**
-  - The `tracedInvoke` wrapper requires an object for args (pass `{}` for no args)
-  - Using try/catch/finally pattern with trace.end() in finally ensures cleanup even on error
-  - This component calls `folder_get_all` which already has backend tracing (Task 11), enabling full frontend→backend trace flow verification
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Small helper modules live alongside commands in `src-tauri/src/plugins/tasks/`
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Rust helper functions returning references need explicit lifetimes
+- Useful context (e.g., "the evaluation panel is in component X")
+- Helpers are intended for later refactors of `src-tauri/src/plugins/tasks/commands.rs`

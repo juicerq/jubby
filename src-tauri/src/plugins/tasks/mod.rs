@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod helpers;
 pub mod opencode;
 pub mod storage;
 pub mod types;
