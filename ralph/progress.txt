@@ -338,3 +338,17 @@ Branch dedicada. Se falhar, git checkout main.
 - Remember to reset currentSessionId when removing the active session to avoid stale pointers
 - Useful context (e.g., "the evaluation panel is in component X")
 - OpenCode session state now lives in `src/lib/opencode/state.ts` and is re-exported via the module index
+
+## 2026-01-22 19:20 - Task 14
+- What was implemented
+- Added an OpenCode SSE listener with reconnect/backoff and event handlers that update session/message state
+- Files changed
+- `src/lib/opencode/events.ts`
+- `src/lib/opencode/index.ts`
+- **Learnings for future iterations:**
+- Patterns discovered (e.g., "this codebase uses X for Y")
+- Use `useOpenCodeSessionsStore.setState` for event-driven updates without forcing current session changes
+- Gotchas encountered (e.g., "don't forget to update Z when changing W")
+- Session events only include metadata; message content arrives via message part updates
+- Useful context (e.g., "the evaluation panel is in component X")
+- `client.event.subscribe()` returns an async generator, so reconnect logic must wrap the stream loop
