@@ -1697,3 +1697,353 @@ async fn send_continue(session_id: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+// ============================================================================
+// Terminal Integration - Open OpenCode in terminal with pre-filled prompt
+// ============================================================================
+
+/// Tmux window name prefix for task-specific windows.
+const TMUX_WINDOW_PREFIX: &str = "jubby:";
+
+/// Default terminals to try if JUBBY_TERMINAL and TERMINAL are not set.
+const FALLBACK_TERMINALS: &[&str] = &[
+    "ghostty",
+    "kitty",
+    "alacritty",
+    "wezterm",
+    "gnome-terminal",
+    "konsole",
+    "xfce4-terminal",
+    "xterm",
+];
+
+/// Checks if we're running inside a tmux session.
+fn is_in_tmux() -> bool {
+    std::env::var("TMUX").is_ok()
+}
+
+/// Builds a single-line prompt for OpenCode from task data.
+fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str) -> String {
+    let description = if task.description.is_empty() {
+        String::new()
+    } else {
+        format!(" - {}", task.description.replace('\n', " ").replace('\r', ""))
+    };
+    
+    format!(
+        "Task: {}{}. Task file: {}",
+        task.text,
+        description,
+        task_file_path
+    )
+}
+
+/// Gets the tmux window name for a task.
+fn get_tmux_window_name(task_id: &str) -> String {
+    // Use first 8 chars of task ID for readability
+    let short_id = if task_id.len() > 8 {
+        &task_id[..8]
+    } else {
+        task_id
+    };
+    format!("{}{}", TMUX_WINDOW_PREFIX, short_id)
+}
+
+/// Checks if a tmux window with the given name exists.
+fn tmux_window_exists(window_name: &str) -> bool {
+    std::process::Command::new("tmux")
+        .args(["list-windows", "-F", "#{window_name}"])
+        .output()
+        .map(|output| {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                stdout.lines().any(|line| line == window_name)
+            } else {
+                false
+            }
+        })
+        .unwrap_or(false)
+}
+
+/// Opens OpenCode in a tmux window, reusing existing window if it exists.
+fn open_in_tmux(working_dir: &str, prompt: &str, window_name: &str) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "open_in_tmux")
+        .with("window_name", window_name.to_string());
+
+    if tmux_window_exists(window_name) {
+        // Window exists - select it
+        trace.info(&format!("Selecting existing tmux window: {}", window_name));
+        
+        let result = std::process::Command::new("tmux")
+            .args(["select-window", "-t", window_name])
+            .status()
+            .map_err(|e| format!("Failed to select tmux window: {}", e))?;
+
+        if !result.success() {
+            drop(trace);
+            return Err(format!("tmux select-window failed with code: {:?}", result.code()));
+        }
+
+        drop(trace);
+        Ok(())
+    } else {
+        // Window doesn't exist - create new one with opencode
+        trace.info(&format!("Creating new tmux window: {}", window_name));
+
+        // Build the opencode command with the prompt
+        // Escape single quotes in the prompt for shell
+        let escaped_prompt = prompt.replace('\'', "'\\''");
+        let opencode_cmd = format!("opencode '{}'", escaped_prompt);
+
+        let result = std::process::Command::new("tmux")
+            .args([
+                "new-window",
+                "-n", window_name,
+                "-c", working_dir,
+                &opencode_cmd,
+            ])
+            .status()
+            .map_err(|e| format!("Failed to create tmux window: {}", e))?;
+
+        if !result.success() {
+            drop(trace);
+            return Err(format!("tmux new-window failed with code: {:?}", result.code()));
+        }
+
+        drop(trace);
+        Ok(())
+    }
+}
+
+/// Finds an available GUI terminal emulator.
+fn find_gui_terminal() -> Option<String> {
+    // Check JUBBY_TERMINAL first
+    if let Ok(terminal) = std::env::var("JUBBY_TERMINAL") {
+        if !terminal.is_empty() && which_terminal(&terminal).is_some() {
+            return Some(terminal);
+        }
+    }
+
+    // Check TERMINAL env var
+    if let Ok(terminal) = std::env::var("TERMINAL") {
+        if !terminal.is_empty() && which_terminal(&terminal).is_some() {
+            return Some(terminal);
+        }
+    }
+
+    // Try fallback terminals
+    for terminal in FALLBACK_TERMINALS {
+        if which_terminal(terminal).is_some() {
+            return Some(terminal.to_string());
+        }
+    }
+
+    None
+}
+
+/// Checks if a terminal command is available in PATH.
+fn which_terminal(name: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH")
+        .and_then(|paths| {
+            std::env::split_paths(&paths)
+                .filter_map(|dir| {
+                    let full_path = dir.join(name);
+                    if full_path.is_file() {
+                        Some(full_path)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+        })
+}
+
+/// Opens OpenCode in a GUI terminal emulator.
+fn open_in_gui_terminal(working_dir: &str, prompt: &str, terminal: &str) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "open_in_gui_terminal")
+        .with("terminal", terminal.to_string());
+
+    trace.info(&format!("Opening opencode in GUI terminal: {}", terminal));
+
+    // Escape single quotes in the prompt for shell
+    let escaped_prompt = prompt.replace('\'', "'\\''");
+    let opencode_cmd = format!("opencode '{}'", escaped_prompt);
+
+    // Different terminals have different ways to execute commands
+    let result = match terminal {
+        "ghostty" => {
+            std::process::Command::new(terminal)
+                .args(["--working-directory", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "kitty" => {
+            std::process::Command::new(terminal)
+                .args(["--directory", working_dir, "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "alacritty" => {
+            std::process::Command::new(terminal)
+                .args(["--working-directory", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "wezterm" => {
+            std::process::Command::new(terminal)
+                .args(["start", "--cwd", working_dir, "--", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "gnome-terminal" => {
+            std::process::Command::new(terminal)
+                .args(["--working-directory", working_dir, "--", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "konsole" => {
+            std::process::Command::new(terminal)
+                .args(["--workdir", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+        "xfce4-terminal" => {
+            std::process::Command::new(terminal)
+                .args(["--working-directory", working_dir, "-e", &opencode_cmd])
+                .spawn()
+        }
+        _ => {
+            // Generic fallback: try -e with sh -c
+            std::process::Command::new(terminal)
+                .current_dir(working_dir)
+                .args(["-e", "sh", "-c", &opencode_cmd])
+                .spawn()
+        }
+    };
+
+    match result {
+        Ok(_) => {
+            trace.info("GUI terminal spawned successfully");
+            drop(trace);
+            Ok(())
+        }
+        Err(e) => {
+            trace.error(
+                "Failed to spawn GUI terminal",
+                TraceError::new(e.to_string(), "GUI_TERMINAL_SPAWN_FAILED"),
+            );
+            drop(trace);
+            Err(format!("Failed to open terminal {}: {}", terminal, e))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn tasks_open_opencode_terminal(
+    store: State<'_, super::TasksStore>,
+    task_id: String,
+) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_open_opencode_terminal")
+        .with("task_id", task_id.clone());
+
+    trace.info("Opening OpenCode terminal for task");
+
+    // Resolve task, folder, and compute paths
+    let (task, working_directory, task_file_path) = {
+        let data = store.read();
+        
+        let task = data
+            .tasks
+            .iter()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| format!("Task not found: {}", task_id))?
+            .clone();
+
+        // Get folder for path computation and working directory fallback
+        let folder = data
+            .folders
+            .iter()
+            .find(|f| f.id == task.folder_id)
+            .ok_or_else(|| format!("Folder not found: {}", task.folder_id))?;
+
+        // Compute task file path
+        let folder_filename = super::storage::get_folder_filename(folder);
+        let task_filename = super::storage::get_task_filename(&task);
+        let task_file_path = super::storage::get_task_file_path(&folder_filename, &task_filename)
+            .to_string_lossy()
+            .to_string();
+
+        // Determine working directory: task > folder > current dir
+        let working_directory = if !task.working_directory.is_empty() {
+            task.working_directory.clone()
+        } else if !folder.working_directory.is_empty() {
+            tracing::info!(
+                target: "tasks",
+                task_id = %task_id,
+                folder_id = %task.folder_id,
+                folder_working_directory = %folder.working_directory,
+                "Using folder's working_directory as fallback for terminal"
+            );
+            folder.working_directory.clone()
+        } else {
+            // Fallback to current directory
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "/".to_string())
+        };
+
+        (task, working_directory, task_file_path)
+    };
+
+    // Build the prompt
+    let prompt = build_terminal_prompt(&task, &task_file_path);
+    trace.info(&format!("Prompt built (len={})", prompt.len()));
+
+    // Check if we're in tmux
+    if is_in_tmux() {
+        let window_name = get_tmux_window_name(&task_id);
+        trace.info(&format!("In tmux, using window name: {}", window_name));
+        
+        let result = open_in_tmux(&working_directory, &prompt, &window_name);
+        
+        match &result {
+            Ok(_) => trace.info("OpenCode opened in tmux window"),
+            Err(e) => trace.error(
+                "Failed to open in tmux",
+                TraceError::new(e.clone(), "TMUX_OPEN_FAILED"),
+            ),
+        }
+        
+        drop(trace);
+        return result;
+    }
+
+    // Not in tmux - try GUI terminal
+    trace.info("Not in tmux, looking for GUI terminal");
+    
+    let terminal = find_gui_terminal().ok_or_else(|| {
+        trace.error(
+            "No terminal emulator found",
+            TraceError::new(
+                "Set JUBBY_TERMINAL or TERMINAL env var, or install a supported terminal",
+                "NO_TERMINAL_FOUND",
+            ),
+        );
+        "No terminal emulator found. Set JUBBY_TERMINAL or TERMINAL env var, or install a supported terminal (ghostty, kitty, alacritty, etc.)".to_string()
+    })?;
+
+    trace.info(&format!("Found GUI terminal: {}", terminal));
+
+    let result = open_in_gui_terminal(&working_directory, &prompt, &terminal);
+    
+    match &result {
+        Ok(_) => trace.info("OpenCode opened in GUI terminal"),
+        Err(e) => trace.error(
+            "Failed to open in GUI terminal",
+            TraceError::new(e.clone(), "GUI_TERMINAL_OPEN_FAILED"),
+        ),
+    }
+
+    drop(trace);
+    result
+}
