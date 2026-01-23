@@ -91,6 +91,7 @@ function TasksPlugin(_props: PluginProps) {
 		stopLoop,
 		generateSubtasks,
 		isTaskGenerating,
+		openOpencodeTerminal,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	// Handle file system changes - reload tasks when external changes detected
@@ -488,6 +489,7 @@ function TasksPlugin(_props: PluginProps) {
 			navigateBack: handleNavigateToList,
 			generateSubtasks: (modelId: string) =>
 				generateSubtasks(currentTask.id, modelId),
+			openOpencodeTerminal: () => openOpencodeTerminal(currentTask.id),
 		};
 
 		return (
