@@ -1702,9 +1702,6 @@ async fn send_continue(session_id: &str) -> Result<(), String> {
 // Terminal Integration - Open OpenCode in terminal with pre-filled prompt
 // ============================================================================
 
-/// Tmux window name prefix for task-specific windows.
-const TMUX_WINDOW_PREFIX: &str = "jubby:";
-
 /// Default terminals to try if JUBBY_TERMINAL and TERMINAL are not set.
 const FALLBACK_TERMINALS: &[&str] = &[
     "ghostty",
@@ -1717,13 +1714,11 @@ const FALLBACK_TERMINALS: &[&str] = &[
     "xterm",
 ];
 
-/// Checks if we're running inside a tmux session.
-fn is_in_tmux() -> bool {
-    std::env::var("TMUX").is_ok()
-}
-
 /// Builds a single-line prompt for OpenCode from task data.
-fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str) -> String {
+/// 
+/// Creates a prompt in the format: "Task: {text} - {description}. Task file: {path}"
+/// Newlines in the description are replaced with spaces.
+pub fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str) -> String {
     let description = if task.description.is_empty() {
         String::new()
     } else {
@@ -1738,83 +1733,21 @@ fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str) -> Str
     )
 }
 
-/// Gets the tmux window name for a task.
-fn get_tmux_window_name(task_id: &str) -> String {
+/// Tmux session name prefix for task-specific sessions.
+pub const TMUX_SESSION_PREFIX: &str = "jubby-";
+
+/// Gets the tmux session name for a task (used when spawning GUI terminals).
+/// 
+/// Uses the first 8 characters of the task ID for readability.
+/// Example: task_id "e4a3e70e-4fe3-4c9c" -> "jubby-e4a3e70e"
+pub fn get_tmux_session_name(task_id: &str) -> String {
     // Use first 8 chars of task ID for readability
     let short_id = if task_id.len() > 8 {
         &task_id[..8]
     } else {
         task_id
     };
-    format!("{}{}", TMUX_WINDOW_PREFIX, short_id)
-}
-
-/// Checks if a tmux window with the given name exists.
-fn tmux_window_exists(window_name: &str) -> bool {
-    std::process::Command::new("tmux")
-        .args(["list-windows", "-F", "#{window_name}"])
-        .output()
-        .map(|output| {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.lines().any(|line| line == window_name)
-            } else {
-                false
-            }
-        })
-        .unwrap_or(false)
-}
-
-/// Opens OpenCode in a tmux window, reusing existing window if it exists.
-fn open_in_tmux(working_dir: &str, prompt: &str, window_name: &str) -> Result<(), String> {
-    let trace = Trace::new()
-        .with("plugin", "tasks")
-        .with("action", "open_in_tmux")
-        .with("window_name", window_name.to_string());
-
-    if tmux_window_exists(window_name) {
-        // Window exists - select it
-        trace.info(&format!("Selecting existing tmux window: {}", window_name));
-        
-        let result = std::process::Command::new("tmux")
-            .args(["select-window", "-t", window_name])
-            .status()
-            .map_err(|e| format!("Failed to select tmux window: {}", e))?;
-
-        if !result.success() {
-            drop(trace);
-            return Err(format!("tmux select-window failed with code: {:?}", result.code()));
-        }
-
-        drop(trace);
-        Ok(())
-    } else {
-        // Window doesn't exist - create new one with opencode
-        trace.info(&format!("Creating new tmux window: {}", window_name));
-
-        // Build the opencode command with the prompt
-        // Escape single quotes in the prompt for shell
-        let escaped_prompt = prompt.replace('\'', "'\\''");
-        let opencode_cmd = format!("opencode '{}'", escaped_prompt);
-
-        let result = std::process::Command::new("tmux")
-            .args([
-                "new-window",
-                "-n", window_name,
-                "-c", working_dir,
-                &opencode_cmd,
-            ])
-            .status()
-            .map_err(|e| format!("Failed to create tmux window: {}", e))?;
-
-        if !result.success() {
-            drop(trace);
-            return Err(format!("tmux new-window failed with code: {:?}", result.code()));
-        }
-
-        drop(trace);
-        Ok(())
-    }
+    format!("{}{}", TMUX_SESSION_PREFIX, short_id)
 }
 
 /// Finds an available GUI terminal emulator.
@@ -1860,68 +1793,89 @@ fn which_terminal(name: &str) -> Option<std::path::PathBuf> {
         })
 }
 
-/// Opens OpenCode in a GUI terminal emulator.
-fn open_in_gui_terminal(working_dir: &str, prompt: &str, terminal: &str) -> Result<(), String> {
+/// Opens OpenCode in a GUI terminal emulator with a tmux session.
+/// Uses `tmux new-session -A` to create or attach to a task-specific session.
+fn open_in_gui_terminal(
+    working_dir: &str,
+    prompt: &str,
+    terminal: &str,
+    tmux_session: &str,
+) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "open_in_gui_terminal")
-        .with("terminal", terminal.to_string());
+        .with("terminal", terminal.to_string())
+        .with("tmux_session", tmux_session.to_string());
 
-    trace.info(&format!("Opening opencode in GUI terminal: {}", terminal));
+    trace.info(&format!(
+        "Opening opencode in GUI terminal: {} (tmux session: {})",
+        terminal, tmux_session
+    ));
 
     // Escape single quotes in the prompt for shell
     let escaped_prompt = prompt.replace('\'', "'\\''");
-    let opencode_cmd = format!("opencode '{}'", escaped_prompt);
+    
+    // Build the tmux command that creates/attaches to a session and runs opencode
+    // -A: attach if session exists, else create new
+    // -s: session name
+    // -c: starting directory
+    let tmux_cmd = format!(
+        "tmux new-session -A -s '{}' -c '{}' opencode '{}'",
+        tmux_session.replace('\'', "'\\''"),
+        working_dir.replace('\'', "'\\''"),
+        escaped_prompt
+    );
+
+    trace.debug(&format!("tmux command: {}", tmux_cmd));
 
     // Different terminals have different ways to execute commands
     let result = match terminal {
         "ghostty" => {
             std::process::Command::new(terminal)
-                .args(["--working-directory", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .args(["-e", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "kitty" => {
             std::process::Command::new(terminal)
-                .args(["--directory", working_dir, "sh", "-c", &opencode_cmd])
+                .args(["sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "alacritty" => {
             std::process::Command::new(terminal)
-                .args(["--working-directory", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .args(["-e", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "wezterm" => {
             std::process::Command::new(terminal)
-                .args(["start", "--cwd", working_dir, "--", "sh", "-c", &opencode_cmd])
+                .args(["start", "--", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "gnome-terminal" => {
             std::process::Command::new(terminal)
-                .args(["--working-directory", working_dir, "--", "sh", "-c", &opencode_cmd])
+                .args(["--", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "konsole" => {
             std::process::Command::new(terminal)
-                .args(["--workdir", working_dir, "-e", "sh", "-c", &opencode_cmd])
+                .args(["-e", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
         "xfce4-terminal" => {
             std::process::Command::new(terminal)
-                .args(["--working-directory", working_dir, "-e", &opencode_cmd])
+                .args(["-e", &tmux_cmd])
                 .spawn()
         }
         _ => {
             // Generic fallback: try -e with sh -c
             std::process::Command::new(terminal)
-                .current_dir(working_dir)
-                .args(["-e", "sh", "-c", &opencode_cmd])
+                .args(["-e", "sh", "-c", &tmux_cmd])
                 .spawn()
         }
     };
 
     match result {
         Ok(_) => {
-            trace.info("GUI terminal spawned successfully");
+            trace.info("GUI terminal spawned successfully with tmux session");
             drop(trace);
             Ok(())
         }
@@ -1999,28 +1953,13 @@ pub async fn tasks_open_opencode_terminal(
     let prompt = build_terminal_prompt(&task, &task_file_path);
     trace.info(&format!("Prompt built (len={})", prompt.len()));
 
-    // Check if we're in tmux
-    if is_in_tmux() {
-        let window_name = get_tmux_window_name(&task_id);
-        trace.info(&format!("In tmux, using window name: {}", window_name));
-        
-        let result = open_in_tmux(&working_directory, &prompt, &window_name);
-        
-        match &result {
-            Ok(_) => trace.info("OpenCode opened in tmux window"),
-            Err(e) => trace.error(
-                "Failed to open in tmux",
-                TraceError::new(e.clone(), "TMUX_OPEN_FAILED"),
-            ),
-        }
-        
-        drop(trace);
-        return result;
-    }
+    // Get tmux session name for this task
+    let tmux_session = get_tmux_session_name(&task_id);
+    trace.info(&format!("Using tmux session: {}", tmux_session));
 
-    // Not in tmux - try GUI terminal
-    trace.info("Not in tmux, looking for GUI terminal");
-    
+    // Always spawn a new GUI terminal with a task-specific tmux session.
+    // - Same task = attaches to existing session (tmux new-session -A)
+    // - Different task = creates/attaches to a different session
     let terminal = find_gui_terminal().ok_or_else(|| {
         trace.error(
             "No terminal emulator found",
@@ -2034,10 +1973,10 @@ pub async fn tasks_open_opencode_terminal(
 
     trace.info(&format!("Found GUI terminal: {}", terminal));
 
-    let result = open_in_gui_terminal(&working_directory, &prompt, &terminal);
+    let result = open_in_gui_terminal(&working_directory, &prompt, &terminal, &tmux_session);
     
     match &result {
-        Ok(_) => trace.info("OpenCode opened in GUI terminal"),
+        Ok(_) => trace.info("OpenCode opened in GUI terminal with tmux session"),
         Err(e) => trace.error(
             "Failed to open in GUI terminal",
             TraceError::new(e.clone(), "GUI_TERMINAL_OPEN_FAILED"),
