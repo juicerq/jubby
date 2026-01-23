@@ -5,6 +5,7 @@ import {
 	Play,
 	Sparkles,
 	Square,
+	Terminal,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ interface SubtaskHeaderActionsProps {
 	onGenerateSubtasks: (
 		modelId: string,
 	) => Promise<GenerateSubtasksResult | null>;
+	onOpenOpencodeTerminal: () => Promise<void>;
 }
 
 function SubtaskHeaderActions({
@@ -47,6 +49,7 @@ function SubtaskHeaderActions({
 	onStopLoop,
 	onOpenHistory,
 	onGenerateSubtasks,
+	onOpenOpencodeTerminal,
 }: SubtaskHeaderActionsProps) {
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement>(null);
@@ -80,6 +83,27 @@ function SubtaskHeaderActions({
 					View history
 				</button>
 			)}
+
+			<button
+				type="button"
+				onClick={onOpenOpencodeTerminal}
+				disabled={isExecuting}
+				className={cn(
+					"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+					isExecuting
+						? "cursor-not-allowed bg-white/4 text-white/25"
+						: "cursor-pointer bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25",
+				)}
+				aria-label="Open OpenCode in terminal"
+				title={
+					isExecuting
+						? "Execution in progress"
+						: "Open OpenCode in terminal with task context"
+				}
+			>
+				<Terminal className="h-3 w-3" />
+				OpenCode
+			</button>
 
 			<div className="relative" ref={dropdownRef}>
 				<button
