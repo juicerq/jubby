@@ -259,6 +259,9 @@ interface UseTasksStorageReturn {
 	) => Promise<GenerateSubtasksResult | null>;
 	generatingTaskIds: Set<string>;
 	isTaskGenerating: (taskId: string) => boolean;
+
+	// Open OpenCode in terminal
+	openOpencodeTerminal: (taskId: string) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -1427,6 +1430,30 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[generatingTaskIds],
 	);
 
+	const openOpencodeTerminal = useCallback(async (taskId: string) => {
+		const trace = createTrace({
+			plugin: "tasks",
+			action: "open_opencode_terminal",
+			taskId,
+		});
+
+		try {
+			trace.info("Opening OpenCode in terminal");
+			await tracedInvoke("tasks_open_opencode_terminal", { taskId }, trace);
+			trace.info("OpenCode terminal opened successfully");
+		} catch (error) {
+			const message =
+				typeof error === "string" ? error : "Failed to open OpenCode terminal";
+			trace.error("Failed to open OpenCode terminal", {
+				message,
+				code: "OPEN_OPENCODE_TERMINAL_FAILED",
+			});
+			toast.error(message);
+		} finally {
+			trace.end();
+		}
+	}, []);
+
 	return {
 		tasks,
 		tags,
@@ -1468,6 +1495,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		generateSubtasks,
 		generatingTaskIds,
 		isTaskGenerating,
+		openOpencodeTerminal,
 	};
 }
 
