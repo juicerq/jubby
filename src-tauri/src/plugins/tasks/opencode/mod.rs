@@ -5,9 +5,11 @@ mod state;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::traces::{Trace, TraceError};
+
+use super::watcher::StorageUpdatedPayload;
 
 pub use server::opencode_ensure_server_with_dir;
 pub use persistence::ActiveSessions;
@@ -562,20 +564,21 @@ fn update_subtask_status(
     task_id: &str,
     subtask_id: &str,
     status: super::types::TaskStatus,
+    app_handle: Option<&AppHandle>,
 ) {
     let mut data = store.write();
 
     // Get folder info first
-    let (folder_filename, task_exists) = {
+    let (folder_filename, folder_id, task_exists) = {
         if let Some(task) = data.tasks.iter().find(|t| t.id == task_id) {
-            let folder_id = task.folder_id.clone();
-            if let Some(folder) = data.folders.iter().find(|f| f.id == folder_id) {
-                (super::storage::get_folder_filename(folder), true)
+            let fid = task.folder_id.clone();
+            if let Some(folder) = data.folders.iter().find(|f| f.id == fid) {
+                (super::storage::get_folder_filename(folder), fid, true)
             } else {
-                (String::new(), false)
+                (String::new(), String::new(), false)
             }
         } else {
-            (String::new(), false)
+            (String::new(), String::new(), false)
         }
     };
 
@@ -597,12 +600,27 @@ fn update_subtask_status(
             tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
         }
     }
+
+    // Emit event to notify frontend of the status change
+    if let Some(handle) = app_handle {
+        let payload = StorageUpdatedPayload {
+            folder_id,
+            version: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+        };
+        if let Err(e) = handle.emit("tasks:storage-updated", payload) {
+            tracing::error!(target: "tasks", "Failed to emit storage updated event: {}", e);
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn tasks_execute_subtask(
     store: State<'_, super::TasksStore>,
     server_state: State<'_, OpenCodeServerState>,
+    app_handle: AppHandle,
     task_id: String,
     subtask_id: String,
 ) -> Result<ExecutionResult, String> {
@@ -670,6 +688,7 @@ pub async fn tasks_execute_subtask(
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(EXECUTION_TIMEOUT_SECS);
     let mut continue_attempts: u32 = 0;
+    let mut marked_in_progress = false;
 
     trace.info("Polling for execution completion");
 
@@ -678,7 +697,7 @@ pub async fn tasks_execute_subtask(
             trace.warn(&format!("Execution timeout for session: {}", session_id));
             let _ = opencode_abort_session(session_id.clone()).await;
 
-            update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Failed);
+            update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Failed, Some(&app_handle));
 
             drop(trace);
             return Ok(ExecutionResult {
@@ -698,14 +717,8 @@ pub async fn tasks_execute_subtask(
                 match status.status.as_str() {
                     "idle" => {
                         // Check if the agent truly completed by looking for the promise marker
-                        let has_promise = match check_session_has_promise(&session_id).await {
-                            Ok(has) => has,
-                            Err(e) => {
-                                trace.warn(&format!("Failed to check promise marker: {}", e));
-                                // Assume completed if we can't check
-                                true
-                            }
-                        };
+                        // Use check_session_completion which handles message unavailability gracefully
+                        let (has_promise, _) = check_session_completion(&session_id).await;
 
                         if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
                             continue_attempts += 1;
@@ -744,7 +757,7 @@ pub async fn tasks_execute_subtask(
                             }
                         }
 
-                        update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed);
+                        update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
 
                         drop(trace);
                         return Ok(ExecutionResult {
@@ -754,12 +767,28 @@ pub async fn tasks_execute_subtask(
                             error_message: None,
                         });
                     }
-                    "busy" => {}
-                    "retry" => {
-                        trace.debug(&format!(
-                            "Session {} is retrying (attempt: {:?})",
-                            session_id, status.attempt
-                        ));
+                    "busy" | "retry" => {
+                        // Mark subtask as in_progress when agent starts working
+                        if !marked_in_progress {
+                            marked_in_progress = true;
+                            trace.info(&format!(
+                                "Session {} is now busy, marking subtask as in_progress",
+                                session_id
+                            ));
+                            update_subtask_status(
+                                &store,
+                                &task_id,
+                                &subtask_id,
+                                super::types::TaskStatus::InProgress,
+                                Some(&app_handle),
+                            );
+                        }
+                        if status.status == "retry" {
+                            trace.debug(&format!(
+                                "Session {} is retrying (attempt: {:?})",
+                                session_id, status.attempt
+                            ));
+                        }
                     }
                     other => {
                         trace.warn(&format!("Unexpected session status: {}", other));
@@ -916,14 +945,9 @@ pub async fn tasks_generate_subtasks(
 
                 if status.status == "idle" {
                     // Check if the agent truly completed by looking for the promise marker
-                    let has_promise = match check_session_has_promise(&session_id).await {
-                        Ok(has) => has,
-                        Err(e) => {
-                            trace.warn(&format!("Failed to check promise marker: {}", e));
-                            // Assume completed if we can't check
-                            true
-                        }
-                    };
+                    // and get the message in one call to avoid double-fetch issues
+                    let (has_promise, maybe_message) =
+                        check_session_completion(&session_id).await;
 
                     if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
                         continue_attempts += 1;
@@ -948,7 +972,19 @@ pub async fn tasks_generate_subtasks(
 
                     trace.info(&format!("Generation session {} completed", session_id));
 
-                    let response = get_session_last_message(&session_id).await?;
+                    // Use the message we already fetched, or get it again if unavailable
+                    let response = match maybe_message {
+                        Some(msg) => msg,
+                        None => get_session_last_message(&session_id)
+                            .await
+                            .unwrap_or_else(|e| {
+                                trace.warn(&format!(
+                                    "Failed to get session last message: {}",
+                                    e
+                                ));
+                                "Subtasks generated successfully".to_string()
+                            }),
+                    };
 
                     match super::storage::reload_from_disk() {
                         Ok(new_data) => {
@@ -1052,9 +1088,22 @@ async fn get_session_last_message(session_id: &str) -> Result<String, String> {
     Ok(text)
 }
 
-async fn check_session_has_promise(session_id: &str) -> Result<bool, String> {
-    let last_message = get_session_last_message(session_id).await?;
-    Ok(last_message.contains(PROMISE_COMPLETED_MARKER))
+/// Checks for the promise marker and returns the message content if available.
+/// Returns (has_promise, Option<message>).
+/// - If message is unavailable, returns (false, None) so we can retry with continue.
+/// - This avoids the issue where check_session_has_promise defaults to true on error,
+///   then get_session_last_message fails again causing a false error.
+async fn check_session_completion(session_id: &str) -> (bool, Option<String>) {
+    match get_session_last_message(session_id).await {
+        Ok(message) => {
+            let has_promise = message.contains(PROMISE_COMPLETED_MARKER);
+            (has_promise, Some(message))
+        }
+        Err(_) => {
+            // Message not available yet - treat as not completed so we can retry
+            (false, None)
+        }
+    }
 }
 
 async fn send_continue(session_id: &str) -> Result<(), String> {
