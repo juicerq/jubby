@@ -130,6 +130,7 @@ interface FolderFromBackend {
 	name: string;
 	position: number;
 	createdAt: number;
+	workingDirectory: string;
 	taskCount: number;
 	recentTasks: RecentTask[];
 }
@@ -265,6 +266,7 @@ interface UseFolderStorageReturn {
 	renameFolder: (id: string, name: string) => Promise<boolean>;
 	deleteFolder: (id: string) => Promise<boolean>;
 	reorderFolders: (folderIds: string[]) => Promise<void>;
+	updateFolderWorkingDirectory: (id: string, path: string) => Promise<boolean>;
 }
 
 function mapBackendStep(step: StepFromBackend): Step {
@@ -333,6 +335,7 @@ function mapBackendFolder(folder: FolderFromBackend): Folder {
 		name: folder.name,
 		position: folder.position,
 		createdAt: folder.createdAt,
+		workingDirectory: folder.workingDirectory,
 		taskCount: folder.taskCount,
 		recentTasks: folder.recentTasks,
 	};
@@ -462,6 +465,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				setTasks((prev) =>
 					prev.map((t) => (t.id === tempId ? mapBackendTask(newTask) : t)),
 				);
+
+				// Fire-and-forget: auto-tag the task in background
+				invoke("tasks_auto_tag", { taskId: newTask.id }).catch(() => {});
 			} catch (error) {
 				setTasks((prev) => prev.filter((t) => t.id !== tempId));
 				toast.error("Failed to create task");
@@ -1604,6 +1610,7 @@ export function useFolderStorage(): UseFolderStorageReturn {
 				name,
 				position: folders.length,
 				createdAt: Date.now(),
+				workingDirectory: "",
 				taskCount: 0,
 				recentTasks: [],
 			};
@@ -1690,6 +1697,32 @@ export function useFolderStorage(): UseFolderStorageReturn {
 		}
 	}, []);
 
+	const updateFolderWorkingDirectory = useCallback(
+		async (id: string, path: string) => {
+			let previousFolders: Folder[] = [];
+
+			setFolders((prev) => {
+				previousFolders = prev;
+				return prev.map((f) =>
+					f.id === id ? { ...f, workingDirectory: path } : f,
+				);
+			});
+
+			try {
+				await invoke("folder_update_working_directory", {
+					id,
+					workingDirectory: path,
+				});
+				return true;
+			} catch (error) {
+				setFolders(previousFolders);
+				toast.error("Failed to update working directory");
+				return false;
+			}
+		},
+		[],
+	);
+
 	return {
 		folders,
 		isLoading,
@@ -1698,5 +1731,6 @@ export function useFolderStorage(): UseFolderStorageReturn {
 		renameFolder,
 		deleteFolder,
 		reorderFolders,
+		updateFolderWorkingDirectory,
 	};
 }
