@@ -1,5 +1,3 @@
-export const LAST_WORKING_DIR_KEY = "tasks_lastWorkingDirectory";
-
 export const TAG_COLORS = [
 	{ name: "Red", hex: "#ef4444", contrastText: "white" },
 	{ name: "Orange", hex: "#f97316", contrastText: "white" },

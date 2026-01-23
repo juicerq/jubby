@@ -1035,6 +1035,7 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
                 filename,
                 position,
                 created_at,
+                working_directory: String::new(),
             });
         }
     }

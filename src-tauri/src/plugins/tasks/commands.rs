@@ -10,7 +10,7 @@ use super::storage::{
 use super::types::*;
 use super::TasksStore;
 use crate::traces::{Trace, TraceError};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 fn now_ms() -> i64 {
@@ -77,6 +77,7 @@ pub fn folder_get_all(
                 name: f.name.clone(),
                 position: f.position,
                 created_at: f.created_at,
+                working_directory: f.working_directory.clone(),
                 task_count,
                 recent_tasks,
             }
@@ -123,6 +124,7 @@ pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, S
         filename,
         position,
         created_at: now_ms(),
+        working_directory: String::new(),
     };
 
     data.folders.push(folder.clone());
@@ -266,6 +268,68 @@ pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Resu
     save_folders_index(&index).map_err(|e| e.to_string())?;
 
     trace.info("folder reorder complete");
+    drop(trace);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn folder_update_working_directory(
+    store: State<TasksStore>,
+    id: String,
+    working_directory: String,
+) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "folder_update_working_directory")
+        .with("folder_id", id.clone());
+    trace.info("folder working directory update requested");
+
+    let working_directory = working_directory.trim().to_string();
+
+    if !working_directory.is_empty() {
+        let path = std::path::Path::new(&working_directory);
+        if !path.exists() {
+            let message = format!("Path does not exist: {}", working_directory);
+            trace.error(
+                "Working directory update failed",
+                TraceError::new(message.clone(), "WORKING_DIRECTORY_NOT_FOUND"),
+            );
+            drop(trace);
+            return Err(message);
+        }
+        if !path.is_dir() {
+            let message = format!("Path is not a directory: {}", working_directory);
+            trace.error(
+                "Working directory update failed",
+                TraceError::new(message.clone(), "WORKING_DIRECTORY_NOT_DIR"),
+            );
+            drop(trace);
+            return Err(message);
+        }
+    }
+
+    let mut data = store.write();
+
+    let folder = match find_folder_mut(&mut data, &id) {
+        Some(f) => f,
+        None => {
+            trace.info("folder not found");
+            drop(trace);
+            return Err(format!("Folder not found: {}", id));
+        }
+    };
+
+    folder.working_directory = working_directory;
+
+    // Save the folders index
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
+
+    trace.info("folder working directory updated");
     drop(trace);
 
     Ok(())
@@ -1509,4 +1573,373 @@ pub fn execution_logs_create(
     drop(trace);
 
     Ok(log)
+}
+
+/// Fire-and-forget command to auto-tag a task using AI.
+/// Spawns a background task that calls OpenCode to suggest tags based on task text/description.
+/// Emits a `tasks:tags-updated` event when tags are applied.
+#[tauri::command]
+pub async fn tasks_auto_tag(
+    store: State<'_, TasksStore>,
+    app_handle: AppHandle,
+    task_id: String,
+    folder_id: String,
+) -> Result<(), String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_auto_tag")
+        .with("task_id", task_id.clone())
+        .with("folder_id", folder_id.clone());
+    trace.info("auto-tag requested");
+
+    // Gather task and tags info while holding the lock briefly
+    let (task_text, task_description, available_tags) = {
+        let data = store.read();
+
+        let task = match data.tasks.iter().find(|t| t.id == task_id) {
+            Some(t) => t,
+            None => {
+                trace.info("task not found");
+                drop(trace);
+                return Ok(()); // Fire-forget: don't error, just return
+            }
+        };
+
+        let tags: Vec<(String, String)> = data
+            .tags
+            .iter()
+            .filter(|t| t.folder_id == folder_id)
+            .map(|t| (t.id.clone(), t.name.clone()))
+            .collect();
+
+        if tags.is_empty() {
+            trace.info("no tags available in folder, skipping auto-tag");
+            drop(trace);
+            return Ok(());
+        }
+
+        (task.text.clone(), task.description.clone(), tags)
+    };
+
+    trace.info("spawning background auto-tag task");
+    drop(trace);
+
+    // Spawn background task - fire and forget
+    // Use app_handle.state() to access store from within the spawned task
+    tokio::spawn(async move {
+        run_auto_tag_background(
+            app_handle,
+            task_id,
+            folder_id,
+            task_text,
+            task_description,
+            available_tags,
+        )
+        .await;
+    });
+
+    Ok(())
+}
+
+async fn run_auto_tag_background(
+    app_handle: AppHandle,
+    task_id: String,
+    folder_id: String,
+    task_text: String,
+    task_description: String,
+    available_tags: Vec<(String, String)>,
+) {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_auto_tag_background")
+        .with("task_id", task_id.clone());
+
+    // Check if OpenCode server is running via health check
+    if super::opencode::opencode_health_check().await.is_err() {
+        trace.warn("OpenCode server not running, skipping auto-tag");
+        drop(trace);
+        return;
+    }
+
+    // Build the prompt for tag suggestion
+    let tags_list = available_tags
+        .iter()
+        .map(|(id, name)| format!("- id: \"{}\", name: \"{}\"", id, name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let prompt = format!(
+        r#"You are a task tagger. Analyze the task and suggest which tags apply.
+
+Task title: {}
+Task description: {}
+
+Available tags:
+{}
+
+Rules:
+- Return ONLY a JSON array of tag IDs that apply to this task
+- Return an empty array [] if no tags apply
+- Do NOT explain or add any other text
+- Maximum 3 tags
+
+Example response: ["tag-id-1", "tag-id-2"]"#,
+        task_text,
+        if task_description.is_empty() {
+            "(no description)"
+        } else {
+            &task_description
+        },
+        tags_list
+    );
+
+    trace.info("creating OpenCode session for auto-tag");
+
+    // Create session
+    let session = match super::opencode::opencode_create_session(Some(format!(
+        "Auto-tag: {}",
+        task_text
+    )))
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            trace.warn(&format!("Failed to create session: {}", e));
+            drop(trace);
+            return;
+        }
+    };
+
+    let session_id = session.id.clone();
+
+    // Use a faster model for this simple task
+    let model = super::opencode::ModelConfig {
+        provider_id: "anthropic".to_string(),
+        model_id: "claude-sonnet-4-20250514".to_string(),
+    };
+
+    // Send prompt
+    if let Err(e) =
+        super::opencode::opencode_send_prompt(session_id.clone(), prompt, None, Some(model)).await
+    {
+        trace.warn(&format!("Failed to send prompt: {}", e));
+        drop(trace);
+        return;
+    }
+
+    trace.info("polling for auto-tag completion");
+
+    // Poll for completion with timeout
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(30);
+    let poll_interval = std::time::Duration::from_millis(500);
+
+    loop {
+        if start.elapsed() > timeout {
+            trace.warn("auto-tag timed out");
+            let _ = super::opencode::opencode_abort_session(session_id.clone()).await;
+            drop(trace);
+            return;
+        }
+
+        tokio::time::sleep(poll_interval).await;
+
+        match super::opencode::opencode_poll_status(session_id.clone()).await {
+            Ok(status) if status.status == "idle" => {
+                trace.info("auto-tag session completed");
+                break;
+            }
+            Ok(_) => continue,
+            Err(e) => {
+                trace.warn(&format!("Failed to poll status: {}", e));
+                continue;
+            }
+        }
+    }
+
+    // Get the response
+    let response = match get_auto_tag_response(&session_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            trace.warn(&format!("Failed to get response: {}", e));
+            drop(trace);
+            return;
+        }
+    };
+
+    // Parse the JSON array of tag IDs
+    let tag_ids: Vec<String> = match parse_tag_ids(&response, &available_tags) {
+        Ok(ids) => ids,
+        Err(e) => {
+            trace.warn(&format!("Failed to parse tag IDs: {}", e));
+            drop(trace);
+            return;
+        }
+    };
+
+    if tag_ids.is_empty() {
+        trace.info("no tags suggested by AI");
+        drop(trace);
+        return;
+    }
+
+    trace.info(&format!("AI suggested {} tags", tag_ids.len()));
+
+    // Apply tags to the task using app_handle.state()
+    let store: State<'_, TasksStore> = app_handle.state();
+    {
+        let mut data = store.write();
+
+        // Get folder info first
+        let folder_filename = {
+            if let Some(task) = data.tasks.iter().find(|t| t.id == task_id) {
+                if let Some(folder) = data.folders.iter().find(|f| f.id == task.folder_id) {
+                    get_folder_filename(folder)
+                } else {
+                    trace.warn("folder not found");
+                    drop(trace);
+                    return;
+                }
+            } else {
+                trace.warn("task not found when applying tags");
+                drop(trace);
+                return;
+            }
+        };
+
+        // Update task tags
+        if let Some(task) = data.tasks.iter_mut().find(|t| t.id == task_id) {
+            // Merge with existing tags, avoiding duplicates
+            for tag_id in &tag_ids {
+                if !task.tag_ids.contains(tag_id) {
+                    task.tag_ids.push(tag_id.clone());
+                }
+            }
+
+            // Save the task
+            if let Err(e) = save_task(&folder_filename, task) {
+                trace.warn(&format!("Failed to save task with new tags: {}", e));
+                drop(trace);
+                return;
+            }
+        }
+    }
+
+    trace.info(&format!(
+        "auto-tag completed, applied {} tags",
+        tag_ids.len()
+    ));
+
+    // Emit event to notify frontend
+    #[derive(serde::Serialize, Clone)]
+    struct TagsUpdatedPayload {
+        task_id: String,
+        folder_id: String,
+        tag_ids: Vec<String>,
+    }
+
+    if let Err(e) = app_handle.emit(
+        "tasks:tags-updated",
+        TagsUpdatedPayload {
+            task_id,
+            folder_id,
+            tag_ids,
+        },
+    ) {
+        trace.warn(&format!("Failed to emit tags-updated event: {}", e));
+    }
+
+    drop(trace);
+}
+
+async fn get_auto_tag_response(session_id: &str) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    #[derive(serde::Deserialize)]
+    struct MessagePart {
+        #[serde(rename = "type")]
+        part_type: String,
+        #[serde(default)]
+        text: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Message {
+        role: String,
+        parts: Vec<MessagePart>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SessionMessages {
+        messages: Vec<Message>,
+    }
+
+    let base_url = format!("http://127.0.0.1:4096");
+
+    let response = client
+        .get(format!("{}/session/{}", base_url, session_id))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get session: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Get session failed: {}", response.status()));
+    }
+
+    let session_data: SessionMessages = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse session: {}", e))?;
+
+    let assistant_message = session_data
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "assistant")
+        .ok_or("No assistant message found")?;
+
+    let text = assistant_message
+        .parts
+        .iter()
+        .filter_map(|p| {
+            if p.part_type == "text" {
+                p.text.clone()
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(text)
+}
+
+fn parse_tag_ids(response: &str, available_tags: &[(String, String)]) -> Result<Vec<String>, String> {
+    // Try to find a JSON array in the response
+    let trimmed = response.trim();
+
+    // Look for array pattern
+    let start = trimmed.find('[').ok_or("No JSON array found")?;
+    let end = trimmed.rfind(']').ok_or("No closing bracket found")?;
+
+    if end <= start {
+        return Err("Invalid JSON array".to_string());
+    }
+
+    let json_str = &trimmed[start..=end];
+
+    let parsed: Vec<String> = serde_json::from_str(json_str)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    // Validate that all IDs exist in available tags
+    let valid_ids: Vec<String> = parsed
+        .into_iter()
+        .filter(|id| available_tags.iter().any(|(tag_id, _)| tag_id == id))
+        .take(3) // Limit to 3 tags
+        .collect();
+
+    Ok(valid_ids)
 }

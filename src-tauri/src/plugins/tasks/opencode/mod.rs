@@ -265,7 +265,18 @@ pub async fn opencode_create_session(
             format!("Failed to parse create session response: {}", direct_err)
         })?;
 
-    trace.info(&format!("Create session succeeded: {}", parsed.id));
+    trace.info(&format!(
+        "Create session succeeded: id={} projectId={} directory={}",
+        parsed.id, parsed.project_id, parsed.directory
+    ));
+    tracing::info!(
+        target: "tasks",
+        session_id = %parsed.id,
+        project_id = %parsed.project_id,
+        directory = %parsed.directory,
+        title = %parsed.title,
+        "OpenCode session created"
+    );
     drop(trace);
 
     Ok(parsed)
@@ -470,13 +481,6 @@ pub struct ExecutionResult {
     pub error_message: Option<String>,
 }
 
-fn get_tasks_json_path() -> String {
-    crate::shared::paths::get_plugin_dir("tasks")
-        .join("tasks.json")
-        .to_string_lossy()
-        .to_string()
-}
-
 fn format_steps(steps: &[super::types::Step]) -> String {
     if steps.is_empty() {
         return "None".to_string();
@@ -495,22 +499,21 @@ fn format_steps(steps: &[super::types::Step]) -> String {
 fn build_execution_prompt(
     task: &super::types::Task,
     subtask: &super::types::Subtask,
+    task_file_path: &str,
 ) -> String {
-    let tasks_json_path = get_tasks_json_path();
-
     format!(
         r#"You are executing a single subtask for the Jubby Tasks plugin.
 
 Rules:
 - ONLY work on this subtask. Do not start other subtasks.
-- You MUST edit the tasks.json file directly to record your changes and execution log.
+- You MUST edit the task file directly to record your changes and execution log.
 - If shouldCommit = true, you MUST create a git commit for this subtask.
-- After completion, update the subtask status in tasks.json:
+- After completion, update the subtask status in the task file:
   - "completed" if successful
   - "failed" if you could not complete or hit an error
 
 Data source (single source of truth):
-- tasks.json path: {tasks_json_path}
+- Task file path: {task_file_path}
 
 Task context:
 - taskId: {task_id}
@@ -525,7 +528,7 @@ Task context:
 
 What you must do:
 1) Implement only this subtask.
-2) Update tasks.json:
+2) Update the task file ({task_file_path}):
    - set the subtask status ("completed" or "failed")
    - append a new execution log entry under this subtask's executionLogs array:
      - id: generate a UUID
@@ -547,7 +550,7 @@ IMPORTANT: When you have fully completed all work for this subtask, you MUST end
 
 This marker signals that you are truly done. Do NOT include this marker if you still have pending work or if you encountered an error that prevents completion.
 "#,
-        tasks_json_path = tasks_json_path,
+        task_file_path = task_file_path,
         task_id = task.id,
         subtask_id = subtask.id,
         task_text = task.text,
@@ -566,6 +569,14 @@ fn update_subtask_status(
     status: super::types::TaskStatus,
     app_handle: Option<&AppHandle>,
 ) {
+    tracing::info!(
+        target: "tasks",
+        task_id = %task_id,
+        subtask_id = %subtask_id,
+        status = ?status,
+        "update_subtask_status called"
+    );
+
     let mut data = store.write();
 
     // Get folder info first
@@ -575,44 +586,72 @@ fn update_subtask_status(
             if let Some(folder) = data.folders.iter().find(|f| f.id == fid) {
                 (super::storage::get_folder_filename(folder), fid, true)
             } else {
+                tracing::error!(target: "tasks", task_id = %task_id, folder_id = %fid, "Folder not found for task");
                 (String::new(), String::new(), false)
             }
         } else {
+            tracing::error!(target: "tasks", task_id = %task_id, "Task not found in store");
             (String::new(), String::new(), false)
         }
     };
 
     if !task_exists || folder_filename.is_empty() {
-        tracing::error!(target: "tasks", "Task or folder not found for status update");
+        tracing::error!(target: "tasks", "Task or folder not found for status update - aborting");
         return;
     }
 
     // Update the subtask status
     if let Some(task) = data.tasks.iter_mut().find(|t| t.id == task_id) {
         if let Some(subtask) = task.subtasks.iter_mut().find(|s| s.id == subtask_id) {
+            tracing::info!(
+                target: "tasks",
+                subtask_id = %subtask_id,
+                old_status = ?subtask.status,
+                new_status = ?status,
+                "Updating subtask status in memory"
+            );
             subtask.status = status;
+        } else {
+            tracing::error!(target: "tasks", subtask_id = %subtask_id, "Subtask not found in task");
         }
     }
 
     // Save only this task's file
     if let Some(task) = data.tasks.iter().find(|t| t.id == task_id) {
-        if let Err(e) = super::storage::save_task(&folder_filename, task) {
-            tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
+        match super::storage::save_task(&folder_filename, task) {
+            Ok(_) => {
+                tracing::info!(
+                    target: "tasks",
+                    task_id = %task_id,
+                    folder_filename = %folder_filename,
+                    "Subtask status saved to disk"
+                );
+            }
+            Err(e) => {
+                tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
+            }
         }
     }
 
     // Emit event to notify frontend of the status change
     if let Some(handle) = app_handle {
         let payload = StorageUpdatedPayload {
-            folder_id,
+            folder_id: folder_id.clone(),
             version: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0),
         };
+        tracing::info!(
+            target: "tasks",
+            folder_id = %folder_id,
+            "Emitting tasks:storage-updated event"
+        );
         if let Err(e) = handle.emit("tasks:storage-updated", payload) {
             tracing::error!(target: "tasks", "Failed to emit storage updated event: {}", e);
         }
+    } else {
+        tracing::warn!(target: "tasks", "No app_handle provided, skipping event emit");
     }
 }
 
@@ -624,9 +663,9 @@ pub async fn tasks_execute_subtask(
     task_id: String,
     subtask_id: String,
 ) -> Result<ExecutionResult, String> {
-    let (task, subtask) = {
+    let (task, subtask, working_directory, task_file_path) = {
         let data = store.read();
-        let task = data
+        let mut task = data
             .tasks
             .iter()
             .find(|t| t.id == task_id)
@@ -640,35 +679,78 @@ pub async fn tasks_execute_subtask(
             .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?
             .clone();
 
-        if task.working_directory.is_empty() {
+        // Get folder for path computation and working directory fallback
+        let folder = data
+            .folders
+            .iter()
+            .find(|f| f.id == task.folder_id)
+            .ok_or_else(|| format!("Folder not found: {}", task.folder_id))?;
+
+        // Compute task file path
+        let folder_filename = super::storage::get_folder_filename(folder);
+        let task_filename = super::storage::get_task_filename(&task);
+        let task_file_path = super::storage::get_task_file_path(&folder_filename, &task_filename)
+            .to_string_lossy()
+            .to_string();
+
+        // Determine working directory: task > folder > error
+        let working_directory = if !task.working_directory.is_empty() {
+            task.working_directory.clone()
+        } else if !folder.working_directory.is_empty() {
+            tracing::info!(
+                target: "tasks",
+                task_id = %task_id,
+                folder_id = %task.folder_id,
+                folder_working_directory = %folder.working_directory,
+                "Using folder's working_directory as fallback"
+            );
+            // Update task's working_directory for consistency in prompts
+            task.working_directory = folder.working_directory.clone();
+            folder.working_directory.clone()
+        } else {
+            String::new()
+        };
+
+        if working_directory.is_empty() {
             let trace = Trace::new()
                 .with("plugin", "tasks")
                 .with("action", "tasks_execute_subtask")
                 .with("task_id", task_id.clone())
                 .with("subtask_id", subtask_id.clone());
             trace.error(
-                "Working directory missing for task execution",
-                TraceError::new("Task working directory is not set", "WORKING_DIRECTORY_MISSING"),
+                "Working directory missing for task execution (neither task nor folder has one)",
+                TraceError::new("Neither task nor folder has working directory set", "WORKING_DIRECTORY_MISSING"),
             );
             drop(trace);
-            return Err("Task working directory is not set".to_string());
+            return Err("Neither task nor folder has working directory set".to_string());
         }
 
-        (task, subtask)
+        (task, subtask, working_directory, task_file_path)
     };
 
-    opencode_ensure_server_with_dir(server_state, Some(task.working_directory.clone())).await?;
-
+    // Create trace early to capture the full flow including server startup
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_execute_subtask")
         .with("task_id", task_id.clone())
         .with("subtask_id", subtask_id.clone())
-        .with("working_directory", task.working_directory.clone());
+        .with("working_directory", working_directory.clone())
+        .with("task_file_path", task_file_path.clone());
+
+    trace.info("Starting subtask execution, ensuring OpenCode server");
+
+    if let Err(e) = opencode_ensure_server_with_dir(server_state, Some(working_directory.clone())).await {
+        trace.error(
+            "Failed to ensure OpenCode server",
+            TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
+        );
+        drop(trace);
+        return Err(e);
+    }
 
     trace.info("OpenCode server ready for execution");
 
-    let prompt = build_execution_prompt(&task, &subtask);
+    let prompt = build_execution_prompt(&task, &subtask, &task_file_path);
 
     trace.info(&format!(
         "Executing subtask '{}' with prompt length: {}",
@@ -676,12 +758,33 @@ pub async fn tasks_execute_subtask(
         prompt.len()
     ));
 
-    let session = opencode_create_session(Some(format!("{}: {}", task.text, subtask.text))).await?;
+    trace.debug("Creating OpenCode session for subtask");
+
+    let session = match opencode_create_session(Some(format!("{}: {}", task.text, subtask.text))).await {
+        Ok(s) => s,
+        Err(e) => {
+            trace.error(
+                "Failed to create OpenCode session",
+                TraceError::new(e.clone(), "OPENCODE_CREATE_SESSION_FAILED"),
+            );
+            drop(trace);
+            return Err(e);
+        }
+    };
     let session_id = session.id.clone();
 
     trace.info(&format!("Created session: {}", session_id));
 
-    opencode_send_prompt(session_id.clone(), prompt, None, None).await?;
+    trace.debug("Sending prompt to OpenCode session");
+
+    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, None).await {
+        trace.error(
+            "Failed to send prompt to OpenCode session",
+            TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
+        );
+        drop(trace);
+        return Err(e);
+    }
 
     trace.info(&format!("Sent prompt to session: {}", session_id));
 
@@ -717,55 +820,86 @@ pub async fn tasks_execute_subtask(
                 match status.status.as_str() {
                     "idle" => {
                         // Check if the agent truly completed by looking for the promise marker
-                        // Use check_session_completion which handles message unavailability gracefully
-                        let (has_promise, _) = check_session_completion(&session_id).await;
+                        match check_session_completion(&session_id).await {
+                            CompletionCheckResult::Completed(_) => {
+                                // Marker found - agent completed successfully
+                                trace.info(&format!(
+                                    "Session {} completed with promise marker",
+                                    session_id
+                                ));
 
-                        if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
-                            continue_attempts += 1;
-                            trace.info(&format!(
-                                "Session {} idle without promise marker, sending continue ({}/{})",
-                                session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
-                            ));
+                                match super::storage::reload_from_disk() {
+                                    Ok(new_data) => {
+                                        let mut current_data = store.write();
+                                        *current_data = new_data;
+                                        trace.info("Reloaded tasks data from disk after AI edits");
+                                    }
+                                    Err(e) => {
+                                        trace.warn(&format!("Failed to reload from disk: {}", e));
+                                    }
+                                }
 
-                            if let Err(e) = send_continue(&session_id).await {
-                                trace.warn(&format!("Failed to send continue: {}", e));
+                                update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
+
+                                drop(trace);
+                                return Ok(ExecutionResult {
+                                    session_id,
+                                    outcome: "success".to_string(),
+                                    aborted: false,
+                                    error_message: None,
+                                });
                             }
-                            // Continue polling
-                            continue;
-                        }
+                            CompletionCheckResult::NotCompleted(_) => {
+                                // Message exists but no marker - agent stopped prematurely
+                                if continue_attempts < MAX_CONTINUE_ATTEMPTS {
+                                    continue_attempts += 1;
+                                    trace.info(&format!(
+                                        "Session {} idle without promise marker, sending continue ({}/{})",
+                                        session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
+                                    ));
 
-                        if !has_promise {
-                            trace.warn(&format!(
-                                "Session {} idle without promise marker after {} continue attempts, treating as completed",
-                                session_id, MAX_CONTINUE_ATTEMPTS
-                            ));
-                        }
+                                    if let Err(e) = send_continue(&session_id).await {
+                                        trace.warn(&format!("Failed to send continue: {}", e));
+                                    }
+                                    continue;
+                                }
 
-                        trace.info(&format!(
-                            "Session {} completed successfully",
-                            session_id
-                        ));
+                                // Max attempts reached - treat as completed anyway
+                                trace.warn(&format!(
+                                    "Session {} idle without promise marker after {} continue attempts, treating as completed",
+                                    session_id, MAX_CONTINUE_ATTEMPTS
+                                ));
 
-                        match super::storage::reload_from_disk() {
-                            Ok(new_data) => {
-                                let mut current_data = store.write();
-                                *current_data = new_data;
-                                trace.info("Reloaded tasks data from disk after AI edits");
+                                match super::storage::reload_from_disk() {
+                                    Ok(new_data) => {
+                                        let mut current_data = store.write();
+                                        *current_data = new_data;
+                                        trace.info("Reloaded tasks data from disk after AI edits");
+                                    }
+                                    Err(e) => {
+                                        trace.warn(&format!("Failed to reload from disk: {}", e));
+                                    }
+                                }
+
+                                update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
+
+                                drop(trace);
+                                return Ok(ExecutionResult {
+                                    session_id,
+                                    outcome: "success".to_string(),
+                                    aborted: false,
+                                    error_message: None,
+                                });
                             }
-                            Err(e) => {
-                                trace.warn(&format!("Failed to reload from disk: {}", e));
+                            CompletionCheckResult::MessageUnavailable => {
+                                // Message not available yet - keep polling without sending continue
+                                trace.debug(&format!(
+                                    "Session {} idle but message not yet available, continuing to poll",
+                                    session_id
+                                ));
+                                continue;
                             }
                         }
-
-                        update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
-
-                        drop(trace);
-                        return Ok(ExecutionResult {
-                            session_id,
-                            outcome: "success".to_string(),
-                            aborted: false,
-                            error_message: None,
-                        });
                     }
                     "busy" | "retry" => {
                         // Mark subtask as in_progress when agent starts working
@@ -812,24 +946,38 @@ pub struct GenerateSubtasksResult {
     pub message: String,
 }
 
-fn build_generate_prompt(task: &super::types::Task) -> String {
-    let tasks_json_path = get_tasks_json_path();
-
+fn build_generate_prompt(task: &super::types::Task, task_file_path: &str) -> String {
     format!(
         r#"You are generating subtasks for the Jubby Tasks plugin.
 
+Goal:
+- Produce a concise, high-quality plan and atomic subtasks that, when executed in order, complete the task.
+
+Planning quality rules:
+- Start with a 3-7 bullet plan covering: objective, key dependencies, assumptions/unknowns, risks, and validation.
+- If something is unclear, state a reasonable assumption and proceed.
+- Keep the plan short and actionable (no long prose).
+
+Subtask quality rules:
+- Break down the task into subtasks. A task may contain a single subtask (a small bugfix or visual tweak) or many, many subtasks (a PRD or a large refactor).
+- Make each subtask the smallest possible unit of work. We don't want to outrun our headlights. Aim for one small change per subtask.
+- Each subtask should have a concrete outcome.
+- Include a validation/test subtask when behavior changes.
+- Order subtasks by dependency; avoid overlapping scope.
+- Use imperative verbs and mention the target area (file/module/UI).
+- If the task is too broad, note that it should be split into phases.
+
 Rules:
-- Create a full plan BEFORE updating tasks.json (keep it short).
-- Do NOT edit any file except tasks.json.
+- Do NOT edit any file except the task file specified below.
 - Do NOT implement code or change the repo.
 - Do NOT return a JSON array in the response.
-- You MUST edit the tasks.json file directly to append the subtasks.
+- You MUST edit the task file directly to append the subtasks.
 - Keep subtasks atomic and ordered by dependency (prerequisites first).
-- For ALL id fields, you MUST generate UUIDs using: uuidgen (run this command in bash for each id you need)
-- NEVER manually type or invent UUID strings - always use the uuidgen command.
+- For ALL id fields, you MUST generate UUIDs using: uuidgen (run this command in bash for each id you need).
+- NEVER manually type or invent UUID strings.
 
 Data source (single source of truth):
-- tasks.json path: {tasks_json_path}
+- Task file path: {task_file_path}
 
 Task context:
 - taskId: {task_id}
@@ -843,24 +991,24 @@ Subtask schema (append to this task's subtasks array):
 - order: next order number (count existing subtasks)
 - category: "functional" or "test"
 - steps: array of steps, each {{ id: run `uuidgen`, text: string, completed: false }}
-- shouldCommit: true/false
+- shouldCommit: true if the subtask produces a distinct code change worth a commit
 - notes: optional extra context (can be empty string)
 - executionLogs: empty array []
 
 What you must do:
-1) Create a full plan for the task (written in your response).
-2) Open tasks.json and locate the task by taskId.
+1) Write the plan (in your response).
+2) Open the task file and read its current content.
 3) For each subtask and step, run `uuidgen` to get a proper UUID for the id field.
-4) Append new subtasks to task.subtasks following the schema above.
-5) Do NOT modify other tasks.
+4) Append new subtasks to the subtasks array following the schema above.
+5) Save the updated task file.
 6) Do NOT return JSON. Respond with a brief confirmation and how many subtasks were added.
 
-IMPORTANT: When you have fully completed generating all subtasks and updated tasks.json, you MUST end your final message with:
+IMPORTANT: When you have fully completed generating all subtasks and updated the task file, you MUST end your final message with:
 <promise>completed</promise>
 
 This marker signals that you are truly done. Do NOT include this marker if you still have pending work.
 "#,
-        tasks_json_path = tasks_json_path,
+        task_file_path = task_file_path,
         task_id = task.id,
         task_text = task.text,
         task_description = task.description,
@@ -873,19 +1021,56 @@ pub async fn tasks_generate_subtasks(
     server_state: State<'_, OpenCodeServerState>,
     task_id: String,
 ) -> Result<GenerateSubtasksResult, String> {
-    let trace = Trace::new()
-        .with("plugin", "tasks")
-        .with("action", "tasks_generate_subtasks")
-        .with("task_id", task_id.clone());
-
-    let task = {
+    let (task, working_directory, task_file_path, initial_subtask_count) = {
         let data = store.read();
-        data.tasks
+        let mut task = data.tasks
             .iter()
             .find(|t| t.id == task_id)
             .ok_or_else(|| format!("Task not found: {}", task_id))?
-            .clone()
+            .clone();
+
+        let initial_subtask_count = task.subtasks.len();
+
+        // Get folder for path computation and working directory fallback
+        let folder = data
+            .folders
+            .iter()
+            .find(|f| f.id == task.folder_id)
+            .ok_or_else(|| format!("Folder not found: {}", task.folder_id))?;
+
+        // Compute task file path
+        let folder_filename = super::storage::get_folder_filename(folder);
+        let task_filename = super::storage::get_task_filename(&task);
+        let task_file_path = super::storage::get_task_file_path(&folder_filename, &task_filename)
+            .to_string_lossy()
+            .to_string();
+
+        // Determine working directory: task > folder > empty (generate doesn't require it strictly)
+        let working_directory = if !task.working_directory.is_empty() {
+            task.working_directory.clone()
+        } else if !folder.working_directory.is_empty() {
+            tracing::info!(
+                target: "tasks",
+                task_id = %task_id,
+                folder_id = %task.folder_id,
+                folder_working_directory = %folder.working_directory,
+                "Using folder's working_directory as fallback for generation"
+            );
+            task.working_directory = folder.working_directory.clone();
+            folder.working_directory.clone()
+        } else {
+            String::new()
+        };
+
+        (task, working_directory, task_file_path, initial_subtask_count)
     };
+
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_generate_subtasks")
+        .with("task_id", task_id.clone())
+        .with("task_file_path", task_file_path.clone())
+        .with("initial_subtask_count", initial_subtask_count);
 
     if task.description.trim().is_empty() {
         trace.error(
@@ -896,11 +1081,22 @@ pub async fn tasks_generate_subtasks(
         return Err("Task description is empty. Please add a description first.".to_string());
     }
 
-    opencode_ensure_server_with_dir(server_state, Some(task.working_directory.clone())).await?;
+    trace.info("Starting subtask generation, ensuring OpenCode server");
+
+    // Use working_directory if available (for better context), but don't require it for generation
+    let server_dir = if working_directory.is_empty() { None } else { Some(working_directory.clone()) };
+    if let Err(e) = opencode_ensure_server_with_dir(server_state, server_dir).await {
+        trace.error(
+            "Failed to ensure OpenCode server for generation",
+            TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
+        );
+        drop(trace);
+        return Err(e);
+    }
 
     trace.info("OpenCode server ready for subtask generation");
 
-    let prompt = build_generate_prompt(&task);
+    let prompt = build_generate_prompt(&task, &task_file_path);
 
     trace.info(&format!(
         "Generating subtasks for task '{}' with prompt length: {}",
@@ -908,12 +1104,33 @@ pub async fn tasks_generate_subtasks(
         prompt.len()
     ));
 
-    let session = opencode_create_session(Some(format!("Generate subtasks: {}", task.text))).await?;
+    trace.debug("Creating OpenCode session for generation");
+
+    let session = match opencode_create_session(Some(format!("Generate subtasks: {}", task.text))).await {
+        Ok(s) => s,
+        Err(e) => {
+            trace.error(
+                "Failed to create OpenCode session for generation",
+                TraceError::new(e.clone(), "OPENCODE_CREATE_SESSION_FAILED"),
+            );
+            drop(trace);
+            return Err(e);
+        }
+    };
     let session_id = session.id.clone();
 
     trace.info(&format!("Created session for generation: {}", session_id));
 
-    opencode_send_prompt(session_id.clone(), prompt, None, None).await?;
+    trace.debug("Sending prompt for subtask generation");
+
+    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, None).await {
+        trace.error(
+            "Failed to send prompt for generation",
+            TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
+        );
+        drop(trace);
+        return Err(e);
+    }
 
     trace.info("Prompt sent for subtask generation");
 
@@ -945,65 +1162,155 @@ pub async fn tasks_generate_subtasks(
 
                 if status.status == "idle" {
                     // Check if the agent truly completed by looking for the promise marker
-                    // and get the message in one call to avoid double-fetch issues
-                    let (has_promise, maybe_message) =
-                        check_session_completion(&session_id).await;
+                    match check_session_completion(&session_id).await {
+                        CompletionCheckResult::Completed(message) => {
+                            // Marker found - agent completed successfully
+                            trace.info(&format!(
+                                "Generation session {} completed with promise marker",
+                                session_id
+                            ));
 
-                    if !has_promise && continue_attempts < MAX_CONTINUE_ATTEMPTS {
-                        continue_attempts += 1;
-                        trace.info(&format!(
-                            "Generation session {} idle without promise marker, sending continue ({}/{})",
-                            session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
-                        ));
+                            // Get the last message for the result (cleaner output)
+                            let response = get_session_last_message(&session_id)
+                                .await
+                                .unwrap_or(message);
 
-                        if let Err(e) = send_continue(&session_id).await {
-                            trace.warn(&format!("Failed to send continue: {}", e));
+                            match super::storage::reload_from_disk() {
+                                Ok(new_data) => {
+                                    // Verify subtasks were actually created
+                                    let new_subtask_count = new_data
+                                        .tasks
+                                        .iter()
+                                        .find(|t| t.id == task_id)
+                                        .map(|t| t.subtasks.len())
+                                        .unwrap_or(0);
+
+                                    if new_subtask_count <= initial_subtask_count {
+                                        trace.error(
+                                            "Generation completed but no subtasks were created",
+                                            TraceError::new(
+                                                format!(
+                                                    "initial_count={}, new_count={}, task_file={}",
+                                                    initial_subtask_count, new_subtask_count, task_file_path
+                                                ),
+                                                "GENERATION_NO_SUBTASKS_CREATED",
+                                            ),
+                                        );
+                                        drop(trace);
+                                        return Err(format!(
+                                            "Generation completed but no subtasks were created. The AI may have edited the wrong file. Expected task file: {}",
+                                            task_file_path
+                                        ));
+                                    }
+
+                                    let mut current_data = store.write();
+                                    *current_data = new_data;
+                                    trace.info(&format!(
+                                        "Reloaded tasks data from disk after AI edits (subtasks: {} -> {})",
+                                        initial_subtask_count, new_subtask_count
+                                    ));
+                                }
+                                Err(e) => {
+                                    trace.warn(&format!("Failed to reload from disk: {}", e));
+                                }
+                            }
+
+                            trace.info(&format!("Subtasks generated for task '{}'", task.text));
+
+                            drop(trace);
+                            return Ok(GenerateSubtasksResult {
+                                session_id,
+                                message: response,
+                            });
                         }
-                        // Continue polling
-                        continue;
-                    }
-
-                    if !has_promise {
-                        trace.warn(&format!(
-                            "Generation session {} idle without promise marker after {} continue attempts, treating as completed",
-                            session_id, MAX_CONTINUE_ATTEMPTS
-                        ));
-                    }
-
-                    trace.info(&format!("Generation session {} completed", session_id));
-
-                    // Use the message we already fetched, or get it again if unavailable
-                    let response = match maybe_message {
-                        Some(msg) => msg,
-                        None => get_session_last_message(&session_id)
-                            .await
-                            .unwrap_or_else(|e| {
-                                trace.warn(&format!(
-                                    "Failed to get session last message: {}",
-                                    e
+                        CompletionCheckResult::NotCompleted(_) => {
+                            // Message exists but no marker - agent stopped prematurely
+                            if continue_attempts < MAX_CONTINUE_ATTEMPTS {
+                                continue_attempts += 1;
+                                trace.info(&format!(
+                                    "Generation session {} idle without promise marker, sending continue ({}/{})",
+                                    session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
                                 ));
-                                "Subtasks generated successfully".to_string()
-                            }),
-                    };
 
-                    match super::storage::reload_from_disk() {
-                        Ok(new_data) => {
-                            let mut current_data = store.write();
-                            *current_data = new_data;
-                            trace.info("Reloaded tasks data from disk after AI edits");
+                                if let Err(e) = send_continue(&session_id).await {
+                                    trace.warn(&format!("Failed to send continue: {}", e));
+                                }
+                                continue;
+                            }
+
+                            // Max attempts reached - treat as completed anyway
+                            trace.warn(&format!(
+                                "Generation session {} idle without promise marker after {} continue attempts, treating as completed",
+                                session_id, MAX_CONTINUE_ATTEMPTS
+                            ));
+
+                            let response = get_session_last_message(&session_id)
+                                .await
+                                .unwrap_or_else(|e| {
+                                    trace.warn(&format!(
+                                        "Failed to get session last message: {}",
+                                        e
+                                    ));
+                                    "Subtasks generated successfully".to_string()
+                                });
+
+                            match super::storage::reload_from_disk() {
+                                Ok(new_data) => {
+                                    // Verify subtasks were actually created
+                                    let new_subtask_count = new_data
+                                        .tasks
+                                        .iter()
+                                        .find(|t| t.id == task_id)
+                                        .map(|t| t.subtasks.len())
+                                        .unwrap_or(0);
+
+                                    if new_subtask_count <= initial_subtask_count {
+                                        trace.error(
+                                            "Generation completed but no subtasks were created",
+                                            TraceError::new(
+                                                format!(
+                                                    "initial_count={}, new_count={}, task_file={}",
+                                                    initial_subtask_count, new_subtask_count, task_file_path
+                                                ),
+                                                "GENERATION_NO_SUBTASKS_CREATED",
+                                            ),
+                                        );
+                                        drop(trace);
+                                        return Err(format!(
+                                            "Generation completed but no subtasks were created. The AI may have edited the wrong file. Expected task file: {}",
+                                            task_file_path
+                                        ));
+                                    }
+
+                                    let mut current_data = store.write();
+                                    *current_data = new_data;
+                                    trace.info(&format!(
+                                        "Reloaded tasks data from disk after AI edits (subtasks: {} -> {})",
+                                        initial_subtask_count, new_subtask_count
+                                    ));
+                                }
+                                Err(e) => {
+                                    trace.warn(&format!("Failed to reload from disk: {}", e));
+                                }
+                            }
+
+                            trace.info(&format!("Subtasks generated for task '{}'", task.text));
+
+                            drop(trace);
+                            return Ok(GenerateSubtasksResult {
+                                session_id,
+                                message: response,
+                            });
                         }
-                        Err(e) => {
-                            trace.warn(&format!("Failed to reload from disk: {}", e));
+                        CompletionCheckResult::MessageUnavailable => {
+                            // Message not available yet - keep polling without sending continue
+                            trace.debug(&format!(
+                                "Generation session {} idle but message not yet available, continuing to poll",
+                                session_id
+                            ));
+                            continue;
                         }
                     }
-
-                    trace.info(&format!("Subtasks generated for task '{}'", task.text));
-
-                    drop(trace);
-                    return Ok(GenerateSubtasksResult {
-                        session_id,
-                        message: response,
-                    });
                 }
             }
             Err(e) => {
@@ -1016,92 +1323,226 @@ pub async fn tasks_generate_subtasks(
     }
 }
 
-async fn get_session_last_message(session_id: &str) -> Result<String, String> {
+/// Part of a session message (used for deserializing responses).
+/// Distinct from `MessagePart` which is used for sending prompts.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionMessagePart {
+    #[serde(rename = "type")]
+    part_type: String,
+    #[serde(default)]
+    text: Option<String>,
+    /// For subtask parts, the prompt field contains text
+    #[serde(default)]
+    prompt: Option<String>,
+}
+
+/// A message in a session (used for deserializing responses).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionMessage {
+    role: String,
+    parts: Vec<SessionMessagePart>,
+}
+
+/// Session data containing messages (used for deserializing responses).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionData {
+    messages: Vec<SessionMessage>,
+}
+
+/// Extracts text from a session message part, handling different part types.
+fn extract_text_from_part(part: &SessionMessagePart) -> Option<String> {
+    // Handle text parts
+    if part.part_type == "text" {
+        return part.text.clone();
+    }
+
+    // Handle subtask parts (they have a prompt field)
+    if part.part_type == "subtask" {
+        return part.prompt.clone();
+    }
+
+    // For other part types, try the text field as fallback
+    part.text.clone()
+}
+
+/// Result of fetching session messages text.
+enum SessionTextResult {
+    /// Successfully parsed and extracted text
+    Parsed(String),
+    /// Parse failed but we have the raw body (might still contain the marker)
+    RawBody(String),
+    /// Network or other fatal error
+    Error(String),
+}
+
+/// Fetches session data and extracts ALL assistant message text.
+/// Scans all assistant messages to find the promise marker, not just the last one.
+/// If JSON parsing fails, returns the raw body so caller can search for marker directly.
+async fn get_session_messages_text(session_id: &str) -> SessionTextResult {
     let client = client();
 
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MessagePart {
-        #[serde(rename = "type")]
-        part_type: String,
-        #[serde(default)]
-        text: Option<String>,
+    let response = match client
+        .get(format!("{}/session/{}", base_url(), session_id))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(target: "tasks", "get_session_messages_text: network error for session {}: {}", session_id, e);
+            return SessionTextResult::Error(format!("Failed to get session messages: {}", e));
+        }
+    };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::warn!(target: "tasks", "get_session_messages_text: HTTP {} for session {}: {}", status, session_id, truncate_for_trace(&body));
+        return SessionTextResult::Error(format!(
+            "Get session failed with status {}: {}",
+            status, body
+        ));
     }
 
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Message {
-        role: String,
-        parts: Vec<MessagePart>,
+    // Get the raw body first so we can fallback to it if parsing fails
+    let body = match response.text().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(target: "tasks", "get_session_messages_text: failed to read body for session {}: {}", session_id, e);
+            return SessionTextResult::Error(format!("Failed to read response body: {}", e));
+        }
+    };
+
+    // Try to parse the JSON
+    let session_data: SessionData = match serde_json::from_str(&body) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(target: "tasks", "get_session_messages_text: JSON parse failed for session {}: {} (body_len={})", session_id, e, body.len());
+            // Return raw body so caller can search for marker directly
+            return SessionTextResult::RawBody(body);
+        }
+    };
+
+    // Collect text from ALL assistant messages (the marker could be in any of them)
+    let text: String = session_data
+        .messages
+        .iter()
+        .filter(|m| m.role == "assistant")
+        .flat_map(|m| m.parts.iter())
+        .filter_map(extract_text_from_part)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if text.is_empty() {
+        tracing::debug!(target: "tasks", "get_session_messages_text: no assistant text found for session {}, returning raw body", session_id);
+        return SessionTextResult::RawBody(body);
     }
 
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct SessionMessages {
-        messages: Vec<Message>,
-    }
+    SessionTextResult::Parsed(text)
+}
+
+/// Fetches the last assistant message from a session.
+/// Used to return the final message content as a result.
+async fn get_session_last_message(session_id: &str) -> Result<String, String> {
+    let client = client();
 
     let response = client
         .get(format!("{}/session/{}", base_url(), session_id))
         .send()
         .await
-        .map_err(|e| format!("Failed to get session messages: {}", e))?;
+        .map_err(|e| {
+            tracing::warn!(target: "tasks", "get_session_last_message: network error for session {}: {}", session_id, e);
+            format!("Failed to get session messages: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        tracing::warn!(target: "tasks", "get_session_last_message: HTTP {} for session {}: {}", status, session_id, truncate_for_trace(&body));
         return Err(format!(
             "Get session failed with status {}: {}",
             status, body
         ));
     }
 
-    let session_data: SessionMessages = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse session messages: {}", e))?;
+    // Get raw body first for better error handling
+    let body = response.text().await.map_err(|e| {
+        tracing::warn!(target: "tasks", "get_session_last_message: failed to read body for session {}: {}", session_id, e);
+        format!("Failed to read response body: {}", e)
+    })?;
+
+    let session_data: SessionData = serde_json::from_str(&body).map_err(|e| {
+        tracing::warn!(target: "tasks", "get_session_last_message: JSON parse failed for session {}: {} (body_len={})", session_id, e, body.len());
+        format!("Failed to parse session messages: {}", e)
+    })?;
 
     let assistant_message = session_data
         .messages
         .iter()
         .rev()
         .find(|m| m.role == "assistant")
-        .ok_or("No assistant message found in session")?;
+        .ok_or_else(|| {
+            tracing::warn!(target: "tasks", "get_session_last_message: no assistant message found for session {}", session_id);
+            "No assistant message found in session".to_string()
+        })?;
 
-    let text = assistant_message
+    let text: String = assistant_message
         .parts
         .iter()
-        .filter_map(|p| {
-            if p.part_type == "text" {
-                p.text.clone()
-            } else {
-                None
-            }
-        })
+        .filter_map(extract_text_from_part)
         .collect::<Vec<_>>()
         .join("\n");
 
     if text.is_empty() {
+        tracing::warn!(target: "tasks", "get_session_last_message: assistant message has no text content for session {}", session_id);
         return Err("Assistant message has no text content".to_string());
     }
 
     Ok(text)
 }
 
-/// Checks for the promise marker and returns the message content if available.
-/// Returns (has_promise, Option<message>).
-/// - If message is unavailable, returns (false, None) so we can retry with continue.
-/// - This avoids the issue where check_session_has_promise defaults to true on error,
-///   then get_session_last_message fails again causing a false error.
-async fn check_session_completion(session_id: &str) -> (bool, Option<String>) {
-    match get_session_last_message(session_id).await {
-        Ok(message) => {
-            let has_promise = message.contains(PROMISE_COMPLETED_MARKER);
-            (has_promise, Some(message))
+/// Result of checking if a session has completed with the promise marker.
+enum CompletionCheckResult {
+    /// Message fetched successfully, marker found - work is done
+    Completed(String),
+    /// Message fetched successfully, marker NOT found - agent stopped without completing
+    NotCompleted(String),
+    /// Could not fetch message (transient error, should keep polling without sending continue)
+    MessageUnavailable,
+}
+
+/// Checks for the promise marker in the session's assistant messages.
+/// Returns a discriminated result so callers can handle each case appropriately:
+/// - Completed: marker found, stop polling
+/// - NotCompleted: marker not found, send continue
+/// - MessageUnavailable: transient error, keep polling without sending continue
+async fn check_session_completion(session_id: &str) -> CompletionCheckResult {
+    match get_session_messages_text(session_id).await {
+        SessionTextResult::Parsed(text) => {
+            if text.contains(PROMISE_COMPLETED_MARKER) {
+                tracing::debug!(target: "tasks", "check_session_completion: marker found in parsed text for session {}", session_id);
+                CompletionCheckResult::Completed(text)
+            } else {
+                tracing::debug!(target: "tasks", "check_session_completion: marker NOT found in parsed text for session {} (text_len={})", session_id, text.len());
+                CompletionCheckResult::NotCompleted(text)
+            }
         }
-        Err(_) => {
-            // Message not available yet - treat as not completed so we can retry
-            (false, None)
+        SessionTextResult::RawBody(body) => {
+            // JSON parsing failed but we have the raw body - search for marker directly
+            if body.contains(PROMISE_COMPLETED_MARKER) {
+                tracing::info!(target: "tasks", "check_session_completion: marker found in RAW body for session {} (parse failed but marker present)", session_id);
+                CompletionCheckResult::Completed(body)
+            } else {
+                tracing::debug!(target: "tasks", "check_session_completion: marker NOT found in raw body for session {} (body_len={})", session_id, body.len());
+                CompletionCheckResult::NotCompleted(body)
+            }
+        }
+        SessionTextResult::Error(e) => {
+            tracing::warn!(target: "tasks", "check_session_completion: error fetching session {}: {}", session_id, e);
+            // Network or other error - keep polling but don't send continue
+            CompletionCheckResult::MessageUnavailable
         }
     }
 }

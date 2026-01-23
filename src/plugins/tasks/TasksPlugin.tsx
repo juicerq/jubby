@@ -44,6 +44,7 @@ function TasksPlugin(_props: PluginProps) {
 		deleteFolder,
 		loadFolders,
 		reorderFolders,
+		updateFolderWorkingDirectory,
 	} = useFolderStorage();
 
 	const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -363,13 +364,17 @@ function TasksPlugin(_props: PluginProps) {
 				>
 					<Settings size={16} />
 				</button>
-				{isSettingsMenuOpen && (
+				{isSettingsMenuOpen && currentFolder && (
 					<FolderSettingsMenu
 						onRename={handleStartRenameFolder}
 						onDelete={handleStartDeleteFolder}
 						onClose={() => setIsSettingsMenuOpen(false)}
-						taskCount={currentFolder?.taskCount ?? 0}
+						taskCount={currentFolder.taskCount}
 						tagCount={tags.length}
+						workingDirectory={currentFolder.workingDirectory}
+						onUpdateWorkingDirectory={(path) =>
+							updateFolderWorkingDirectory(currentFolder.id, path)
+						}
 					/>
 				)}
 			</div>
@@ -516,6 +521,8 @@ function TasksPlugin(_props: PluginProps) {
 					tags={tags}
 					selectedTagIds={selectedTagIds}
 					onToggleTag={handleToggleTagSelection}
+					folderId={currentFolderId ?? ""}
+					folderWorkingDirectory={currentFolder?.workingDirectory ?? ""}
 				/>
 				<h2 className="text-[12px] font-medium text-white/40 tracking-wide">
 					Tasks

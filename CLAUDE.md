@@ -30,6 +30,7 @@ Fight entropy. Leave the codebase better than you found it.
 - UI text is English.
 - Prefer Tailwind utilities; avoid custom CSS (except `::-webkit-scrollbar` when needed).
 - Use `lucide-react` for icons.
+- NEVER use barrel imports.
 
 ## Skills (use only if relevant)
 

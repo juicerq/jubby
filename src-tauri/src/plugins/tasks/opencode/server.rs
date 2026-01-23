@@ -66,20 +66,60 @@ pub async fn opencode_ensure_server_with_dir(
     trace.info("Ensuring OpenCode server is running");
 
     let current_dir = state.get_directory();
+    let server_running = check_server_running().await;
+
+    // Log current state for debugging
+    tracing::debug!(
+        target: "tasks",
+        "OpenCode server state: running={}, current_dir={:?}, requested_dir={:?}",
+        server_running,
+        current_dir,
+        working_directory
+    );
+
+    // Restart is needed when:
+    // 1. A specific working_directory is requested, AND
+    // 2. Either current_dir is None (server started without dir) OR current_dir is different
     let needs_restart = match (&current_dir, &working_directory) {
-        (Some(current), Some(new)) if current != new => {
-            tracing::info!(target: "tasks", "Working directory changed from {} to {}, restarting server", current, new);
+        (_, None) => {
+            // No specific directory requested - no need to restart
+            false
+        }
+        (None, Some(new)) => {
+            // Server has no directory set but one is requested - need to restart
+            tracing::info!(
+                target: "tasks",
+                "Working directory requested ({}) but server has no directory set, restarting",
+                new
+            );
             true
         }
-        _ => false,
+        (Some(current), Some(new)) if current != new => {
+            // Directory changed - need to restart
+            tracing::info!(
+                target: "tasks",
+                "Working directory changed from {} to {}, restarting server",
+                current,
+                new
+            );
+            true
+        }
+        (Some(_), Some(_)) => {
+            // Same directory - no restart needed
+            false
+        }
     };
 
-    if needs_restart {
-        trace.info("Working directory changed, restarting server");
+    if needs_restart && server_running {
+        trace.info(&format!(
+            "Restarting server: current_dir={:?}, requested_dir={:?}",
+            current_dir, working_directory
+        ));
         stop_server_internal(&state).await;
     }
 
-    if check_server_running().await && !needs_restart {
+    // Re-check after potential stop
+    if !needs_restart && server_running {
         tracing::debug!(target: "tasks", "OpenCode server already running on port {}", OPENCODE_PORT);
         trace.info("OpenCode server already running");
         drop(trace);

@@ -73,6 +73,7 @@ export interface Folder {
 	name: string;
 	position: number;
 	createdAt: number;
+	workingDirectory: string;
 	taskCount: number;
 	recentTasks: RecentTask[];
 }

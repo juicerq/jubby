@@ -25,6 +25,8 @@ interface TaskInputAreaProps {
 	tags: TagType[];
 	selectedTagIds: string[];
 	onToggleTag: (tagId: string) => void;
+	folderId: string;
+	folderWorkingDirectory: string;
 }
 
 function TaskInputArea({
@@ -35,6 +37,8 @@ function TaskInputArea({
 	tags,
 	selectedTagIds,
 	onToggleTag,
+	folderId,
+	folderWorkingDirectory,
 }: TaskInputAreaProps) {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [description, setDescription] = useState("");
@@ -45,7 +49,10 @@ function TaskInputArea({
 		setError: setWorkingDirectoryError,
 		selectFolder,
 		validate,
-	} = useWorkingDirectory();
+	} = useWorkingDirectory({
+		folderId,
+		folderDefault: folderWorkingDirectory,
+	});
 	const inputRef = useRef<HTMLInputElement>(null);
 	const formRef = useRef<HTMLDivElement>(null);
 

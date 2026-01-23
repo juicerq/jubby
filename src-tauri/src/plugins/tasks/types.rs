@@ -88,6 +88,9 @@ pub struct Folder {
     pub filename: String,
     pub position: i32,
     pub created_at: i64,
+    /// Default working directory for tasks in this folder.
+    #[serde(default)]
+    pub working_directory: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -209,6 +212,7 @@ pub struct FolderWithPreview {
     pub name: String,
     pub position: i32,
     pub created_at: i64,
+    pub working_directory: String,
     pub task_count: i32,
     pub recent_tasks: Vec<RecentTask>,
 }
