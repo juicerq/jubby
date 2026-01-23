@@ -1,3 +1,25 @@
+import type { LucideIcon } from "lucide-react";
+import {
+	BookOpen,
+	Bug,
+	Code,
+	FileType,
+	RefreshCw,
+	TestTube,
+	Trash2,
+} from "lucide-react";
+import type { SubtaskCategory } from "./types";
+
+export const CATEGORY_ICONS: Record<SubtaskCategory, LucideIcon> = {
+	functional: Code,
+	test: TestTube,
+	types: FileType,
+	fix: Bug,
+	refactor: RefreshCw,
+	cleanup: Trash2,
+	docs: BookOpen,
+};
+
 export const TAG_COLORS = [
 	{ name: "Red", hex: "#ef4444", contrastText: "white" },
 	{ name: "Orange", hex: "#f97316", contrastText: "white" },
