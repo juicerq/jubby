@@ -55,6 +55,7 @@ interface TaskDetailActions {
 	stopLoop: () => void;
 	navigateBack: () => void;
 	generateSubtasks: (modelId: string) => Promise<GenerateSubtasksResult | null>;
+	openOpencodeTerminal: () => Promise<void>;
 }
 
 interface TaskDetailProps {
@@ -153,6 +154,7 @@ function TaskDetail({
 							onStopLoop={actions.stopLoop}
 							onOpenHistory={openAllHistory}
 							onGenerateSubtasks={actions.generateSubtasks}
+							onOpenOpencodeTerminal={actions.openOpencodeTerminal}
 						/>
 					}
 				/>
