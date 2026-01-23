@@ -1168,6 +1168,11 @@ pub fn subtasks_update_category(
     let category = match category.as_str() {
         "functional" => SubtaskCategory::Functional,
         "test" => SubtaskCategory::Test,
+        "types" => SubtaskCategory::Types,
+        "fix" => SubtaskCategory::Fix,
+        "refactor" => SubtaskCategory::Refactor,
+        "cleanup" => SubtaskCategory::Cleanup,
+        "docs" => SubtaskCategory::Docs,
         _ => {
             trace.info("invalid category provided");
             drop(trace);

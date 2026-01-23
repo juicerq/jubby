@@ -496,11 +496,47 @@ fn format_steps(steps: &[super::types::Step]) -> String {
         .join("\n")
 }
 
+fn get_category_rules(category: &super::types::SubtaskCategory) -> &'static str {
+    use super::types::SubtaskCategory;
+    match category {
+        SubtaskCategory::Types => 
+            "Focus on type definitions and interfaces. Ensure types are well-documented and cover edge cases. Do not implement business logic.",
+        SubtaskCategory::Functional => 
+            "Implement the feature following existing code patterns. Ensure the code is production-ready and follows project conventions.",
+        SubtaskCategory::Fix => 
+            "Fix the bug carefully. Verify you don't break other functionality. Add defensive checks if needed. Consider edge cases.",
+        SubtaskCategory::Test => 
+            "Write comprehensive tests. Cover happy path, edge cases, and error scenarios. Follow existing test patterns in the codebase.",
+        SubtaskCategory::Refactor => 
+            "Improve code structure WITHOUT changing behavior. If tests exist, they must still pass after your changes. Do not add new features.",
+        SubtaskCategory::Cleanup => 
+            "Remove dead code, unused imports, and obsolete comments. Do NOT add new functionality. Be conservative - only remove what is clearly unused.",
+        SubtaskCategory::Docs => 
+            "Update documentation only. Do NOT modify any code files except markdown, comments, or docstrings. Focus on clarity and accuracy.",
+    }
+}
+
+fn get_category_name(category: &super::types::SubtaskCategory) -> &'static str {
+    use super::types::SubtaskCategory;
+    match category {
+        SubtaskCategory::Types => "types",
+        SubtaskCategory::Functional => "functional",
+        SubtaskCategory::Fix => "fix",
+        SubtaskCategory::Test => "test",
+        SubtaskCategory::Refactor => "refactor",
+        SubtaskCategory::Cleanup => "cleanup",
+        SubtaskCategory::Docs => "docs",
+    }
+}
+
 fn build_execution_prompt(
     task: &super::types::Task,
     subtask: &super::types::Subtask,
     task_file_path: &str,
 ) -> String {
+    let category_name = get_category_name(&subtask.category);
+    let category_rules = get_category_rules(&subtask.category);
+    
     format!(
         r#"You are executing a single subtask for the Jubby Tasks plugin.
 
@@ -512,6 +548,9 @@ Rules:
   - "completed" if successful
   - "failed" if you could not complete or hit an error
 
+Category-specific rules ({category_name}):
+{category_rules}
+
 Data source (single source of truth):
 - Task file path: {task_file_path}
 
@@ -521,13 +560,14 @@ Task context:
 - taskText: {task_text}
 - taskDescription: {task_description}
 - subtaskText: {subtask_text}
+- subtaskCategory: {category_name}
 - subtaskNotes: {subtask_notes}
 - subtaskSteps:
 {subtask_steps}
 - shouldCommit: {should_commit}
 
 What you must do:
-1) Implement only this subtask.
+1) Implement only this subtask, following the category-specific rules above.
 2) Update the task file ({task_file_path}):
    - set the subtask status ("completed" or "failed")
    - append a new execution log entry under this subtask's executionLogs array:
@@ -556,6 +596,8 @@ This marker signals that you are truly done. Do NOT include this marker if you s
         task_text = task.text,
         task_description = task.description,
         subtask_text = subtask.text,
+        category_name = category_name,
+        category_rules = category_rules,
         subtask_notes = subtask.notes,
         subtask_steps = format_steps(&subtask.steps),
         should_commit = subtask.should_commit,
@@ -948,26 +990,60 @@ pub struct GenerateSubtasksResult {
 
 fn build_generate_prompt(task: &super::types::Task, task_file_path: &str) -> String {
     format!(
-        r#"You are generating subtasks for the Jubby Tasks plugin.
+        r#"You are a Software Architect generating subtasks for the Jubby Tasks plugin.
 
-Goal:
-- Produce a concise, high-quality plan and atomic subtasks that, when executed in order, complete the task.
+Your role is to analyze the task, design the architecture, and break it down into atomic subtasks that an AI agent will execute sequentially.
 
-Planning quality rules:
-- Start with a 3-7 bullet plan covering: objective, key dependencies, assumptions/unknowns, risks, and validation.
-- If something is unclear, state a reasonable assumption and proceed.
-- Keep the plan short and actionable (no long prose).
+## Phase 1: Architecture Analysis
 
-Subtask quality rules:
-- Break down the task into subtasks. A task may contain a single subtask (a small bugfix or visual tweak) or many, many subtasks (a PRD or a large refactor).
-- Make each subtask the smallest possible unit of work. We don't want to outrun our headlights. Aim for one small change per subtask.
-- Each subtask should have a concrete outcome.
-- Include a validation/test subtask when behavior changes.
-- Order subtasks by dependency; avoid overlapping scope.
-- Use imperative verbs and mention the target area (file/module/UI).
-- If the task is too broad, note that it should be split into phases.
+First, thoroughly explore the codebase to understand:
+- Existing patterns and conventions
+- Files and modules that will be affected
+- Dependencies and integration points
+- Potential risks or edge cases
 
-Rules:
+## Phase 2: Architecture Design
+
+Create a Mermaid flowchart that visualizes:
+- The flow of changes (which files/modules are affected and in what order)
+- Dependencies between subtasks
+- Decision points or branching logic (if any)
+
+Example format:
+```mermaid
+flowchart TD
+    A[types: Define new interfaces] --> B[functional: Implement core logic]
+    B --> C[functional: Add UI component]
+    C --> D[test: Write unit tests]
+    D --> E[docs: Update README]
+```
+
+After creating the diagram, critically review it:
+- Is the order correct? Are dependencies respected?
+- Are there any missing steps?
+- Can any subtasks be combined or should any be split further?
+- Is this the most efficient approach?
+
+## Phase 3: Subtask Generation
+
+You are not here to be lazy. You are here to produce exceptional work.
+
+Planning rules (NO EXCEPTIONS):
+- If something is unclear, state a reasonable assumption and proceed. Do NOT use ambiguity as an excuse for vague subtasks.
+- Keep the plan short and actionable. No fluff. No filler. No prose.
+
+Subtask quality rules (VIOLATING THESE IS UNACCEPTABLE):
+- Each subtask MUST be atomic. One file, one concern, one change. If you're touching multiple unrelated things, SPLIT IT.
+- Each subtask MUST have a concrete, verifiable outcome. "Improve code" is garbage. "Add input validation to UserForm component" is acceptable.
+- NEVER create subtasks that overlap in scope. If two subtasks touch the same code, you failed at architecture.
+- ALWAYS include test subtasks when behavior changes. No tests = incomplete work.
+- Order subtasks by dependency. If subtask B needs subtask A, A comes first. This is not optional.
+- Use imperative verbs and specify the exact target (file/module/component). Vague subtasks are rejected.
+
+Remember: An AI agent will execute these subtasks sequentially with NO human intervention. Ambiguity, gaps, or poor ordering will cause failures. Your architecture must be bulletproof.
+
+## Rules
+
 - Do NOT edit any file except the task file specified below.
 - Do NOT implement code or change the repo.
 - Do NOT return a JSON array in the response.
@@ -976,32 +1052,46 @@ Rules:
 - For ALL id fields, you MUST generate UUIDs using: uuidgen (run this command in bash for each id you need).
 - NEVER manually type or invent UUID strings.
 
-Data source (single source of truth):
+## Data source (single source of truth)
+
 - Task file path: {task_file_path}
 
-Task context:
+## Task context
+
 - taskId: {task_id}
 - taskText: {task_text}
 - taskDescription: {task_description}
 
-Subtask schema (append to this task's subtasks array):
+## Subtask schema (append to this task's subtasks array)
+
 - id: run `uuidgen` to generate
 - text: short 1-sentence description
 - status: "waiting"
 - order: next order number (count existing subtasks)
-- category: "functional" or "test"
+- category: one of the following (choose based on the subtask's purpose):
+    - "types": defining or updating types, interfaces, contracts
+    - "functional": implementing new features (production code)
+    - "fix": bug fixes (careful changes to avoid breaking other code)
+    - "test": writing or updating tests
+    - "refactor": improving code structure without changing behavior
+    - "cleanup": removing dead code, unused imports, obsolete comments
+    - "docs": updating documentation only (no code changes)
 - steps: array of steps, each {{ id: run `uuidgen`, text: string, completed: false }}
 - shouldCommit: true if the subtask produces a distinct code change worth a commit
 - notes: optional extra context (can be empty string)
 - executionLogs: empty array []
 
-What you must do:
-1) Write the plan (in your response).
-2) Open the task file and read its current content.
-3) For each subtask and step, run `uuidgen` to get a proper UUID for the id field.
-4) Append new subtasks to the subtasks array following the schema above.
-5) Save the updated task file.
-6) Do NOT return JSON. Respond with a brief confirmation and how many subtasks were added.
+## What you must do
+
+1) Explore the codebase to understand context and existing patterns.
+2) Create a Mermaid flowchart visualizing the architecture and subtask flow.
+3) Critically review the diagram - identify improvements and adjust if needed.
+4) Write the final plan (in your response).
+5) Open the task file and read its current content.
+6) For each subtask and step, run `uuidgen` to get a proper UUID for the id field.
+7) Append new subtasks to the subtasks array following the schema above.
+8) Save the updated task file.
+9) Respond with the Mermaid diagram, your analysis, and a brief confirmation of how many subtasks were added.
 
 IMPORTANT: When you have fully completed generating all subtasks and updated the task file, you MUST end your final message with:
 <promise>completed</promise>

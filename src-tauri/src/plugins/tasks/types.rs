@@ -16,6 +16,11 @@ pub enum SubtaskCategory {
     #[default]
     Functional,
     Test,
+    Types,
+    Fix,
+    Refactor,
+    Cleanup,
+    Docs,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

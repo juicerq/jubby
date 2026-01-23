@@ -8,7 +8,14 @@ export type TaskStatus = "pending" | "in_progress" | "completed";
 
 export type SubtaskStatus = "waiting" | "in_progress" | "completed" | "failed";
 
-export type SubtaskCategory = "functional" | "test";
+export type SubtaskCategory =
+	| "functional"
+	| "test"
+	| "types"
+	| "fix"
+	| "refactor"
+	| "cleanup"
+	| "docs";
 
 export type ExecutionOutcome = "success" | "partial" | "failed" | "aborted";
 

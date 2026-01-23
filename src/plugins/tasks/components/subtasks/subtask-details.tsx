@@ -1,14 +1,47 @@
-import {
-	Code2,
-	GitCommitHorizontal,
-	StickyNote,
-	TestTube2,
-} from "lucide-react";
+import { GitCommitHorizontal, StickyNote } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Subtask, SubtaskCategory } from "../../types";
 import { NotesModal } from "../modals/notes-modal";
+
+const categories: {
+	value: SubtaskCategory;
+	label: string;
+	activeClass: string;
+}[] = [
+	{
+		value: "types",
+		label: "Types",
+		activeClass: "bg-cyan-500/20 text-cyan-400",
+	},
+	{
+		value: "functional",
+		label: "Functional",
+		activeClass: "bg-sky-500/20 text-sky-400",
+	},
+	{ value: "fix", label: "Fix", activeClass: "bg-rose-500/20 text-rose-400" },
+	{
+		value: "test",
+		label: "Test",
+		activeClass: "bg-violet-500/20 text-violet-400",
+	},
+	{
+		value: "refactor",
+		label: "Refactor",
+		activeClass: "bg-emerald-500/20 text-emerald-400",
+	},
+	{
+		value: "cleanup",
+		label: "Cleanup",
+		activeClass: "bg-slate-500/20 text-slate-400",
+	},
+	{
+		value: "docs",
+		label: "Docs",
+		activeClass: "bg-indigo-500/20 text-indigo-400",
+	},
+];
 
 /**
  * Returns the errorMessage from the most recent execution log with outcome 'failed'.
@@ -59,36 +92,25 @@ function SubtaskDetails({
 				Details
 			</span>
 			<div className="flex flex-col gap-2.5">
-				<div className="flex items-center gap-4">
+				<div className="flex flex-wrap items-center gap-4">
 					<div className="flex items-center gap-2">
 						<span className="text-[11px] text-white/45">Category</span>
-						<div className="flex gap-1">
-							<button
-								type="button"
-								onClick={() => onUpdateCategory("functional")}
-								className={cn(
-									"flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
-									category === "functional"
-										? "bg-sky-500/20 text-sky-400"
-										: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
-								)}
-							>
-								<Code2 className="h-2.5 w-2.5" />
-								Functional
-							</button>
-							<button
-								type="button"
-								onClick={() => onUpdateCategory("test")}
-								className={cn(
-									"flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
-									category === "test"
-										? "bg-violet-500/20 text-violet-400"
-										: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
-								)}
-							>
-								<TestTube2 className="h-2.5 w-2.5" />
-								Test
-							</button>
+						<div className="flex flex-wrap gap-1">
+							{categories.map((cat) => (
+								<button
+									key={cat.value}
+									type="button"
+									onClick={() => onUpdateCategory(cat.value)}
+									className={cn(
+										"flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
+										category === cat.value
+											? cat.activeClass
+											: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
+									)}
+								>
+									{cat.label}
+								</button>
+							))}
 						</div>
 					</div>
 
