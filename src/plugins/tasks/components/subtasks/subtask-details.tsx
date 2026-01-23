@@ -2,6 +2,7 @@ import { GitCommitHorizontal, StickyNote } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { CATEGORY_ICONS } from "../../constants";
 import type { Subtask, SubtaskCategory } from "../../types";
 import { NotesModal } from "../modals/notes-modal";
 
@@ -96,21 +97,25 @@ function SubtaskDetails({
 					<div className="flex items-center gap-2">
 						<span className="text-[11px] text-white/45">Category</span>
 						<div className="flex flex-wrap gap-1">
-							{categories.map((cat) => (
-								<button
-									key={cat.value}
-									type="button"
-									onClick={() => onUpdateCategory(cat.value)}
-									className={cn(
-										"flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
-										category === cat.value
-											? cat.activeClass
-											: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
-									)}
-								>
-									{cat.label}
-								</button>
-							))}
+							{categories.map((cat) => {
+								const Icon = CATEGORY_ICONS[cat.value];
+								return (
+									<button
+										key={cat.value}
+										type="button"
+										onClick={() => onUpdateCategory(cat.value)}
+										className={cn(
+											"flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all duration-150 ease-out active:scale-[0.97]",
+											category === cat.value
+												? cat.activeClass
+												: "bg-white/5 text-white/40 hover:bg-white/8 hover:text-white/55",
+										)}
+									>
+										<Icon className="h-2.5 w-2.5" />
+										{cat.label}
+									</button>
+								);
+							})}
 						</div>
 					</div>
 
