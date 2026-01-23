@@ -150,6 +150,7 @@ pub fn run() {
             plugins::tasks::opencode::server::opencode_stop_server,
             plugins::tasks::opencode::tasks_execute_subtask,
             plugins::tasks::opencode::tasks_generate_subtasks,
+            plugins::tasks::opencode::tasks_open_opencode_terminal,
             plugins::tasks::opencode::persistence::opencode_persist_session,
             plugins::tasks::opencode::persistence::opencode_get_persisted_sessions,
             plugins::tasks::opencode::persistence::opencode_clear_session,
