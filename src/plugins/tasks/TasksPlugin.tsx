@@ -497,7 +497,7 @@ function TasksPlugin(_props: PluginProps) {
 					isExecuting={isExecuting}
 					executingSubtaskId={executingSubtaskId}
 					isLooping={isLooping}
-					isGenerating={isTaskGenerating(currentTask.id)}
+					isTaskGenerating={isTaskGenerating}
 				/>
 			</div>
 		);

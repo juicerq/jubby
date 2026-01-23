@@ -53,7 +53,7 @@ interface TaskDetailActions {
 	startLoop: () => void;
 	stopLoop: () => void;
 	navigateBack: () => void;
-	generateSubtasks: () => Promise<GenerateSubtasksResult | null>;
+	generateSubtasks: (modelId: string) => Promise<GenerateSubtasksResult | null>;
 }
 
 interface TaskDetailProps {
@@ -63,7 +63,7 @@ interface TaskDetailProps {
 	isExecuting: boolean;
 	executingSubtaskId: string | null;
 	isLooping: boolean;
-	isGenerating: boolean;
+	isTaskGenerating: (taskId: string) => boolean;
 }
 
 function TaskDetail({
@@ -73,7 +73,7 @@ function TaskDetail({
 	isExecuting,
 	executingSubtaskId,
 	isLooping,
-	isGenerating,
+	isTaskGenerating,
 }: TaskDetailProps) {
 	const { historyModal, openAllHistory, openSubtaskHistory, closeHistory } =
 		useTaskHistory(task);
@@ -144,7 +144,7 @@ function TaskDetail({
 							task={task}
 							isLooping={isLooping}
 							isExecuting={isExecuting}
-							isGenerating={isGenerating}
+							isGenerating={isTaskGenerating(task.id)}
 							hasAnyHistory={hasAnyHistory}
 							hasWorkingDirectory={hasWorkingDirectory}
 							onStartLoop={actions.startLoop}
