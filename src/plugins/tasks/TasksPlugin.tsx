@@ -89,7 +89,7 @@ function TasksPlugin(_props: PluginProps) {
 		startLoop,
 		stopLoop,
 		generateSubtasks,
-		isGenerating,
+		isTaskGenerating,
 	} = useTasksStorage(currentFolderId ?? "");
 
 	// Handle file system changes - reload tasks when external changes detected
@@ -483,7 +483,8 @@ function TasksPlugin(_props: PluginProps) {
 			startLoop: () => startLoop(currentTask.id),
 			stopLoop,
 			navigateBack: handleNavigateToList,
-			generateSubtasks: () => generateSubtasks(currentTask.id),
+			generateSubtasks: (modelId: string) =>
+				generateSubtasks(currentTask.id, modelId),
 		};
 
 		return (
@@ -496,7 +497,7 @@ function TasksPlugin(_props: PluginProps) {
 					isExecuting={isExecuting}
 					executingSubtaskId={executingSubtaskId}
 					isLooping={isLooping}
-					isGenerating={isGenerating}
+					isGenerating={isTaskGenerating(currentTask.id)}
 				/>
 			</div>
 		);
