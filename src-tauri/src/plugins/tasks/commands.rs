@@ -927,42 +927,23 @@ pub fn subtasks_delete(
         .with("subtask_id", subtask_id.clone());
     trace.info("subtask delete requested");
 
-    let mut data = store.write();
+    let result = with_task_mut(store.inner(), &task_id, |task| {
+        let existed = task.subtasks.iter().any(|s| s.id == subtask_id);
+        if !existed {
+            return Err(format!("Subtask not found: {}", subtask_id));
+        }
 
-    // Get folder info first
-    let task = find_task(&data, &task_id).ok_or_else(|| {
-        trace.info("task not found");
-        format!("Task not found: {}", task_id)
-    })?;
-    let folder_id = task.folder_id.clone();
-    let folder =
-        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
-    let folder_filename = get_folder_filename(folder);
+        task.subtasks.retain(|s| s.id != subtask_id);
+        Ok(())
+    });
 
-    // Now get mutable reference
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    let existed = task.subtasks.iter().any(|s| s.id == subtask_id);
-    if !existed {
-        trace.info("subtask not found");
-        drop(trace);
-        return Err(format!("Subtask not found: {}", subtask_id));
+    match &result {
+        Ok(_) => trace.info("subtask deleted"),
+        Err(_) => trace.info("subtask delete failed"),
     }
-
-    task.subtasks.retain(|s| s.id != subtask_id);
-
-    // Save only this task's file
-    let task = find_task(&data, &task_id).expect("Task should exist");
-    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
-
-    trace.info("subtask deleted");
     drop(trace);
 
-    Ok(())
+    result
 }
 
 #[tauri::command]
