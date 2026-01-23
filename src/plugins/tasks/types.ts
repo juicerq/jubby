@@ -6,7 +6,7 @@ export interface Tag {
 
 export type TaskStatus = "pending" | "in_progress" | "completed";
 
-export type SubtaskStatus = "waiting" | "in_progress" | "completed";
+export type SubtaskStatus = "waiting" | "in_progress" | "completed" | "failed";
 
 export type SubtaskCategory = "functional" | "test";
 

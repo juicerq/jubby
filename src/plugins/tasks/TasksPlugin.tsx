@@ -27,6 +27,8 @@ import {
 
 type TasksView = "folders" | "list" | "task";
 
+const RESYNC_INTERVAL_MS = 5000;
+
 function TasksPlugin(_props: PluginProps) {
 	const { status: serverStatus, startServer } = useOpenCodeServer();
 
@@ -92,17 +94,49 @@ function TasksPlugin(_props: PluginProps) {
 	// Handle file system changes - reload tasks when external changes detected
 	const handleFolderUpdated = useCallback(
 		(folderId: string) => {
+			if (view === "folders") {
+				loadFolders();
+				return;
+			}
 			if (currentFolderId === folderId) {
 				reloadTasks();
 			}
 		},
-		[currentFolderId, reloadTasks],
+		[currentFolderId, loadFolders, reloadTasks, view],
 	);
 
 	useTasksWatcher({
 		onFolderUpdated: handleFolderUpdated,
 		onFoldersUpdated: loadFolders,
 	});
+
+	const runResync = useCallback(() => {
+		if (view === "folders") {
+			loadFolders({ forceReload: true });
+			return;
+		}
+		if (currentFolderId) {
+			reloadTasks({ forceReload: true });
+		}
+	}, [currentFolderId, loadFolders, reloadTasks, view]);
+
+	useEffect(() => {
+		const interval = setInterval(runResync, RESYNC_INTERVAL_MS);
+		const handleVisibility = () => {
+			if (document.visibilityState === "visible") {
+				runResync();
+			}
+		};
+
+		window.addEventListener("focus", runResync);
+		document.addEventListener("visibilitychange", handleVisibility);
+
+		return () => {
+			clearInterval(interval);
+			window.removeEventListener("focus", runResync);
+			document.removeEventListener("visibilitychange", handleVisibility);
+		};
+	}, [runResync]);
 
 	const isLoading =
 		view === "folders" ? foldersLoading : foldersLoading || tasksLoading;
@@ -119,7 +153,7 @@ function TasksPlugin(_props: PluginProps) {
 				setCurrentFolderId(null);
 				setCurrentTaskId(null);
 				setView("folders");
-				loadFolders();
+				loadFolders({ forceReload: true });
 			},
 		},
 		currentFolder && {
@@ -178,7 +212,7 @@ function TasksPlugin(_props: PluginProps) {
 	const handleNavigateToFolders = () => {
 		setCurrentFolderId(null);
 		setView("folders");
-		loadFolders();
+		loadFolders({ forceReload: true });
 	};
 
 	const handleNavigateToTask = (taskId: string) => {

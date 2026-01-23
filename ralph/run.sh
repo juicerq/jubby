@@ -2,7 +2,7 @@
 
 set -e
 
-claude --dangerously-skip-permissions -p "@ralph/prd.json @ralph/progress.txt
+opencode run "@ralph/prd.json @ralph/progress.txt
 1. Decide which task to work on next.
 This should be the one YOU decide has the highest priority,
 - not necessarily the first in the list.

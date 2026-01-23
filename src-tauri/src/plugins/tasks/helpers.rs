@@ -1,5 +1,5 @@
-use super::storage::save_to_json;
-use super::types::{Folder, Step, Subtask, Tag, Task, TasksData};
+use super::storage::{get_folder_filename, save_folders_index, save_task};
+use super::types::{Folder, FoldersIndex, Step, Subtask, Tag, Task, TasksData};
 use super::TasksStore;
 
 pub fn find_folder<'a>(data: &'a TasksData, id: &str) -> Option<&'a Folder> {
@@ -50,7 +50,13 @@ where
     let folder =
         find_folder_mut(&mut data, id).ok_or_else(|| format!("Folder not found: {}", id))?;
     let result = f(folder)?;
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only the folders index (folders metadata changed)
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
     Ok(result)
 }
 
@@ -60,8 +66,20 @@ where
 {
     let mut data = store.write();
     let task = find_task_mut(&mut data, id).ok_or_else(|| format!("Task not found: {}", id))?;
+
+    // Get folder info before mutating task
+    let folder_id = task.folder_id.clone();
+    let folder = find_folder(&data, &folder_id)
+        .ok_or_else(|| format!("Folder not found for task: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable reference and apply mutation
+    let task = find_task_mut(&mut data, id).expect("Task should exist");
     let result = f(task)?;
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
     Ok(result)
 }
 
@@ -75,12 +93,24 @@ where
     F: FnOnce(&mut Subtask) -> Result<R, String>,
 {
     let mut data = store.write();
+
+    // Get folder info before mutating
+    let task = find_task(&data, task_id).ok_or_else(|| format!("Task not found: {}", task_id))?;
+    let folder_id = task.folder_id.clone();
+    let folder = find_folder(&data, &folder_id)
+        .ok_or_else(|| format!("Folder not found for task: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Get mutable references and apply mutation
     let task =
         find_task_mut(&mut data, task_id).ok_or_else(|| format!("Task not found: {}", task_id))?;
     let subtask = find_subtask_mut(task, subtask_id)
         .ok_or_else(|| format!("Subtask not found: {}", subtask_id))?;
     let result = f(subtask)?;
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
     Ok(result)
 }
 
@@ -95,6 +125,15 @@ where
     F: FnOnce(&mut Step) -> Result<R, String>,
 {
     let mut data = store.write();
+
+    // Get folder info before mutating
+    let task = find_task(&data, task_id).ok_or_else(|| format!("Task not found: {}", task_id))?;
+    let folder_id = task.folder_id.clone();
+    let folder = find_folder(&data, &folder_id)
+        .ok_or_else(|| format!("Folder not found for task: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Get mutable references and apply mutation
     let task =
         find_task_mut(&mut data, task_id).ok_or_else(|| format!("Task not found: {}", task_id))?;
     let subtask = find_subtask_mut(task, subtask_id)
@@ -102,7 +141,10 @@ where
     let step =
         find_step_mut(subtask, step_id).ok_or_else(|| format!("Step not found: {}", step_id))?;
     let result = f(step)?;
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
     Ok(result)
 }
 
@@ -113,6 +155,12 @@ where
     let mut data = store.write();
     let tag = find_tag_mut(&mut data, id).ok_or_else(|| format!("Tag not found: {}", id))?;
     let result = f(tag)?;
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only the folders index (tags are stored there now)
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
     Ok(result)
 }

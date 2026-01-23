@@ -74,8 +74,7 @@ pub fn init_logging() -> LoggingGuards {
 
     let plugin_writer = PluginWriter::new(plugin_writers, system_writer);
 
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let subscriber = tracing_subscriber::registry().with(env_filter).with(
         tracing_subscriber::fmt::layer()
@@ -113,9 +112,7 @@ pub fn log_from_frontend(
     message: String,
     context: Option<serde_json::Value>,
 ) {
-    let ctx_str = context
-        .map(|c| format!(" {:?}", c))
-        .unwrap_or_default();
+    let ctx_str = context.map(|c| format!(" {:?}", c)).unwrap_or_default();
 
     macro_rules! emit_log {
         ($target:expr, $level:ident, $msg:expr, $ctx:expr) => {

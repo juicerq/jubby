@@ -29,7 +29,7 @@ fn hyprland_is_window_focused() -> bool {
         .args(["activewindow", "-j"])
         .output()
         .ok();
-    
+
     if let Some(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if let Ok(window) = serde_json::from_str::<serde_json::Value>(&stdout) {

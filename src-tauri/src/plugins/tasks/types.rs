@@ -124,10 +124,14 @@ fn default_should_commit() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
-    /// Folder ID - only used during migration from old tasks.json format.
-    /// In per-folder storage, this field is implicit from the file path.
+    /// Folder ID - set at runtime from the directory path.
+    /// Not serialized to the task file.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub folder_id: String,
+    /// Kebab-case filename (without .json extension) used for storage.
+    /// Generated from task text on creation.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub filename: String,
     pub text: String,
     pub status: String,
     pub created_at: i64,
@@ -166,13 +170,17 @@ pub struct TasksData {
     pub tags: Vec<Tag>,
 }
 
-/// Index of all folders - stored in folders.json
-/// This is the entry point for the per-folder storage system.
+/// Index of all folders and tags - stored in folders.json
+/// This is the entry point for the per-task storage system.
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct FoldersIndex {
     #[serde(default)]
     pub folders: Vec<Folder>,
+    /// All tags across all folders.
+    /// Each tag has a folder_id to identify which folder it belongs to.
+    #[serde(default)]
+    pub tags: Vec<Tag>,
 }
 
 /// Data for a specific folder - stored in {folderId}.json

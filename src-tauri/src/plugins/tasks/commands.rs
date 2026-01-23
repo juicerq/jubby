@@ -1,10 +1,11 @@
 use super::helpers::{
-    find_folder, find_folder_mut, find_tag, with_step_mut, with_subtask_mut, with_tag_mut,
-    with_task_mut,
+    find_folder, find_folder_mut, find_tag, find_task, with_step_mut, with_subtask_mut,
+    with_tag_mut, with_task_mut,
 };
 use super::storage::{
-    delete_folder_file, generate_unique_filename, get_folder_filename, rename_folder_file,
-    save_to_json,
+    delete_folder_dir, delete_task_file, generate_unique_filename, generate_unique_task_filename,
+    get_existing_task_filenames, get_folder_filename, get_task_filename, reload_from_disk,
+    rename_folder_dir, rename_task_file, save_folders_index, save_task,
 };
 use super::types::*;
 use super::TasksStore;
@@ -20,10 +21,31 @@ fn now_ms() -> i64 {
 }
 
 #[tauri::command]
-pub fn folder_get_all(store: State<TasksStore>) -> Result<Vec<FolderWithPreview>, String> {
+pub fn folder_get_all(
+    store: State<TasksStore>,
+    force_reload: Option<bool>,
+) -> Result<Vec<FolderWithPreview>, String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "folder_get_all");
+
+    if force_reload.unwrap_or(false) {
+        match reload_from_disk() {
+            Ok(new_data) => {
+                let mut data = store.write();
+                *data = new_data;
+                trace.info("store reloaded from disk");
+            }
+            Err(e) => {
+                trace.error(
+                    "failed to reload tasks data",
+                    TraceError::new(e.to_string(), "TASKS_RELOAD_FAILED"),
+                );
+                drop(trace);
+                return Err(e.to_string());
+            }
+        }
+    }
 
     let data = store.read();
     trace.info("store read acquired");
@@ -104,7 +126,13 @@ pub fn folder_create(store: State<TasksStore>, name: String) -> Result<Folder, S
     };
 
     data.folders.push(folder.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save the folders index
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
 
     trace.info("folder created");
     drop(trace);
@@ -154,12 +182,16 @@ pub fn folder_rename(store: State<TasksStore>, id: String, name: String) -> Resu
     folder.name = name;
     folder.filename = new_filename.clone();
 
-    // Save the index first
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    // Save the folders index
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
 
-    // Rename the file on disk if the filename changed
+    // Rename the directory on disk if the filename changed
     if old_filename != new_filename {
-        rename_folder_file(&old_filename, &new_filename).map_err(|e| e.to_string())?;
+        rename_folder_dir(&old_filename, &new_filename).map_err(|e| e.to_string())?;
     }
 
     trace.info("folder renamed");
@@ -188,17 +220,22 @@ pub fn folder_delete(store: State<TasksStore>, id: String) -> Result<(), String>
     };
 
     // Get filename before removing folder from data
-    let filename = get_folder_filename(folder);
+    let folder_filename = get_folder_filename(folder);
 
     // Cascade delete: remove tasks, tags, and the folder
     data.tasks.retain(|t| t.folder_id != id);
     data.tags.retain(|t| t.folder_id != id);
     data.folders.retain(|f| f.id != id);
 
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    // Save the updated folders index (with tags)
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
 
-    // Delete the folder data file
-    delete_folder_file(&filename).map_err(|e| e.to_string())?;
+    // Delete the folder directory and all its task files
+    delete_folder_dir(&folder_filename).map_err(|e| e.to_string())?;
 
     trace.info("folder deleted");
     drop(trace);
@@ -221,7 +258,12 @@ pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Resu
         }
     }
 
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    // Save the folders index
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    save_folders_index(&index).map_err(|e| e.to_string())?;
 
     trace.info("folder reorder complete");
     drop(trace);
@@ -233,12 +275,31 @@ pub fn folder_reorder(store: State<TasksStore>, folder_ids: Vec<String>) -> Resu
 pub fn tasks_get_by_folder(
     store: State<TasksStore>,
     folder_id: String,
+    force_reload: Option<bool>,
 ) -> Result<TasksDataResponse, String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_get_by_folder")
         .with("folder_id", folder_id.clone());
     trace.info("tasks get by folder requested");
+
+    if force_reload.unwrap_or(false) {
+        match reload_from_disk() {
+            Ok(new_data) => {
+                let mut data = store.write();
+                *data = new_data;
+                trace.info("store reloaded from disk");
+            }
+            Err(e) => {
+                trace.error(
+                    "failed to reload tasks data",
+                    TraceError::new(e.to_string(), "TASKS_RELOAD_FAILED"),
+                );
+                drop(trace);
+                return Err(e.to_string());
+            }
+        }
+    }
 
     let data = store.read();
 
@@ -303,9 +364,19 @@ pub fn tasks_create(
 
     let mut data = store.write();
 
+    // Find the folder to get its filename
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Generate unique task filename
+    let existing_filenames = get_existing_task_filenames(&folder_filename);
+    let task_filename = generate_unique_task_filename(&text, &existing_filenames);
+
     let task = Task {
         id: Uuid::new_v4().to_string(),
         folder_id,
+        filename: task_filename,
         text: text.clone(),
         status: "pending".to_string(),
         created_at: now_ms(),
@@ -315,8 +386,11 @@ pub fn tasks_create(
         subtasks: Vec::new(),
     };
 
+    // Save the task to its own file
+    save_task(&folder_filename, &task).map_err(|e| e.to_string())?;
+
+    // Add to in-memory store
     data.tasks.push(task.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
 
     trace.info("task created");
     drop(trace);
@@ -388,18 +462,50 @@ pub fn tasks_update_text(store: State<TasksStore>, id: String, text: String) -> 
         return Err("Task text cannot be empty".to_string());
     }
 
-    let result = with_task_mut(store.inner(), &id, |task| {
-        task.text = text;
-        Ok(())
-    });
+    let mut data = store.write();
 
-    match &result {
-        Ok(_) => trace.info("task text updated"),
-        Err(_) => trace.info("task text update failed"),
+    // Find the task to get current info
+    let task = find_task(&data, &id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", id)
+    })?;
+
+    let folder_id = task.folder_id.clone();
+    let old_filename = get_task_filename(task);
+
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Generate new filename for the new text
+    let existing_filenames: Vec<String> = get_existing_task_filenames(&folder_filename)
+        .into_iter()
+        .filter(|f| f != &old_filename) // Exclude current filename
+        .collect();
+    let new_filename = generate_unique_task_filename(&text, &existing_filenames);
+
+    // Rename the file if filename changed
+    if old_filename != new_filename {
+        rename_task_file(&folder_filename, &old_filename, &new_filename)
+            .map_err(|e| e.to_string())?;
     }
+
+    // Update the task in memory
+    let task = data
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| format!("Task not found: {}", id))?;
+    task.text = text;
+    task.filename = new_filename;
+
+    // Save the updated task
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
+
+    trace.info("task text updated");
     drop(trace);
 
-    result
+    Ok(())
 }
 
 #[tauri::command]
@@ -412,15 +518,24 @@ pub fn tasks_delete(store: State<TasksStore>, id: String) -> Result<(), String> 
 
     let mut data = store.write();
 
-    let existed = data.tasks.iter().any(|t| t.id == id);
-    if !existed {
+    // Find the task to get folder and filename info
+    let task = find_task(&data, &id).ok_or_else(|| {
         trace.info("task not found");
-        drop(trace);
-        return Err(format!("Task not found: {}", id));
-    }
+        format!("Task not found: {}", id)
+    })?;
 
+    let folder_id = task.folder_id.clone();
+    let task_filename = get_task_filename(task);
+
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Delete the task file
+    delete_task_file(&folder_filename, &task_filename).map_err(|e| e.to_string())?;
+
+    // Remove from in-memory store
     data.tasks.retain(|t| t.id != id);
-    save_to_json(&data).map_err(|e| e.to_string())?;
 
     trace.info("task deleted");
     drop(trace);
@@ -490,7 +605,13 @@ pub fn tag_create(
     };
 
     data.tags.push(tag.clone());
-    if let Err(error) = save_to_json(&data) {
+
+    // Save the folders index (tags are stored there now)
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    if let Err(error) = save_folders_index(&index) {
         trace.info("tag create save failed");
         drop(trace);
         return Err(error.to_string());
@@ -575,12 +696,46 @@ pub fn tag_delete(store: State<TasksStore>, id: String) -> Result<(), String> {
         return Err(format!("Tag not found: {}", id));
     }
 
+    // Collect tasks that have this tag, so we can save them
+    let tasks_with_tag: Vec<String> = data
+        .tasks
+        .iter()
+        .filter(|t| t.tag_ids.contains(&id))
+        .map(|t| t.id.clone())
+        .collect();
+
+    // Remove tag from all tasks
     for task in &mut data.tasks {
         task.tag_ids.retain(|tag_id| tag_id != &id);
     }
 
+    // Save affected tasks
+    for task_id in &tasks_with_tag {
+        if let Some(task) = find_task(&data, task_id) {
+            let folder_id = task.folder_id.clone();
+            if let Some(folder) = find_folder(&data, &folder_id) {
+                let folder_filename = get_folder_filename(folder);
+                if let Err(e) = save_task(&folder_filename, task) {
+                    tracing::warn!(
+                        target: "tasks::commands",
+                        task_id = %task_id,
+                        error = %e,
+                        "Failed to save task after tag removal"
+                    );
+                }
+            }
+        }
+    }
+
+    // Remove the tag from the list
     data.tags.retain(|t| t.id != id);
-    if let Err(error) = save_to_json(&data) {
+
+    // Save the folders index (tags are stored there)
+    let index = FoldersIndex {
+        folders: data.folders.clone(),
+        tags: data.tags.clone(),
+    };
+    if let Err(error) = save_folders_index(&index) {
         trace.info("tag delete save failed");
         drop(trace);
         return Err(error.to_string());
@@ -613,14 +768,22 @@ pub fn subtasks_create(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable reference
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let order = task
         .subtasks
@@ -645,7 +808,10 @@ pub fn subtasks_create(
     };
 
     task.subtasks.push(subtask.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
 
     trace.info("subtask created");
     drop(trace);
@@ -699,14 +865,22 @@ pub fn subtasks_delete(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable reference
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let existed = task.subtasks.iter().any(|s| s.id == subtask_id);
     if !existed {
@@ -716,7 +890,10 @@ pub fn subtasks_delete(
     }
 
     task.subtasks.retain(|s| s.id != subtask_id);
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
 
     trace.info("subtask deleted");
     drop(trace);
@@ -738,14 +915,22 @@ pub fn subtasks_reorder(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable reference
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     for (index, subtask_id) in subtask_ids.iter().enumerate() {
         if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
@@ -753,7 +938,9 @@ pub fn subtasks_reorder(
         }
     }
 
-    save_to_json(&data).map_err(|e| e.to_string())?;
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
 
     trace.info("subtask reorder complete");
     drop(trace);
@@ -1053,14 +1240,22 @@ pub fn steps_create(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable references
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let subtask = task
         .subtasks
@@ -1078,7 +1273,10 @@ pub fn steps_create(
     };
 
     subtask.steps.push(step.clone());
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
 
     trace.info("step created");
     drop(trace);
@@ -1132,14 +1330,22 @@ pub fn steps_delete(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable references
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let subtask = task
         .subtasks
@@ -1158,7 +1364,10 @@ pub fn steps_delete(
     }
 
     subtask.steps.retain(|s| s.id != step_id);
-    save_to_json(&data).map_err(|e| e.to_string())?;
+
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
 
     trace.info("step deleted");
     drop(trace);
@@ -1240,14 +1449,22 @@ pub fn execution_logs_create(
 
     let mut data = store.write();
 
+    // Get folder info first
+    let task = find_task(&data, &task_id).ok_or_else(|| {
+        trace.info("task not found");
+        format!("Task not found: {}", task_id)
+    })?;
+    let folder_id = task.folder_id.clone();
+    let folder =
+        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
+    let folder_filename = get_folder_filename(folder);
+
+    // Now get mutable references
     let task = data
         .tasks
         .iter_mut()
         .find(|t| t.id == task_id)
-        .ok_or_else(|| {
-            trace.info("task not found");
-            format!("Task not found: {}", task_id)
-        })?;
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let subtask = task
         .subtasks
@@ -1279,7 +1496,10 @@ pub fn execution_logs_create(
     };
 
     subtask.execution_logs.push(log.clone());
-    if let Err(error) = save_to_json(&data) {
+
+    // Save only this task's file
+    let task = find_task(&data, &task_id).expect("Task should exist");
+    if let Err(error) = save_task(&folder_filename, task) {
         trace.info("execution log save failed");
         drop(trace);
         return Err(error.to_string());

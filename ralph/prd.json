@@ -1,254 +1,556 @@
 [
 	{
 		"category": "functional",
-		"description": "Rust - Create tracing types and data structures",
+		"description": "Criar tasks/helpers.rs com funções find_*",
 		"steps": [
-			"Create src-tauri/src/tracing/ directory",
-			"Create types.rs with: LogLevel enum (debug, info, warn, error, trace_end)",
-			"Add LogEntry struct with ts, trace, level, msg, ctx, err, duration_ms, status fields",
-			"Add TraceError struct with message (String) and code (&'static str) fields",
-			"Use serde with skip_serializing_if for optional fields (err, duration_ms, status)",
-			"Use short field names (ts, msg, ctx) to keep log lines compact",
+			"Criar arquivo src-tauri/src/plugins/tasks/helpers.rs",
+			"Implementar find_folder(data, id) -> Option<&Folder>",
+			"Implementar find_folder_mut(data, id) -> Option<&mut Folder>",
+			"Implementar find_task(data, id) -> Option<&Task>",
+			"Implementar find_task_mut(data, id) -> Option<&mut Task>",
+			"Implementar find_subtask(task, id) -> Option<&Subtask>",
+			"Implementar find_subtask_mut(task, id) -> Option<&mut Subtask>",
+			"Implementar find_step(subtask, id) -> Option<&Step>",
+			"Implementar find_step_mut(subtask, id) -> Option<&mut Step>",
+			"Implementar find_tag(data, id) -> Option<&Tag>",
+			"Implementar find_tag_mut(data, id) -> Option<&mut Tag>",
+			"Adicionar mod helpers ao mod.rs",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"Arquivo helpers.rs existe com todas as funções find_*",
+			"cargo check passa sem erros",
+			"Funções são pub e acessíveis de commands.rs"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "All fields use short names for compact JSON. LogLevel uses lowercase serialization (debug, info, etc). TraceError code is &'static str for zero-copy error codes."
+		"notes": "Funções simples que encapsulam o pattern .iter().find(). Reduz repetição e centraliza lógica de busca."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement LogWriter with buffered channel",
+		"description": "Criar helpers with_*_mut para mutações com save automático",
 		"steps": [
-			"Create writer.rs module",
-			"Create LogWriter struct with mpsc::Sender<LogEntry>",
-			"Implement spawn() that creates channel and spawns writer thread",
-			"Writer thread: buffer Vec<LogEntry> with capacity 32",
-			"Implement recv_timeout(100ms) loop for non-blocking receive",
-			"Flush buffer when: buffer.len() >= 32 OR 100ms elapsed since last flush",
-			"flush_buffer(): get today's date, open file in append mode, write each entry as JSON line",
-			"Handle RecvTimeoutError::Disconnected for graceful shutdown (final flush)",
-			"Implement send(&self, entry: LogEntry) as fire-and-forget",
+			"Implementar with_folder_mut<F, R>(store, id, f: F) -> Result<R, String>",
+			"Implementar with_task_mut<F, R>(store, id, f: F) -> Result<R, String>",
+			"Implementar with_subtask_mut<F, R>(store, task_id, subtask_id, f: F) -> Result<R, String>",
+			"Implementar with_step_mut<F, R>(store, task_id, subtask_id, step_id, f: F) -> Result<R, String>",
+			"Implementar with_tag_mut<F, R>(store, id, f: F) -> Result<R, String>",
+			"Cada helper: acquire write lock -> find entity -> apply closure -> save_to_json -> return",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"Todas as funções with_*_mut implementadas",
+			"Pattern lock->find->mutate->save encapsulado",
+			"cargo check passa sem erros"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "File path: ~/.local/share/jubby/logs/traces/YYYY-MM-DD.jsonl. Use chrono::Local for date. OpenOptions with create(true).append(true). Buffer prevents excessive file I/O."
+		"notes": "Pattern: with_*_mut(store, id, |entity| { entity.field = value; Ok(()) }). Elimina repetição de lock/find/save em cada comando."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement ContextGuard with RAII",
+		"description": "Refatorar comandos de folder usando helpers",
 		"steps": [
-			"Create guard.rs module",
-			"Create ContextGuard struct holding Arc<Trace>",
-			"Implement Drop trait that calls trace.pop_context()",
-			"Guard must be Send + Sync for async compatibility",
+			"Refatorar folder_rename para usar with_folder_mut",
+			"Refatorar folder_delete para usar helpers",
+			"Refatorar folder_reorder para usar helpers",
+			"Verificar que folder_create e folder_get_all não precisam de helpers (são simples)",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"folder_rename usa with_folder_mut",
+			"Código de folder_* reduziu em pelo menos 30%",
+			"cargo check passa",
+			"Funcionalidade preservada (testar manualmente)"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "RAII pattern ensures context is always removed when guard goes out of scope, even on panic/early return. The Arc<Trace> reference allows the guard to be moved across await points."
+		"notes": "folder_create e folder_get_all são simples demais para helpers. Focar nos que têm pattern find->mutate->save."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement Trace struct core",
+		"description": "Refatorar comandos de task/subtask/step/tag usando helpers",
 		"steps": [
-			"Create trace.rs module",
-			"Create Trace struct with: id (String), started_at (Instant), context (RwLock<Vec<Value>>), writer_tx (Sender<LogEntry>), has_error (AtomicBool)",
-			"Implement generate_trace_id() -> String using format!(\"{:08x}\", rand::random::<u32>())",
-			"Implement new() that creates trace with generated ID and gets writer from global",
-			"Implement continue_from(id: String) for frontend trace continuation",
-			"Implement with(key, value) builder pattern that adds to initial context",
+			"Refatorar tasks_update_status para usar with_task_mut",
+			"Refatorar tasks_update_text para usar with_task_mut",
+			"Refatorar tasks_set_tags para usar with_task_mut",
+			"Refatorar tasks_update_description para usar with_task_mut",
+			"Refatorar tasks_update_working_directory para usar with_task_mut",
+			"Refatorar subtasks_toggle, subtasks_update_* para usar with_subtask_mut",
+			"Refatorar steps_toggle, steps_update_text para usar with_step_mut",
+			"Refatorar tag_update para usar with_tag_mut",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"Pelo menos 10 comandos refatorados usando helpers",
+			"commands.rs reduziu em pelo menos 100 linhas",
+			"cargo check passa",
+			"Funcionalidade preservada"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Use RwLock for context stack (multiple readers, single writer). AtomicBool for has_error avoids lock contention. Trace is Send + Sync for async usage."
+		"notes": "Comandos de delete e reorder podem precisar de tratamento especial. Focar primeiro nos updates simples."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement Trace context methods",
+		"description": "Adicionar traces aos comandos de folder",
 		"steps": [
-			"Implement push(&self, ctx: Value) -> ContextGuard that adds context to stack",
-			"Implement pop_context(&self) that removes last context from stack (called by ContextGuard::drop)",
-			"Implement merged_context(&self) -> Value that merges all context stack into single object",
-			"Merged context: later values override earlier ones for same key",
+			"Verificar que folder_get_all já tem trace (task 11 do PRD anterior)",
+			"Adicionar trace a folder_create com context: plugin=tasks, action=folder_create",
+			"Adicionar trace a folder_rename com context: plugin=tasks, action=folder_rename, folder_id",
+			"Adicionar trace a folder_delete com context: plugin=tasks, action=folder_delete, folder_id",
+			"Adicionar trace a folder_reorder com context: plugin=tasks, action=folder_reorder",
+			"Cada trace deve ter info() no início e antes do return",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"Todos os 5 comandos folder_* têm traces",
+			"Traces incluem plugin e action no context",
+			"cargo check passa"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "push() acquires write lock, adds context, returns ContextGuard. merged_context() acquires read lock, iterates stack merging into single Value::Object."
+		"notes": "Usar pattern: let trace = Trace::new().with('plugin', 'tasks').with('action', 'nome_do_comando'). Explicit drop(trace) antes do Ok()."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement Trace logging methods",
+		"description": "Adicionar traces aos comandos de tasks",
 		"steps": [
-			"Implement emit(&self, level: LogLevel, msg: &str, err: Option<TraceError>)",
-			"emit() creates LogEntry with current timestamp (ISO 8601), trace id, level, msg, merged context, err",
-			"Sends entry to writer via channel (fire-and-forget)",
-			"If err.is_some(), set has_error to true",
-			"Implement debug(&self, msg: &str), info(&self, msg: &str), warn(&self, msg: &str)",
-			"Implement error(&self, msg: &str, err: TraceError)",
+			"Adicionar trace a tasks_get_by_folder",
+			"Adicionar trace a tasks_create",
+			"Adicionar trace a tasks_update_status",
+			"Adicionar trace a tasks_update_text",
+			"Adicionar trace a tasks_delete",
+			"Adicionar trace a tasks_set_tags",
+			"Adicionar trace a tasks_update_description",
+			"Adicionar trace a tasks_update_working_directory",
 			"Run cargo check"
+		],
+		"acceptance": [
+			"Todos os 8 comandos tasks_* têm traces",
+			"task_id incluído no context quando aplicável",
+			"cargo check passa"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Timestamp format: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true). Convenience methods just call emit() with appropriate LogLevel."
+		"notes": "Incluir task_id no context quando aplicável. Para operações que modificam, logar o que foi modificado."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Implement Trace Drop for trace_end",
+		"description": "Adicionar traces aos comandos de subtasks e steps",
 		"steps": [
-			"Implement Drop trait for Trace",
-			"On drop: calculate duration_ms from started_at.elapsed()",
-			"Determine status: 'error' if has_error is true, 'ok' otherwise",
-			"Emit trace_end entry with duration_ms and status fields",
+			"Adicionar trace a subtasks_create",
+			"Adicionar trace a subtasks_toggle",
+			"Adicionar trace a subtasks_delete",
+			"Adicionar trace a subtasks_reorder",
+			"Adicionar trace a subtasks_update_*",
+			"Adicionar trace a steps_create",
+			"Adicionar trace a steps_toggle",
+			"Adicionar trace a steps_delete",
+			"Adicionar trace a steps_update_text",
 			"Run cargo check"
 		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "trace_end is automatically emitted when Trace goes out of scope. This ensures every trace has a summary even if code panics (Drop still runs)."
-	},
-	{
-		"category": "functional",
-		"description": "Rust - Implement cleanup for old logs",
-		"steps": [
-			"Create cleanup.rs module",
-			"Implement cleanup_old_traces() function",
-			"Get traces directory path: ~/.local/share/jubby/logs/traces/",
-			"Calculate cutoff date: today - 1 day",
-			"Iterate directory entries, parse date from filename (YYYY-MM-DD.jsonl)",
-			"Delete files where date < cutoff",
-			"Handle errors gracefully (log warning, continue)",
-			"Run cargo check"
+		"acceptance": [
+			"Todos os comandos subtasks_* e steps_* têm traces",
+			"Context inclui task_id, subtask_id, step_id conforme aplicável",
+			"cargo check passa"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Runs once on app startup. Simple string comparison works for YYYY-MM-DD format. Don't fail app startup if cleanup fails."
+		"notes": "Incluir task_id e subtask_id no context. Para steps, incluir também step_id."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Create mod.rs and init_tracing()",
+		"description": "Adicionar traces aos comandos de tags e execution_logs",
 		"steps": [
-			"Create mod.rs with pub use for Trace, ContextGuard, TraceError, LogLevel",
-			"Use once_cell::sync::OnceCell for global LOG_WRITER",
-			"Implement init_tracing() that: creates traces directory, runs cleanup, spawns LogWriter, stores in OnceCell",
-			"Implement get_writer() -> &'static LogWriter for internal use",
-			"Add tracing module to src-tauri/src/main.rs or lib.rs",
-			"Call init_tracing() in app setup before other initialization",
+			"Adicionar trace a tag_create",
+			"Adicionar trace a tag_update",
+			"Adicionar trace a tag_delete",
+			"Adicionar trace a execution_logs_create",
 			"Run cargo check"
+		],
+		"acceptance": ["Todos os 4 comandos têm traces", "cargo check passa"],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Tags são operações simples, traces básicos são suficientes."
+	},
+	{
+		"category": "functional",
+		"description": "Adicionar traces aos comandos de opencode",
+		"steps": [
+			"Adicionar trace a opencode_ensure_server",
+			"Adicionar trace a opencode_health_check",
+			"Adicionar trace a opencode_create_session",
+			"Adicionar trace a opencode_send_prompt",
+			"Adicionar trace a opencode_poll_status",
+			"Adicionar trace a opencode_abort_session",
+			"Adicionar trace a opencode_stop_server",
+			"Adicionar trace a tasks_execute_subtask (com context detalhado)",
+			"Adicionar trace a tasks_generate_subtasks",
+			"Run cargo check"
+		],
+		"acceptance": [
+			"Todos os 9 comandos opencode têm traces",
+			"tasks_execute_subtask tem context detalhado por fase",
+			"cargo check passa"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "OnceCell ensures single initialization. get_writer() panics if called before init (programming error). Directory: fs::create_dir_all for nested path creation."
+		"notes": "Comandos opencode são async - usar trace.info() em pontos chave. tasks_execute_subtask é complexo, adicionar context para cada fase."
 	},
 	{
 		"category": "functional",
-		"description": "Rust - Add required dependencies",
+		"description": "[SPIKE] Validar SDK OpenCode - instalar e testar básico",
 		"steps": [
-			"Add to Cargo.toml: once_cell (for global state)",
-			"Add rand (for trace ID generation) if not present",
-			"Verify chrono is available (already used in project)",
-			"Verify serde_json is available (already used)",
-			"Run cargo check"
-		],
-		"shouldCommit": true,
-		"passes": false,
-		"notes": "Check existing Cargo.toml before adding - some deps may already exist. Use workspace versions if applicable."
-	},
-	{
-		"category": "functional",
-		"description": "Rust - Integration test with existing command",
-		"steps": [
-			"Pick one simple existing Tauri command to add tracing",
-			"Create Trace at command start with plugin and action context",
-			"Add trace.info() call at key points",
-			"Add trace.push() for sub-operations if applicable",
-			"Verify trace_end is emitted when command completes",
-			"Run cargo check",
-			"Test manually: run command, check ~/.local/share/jubby/logs/traces/*.jsonl"
-		],
-		"shouldCommit": true,
-		"passes": true,
-		"notes": "Choose a command that's easy to trigger manually. This validates the full flow before wider adoption. Check file contains valid JSON lines."
-	},
-	{
-		"category": "functional",
-		"description": "TypeScript - Create trace types",
-		"steps": [
-			"Create src/lib/trace.ts",
-			"Define TraceContext interface: Record<string, string | number | boolean>",
-			"Define TraceError interface: { message: string; code: string }",
-			"Define Trace interface with: id, push, debug, info, warn, error, end, Symbol.dispose",
+			"Run: bun add @opencode-ai/sdk",
+			"Criar src/lib/opencode/spike.ts (arquivo temporário)",
+			"Importar createOpencodeClient do SDK",
+			"Testar conexão: client.global.health()",
+			"Testar criar sessão: client.session.create()",
+			"Testar eventos: client.event.subscribe()",
+			"Documentar findings e limitações",
 			"Run bun tsc --noEmit"
 		],
+		"acceptance": [
+			"SDK instalado e importável",
+			"health() retorna versão do servidor",
+			"session.create() funciona",
+			"event.subscribe() retorna stream de eventos",
+			"Spike documentado com findings"
+		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Symbol.dispose enables TS 5.2+ 'using' keyword for automatic cleanup. Keep types simple - frontend tracing is lighter than backend."
+		"notes": "SPIKE: Objetivo é validar que SDK funciona como esperado ANTES de migrar código. Se falhar, reavaliar estratégia."
 	},
 	{
 		"category": "functional",
-		"description": "TypeScript - Implement createTrace and Trace class",
+		"description": "Criar estrutura base do módulo opencode no frontend",
 		"steps": [
-			"Implement generateTraceId(): 8 hex chars using Math.random",
-			"Implement createTrace(initialContext?: TraceContext): Trace",
-			"Create TraceImpl class with: id, contextStack, startedAt, hasError",
-			"Implement push(ctx): add to stack, return cleanup function",
-			"Implement debug/info/warn/error methods that log to console (dev) or invoke backend (prod)",
-			"Implement end() that logs trace_end with duration",
-			"Implement Symbol.dispose that calls end()",
+			"Criar src/lib/opencode/index.ts com re-exports",
+			"Criar src/lib/opencode/types.ts com tipos locais",
+			"Criar src/lib/opencode/constants.ts com OPENCODE_PORT, OPENCODE_HOST",
+			"Remover spike.ts (foi só para validação)",
 			"Run bun tsc --noEmit"
 		],
+		"acceptance": [
+			"Estrutura de pastas criada",
+			"Tipos básicos definidos",
+			"bun tsc --noEmit passa"
+		],
 		"shouldCommit": true,
-		"passes": true,
-		"notes": "For now, frontend logs to console.log with structured format. Backend invoke for logging can be added later if needed. The 'using' cleanup ensures traces always end."
+		"passes": false,
+		"notes": "Estrutura limpa para organizar código do OpenCode no frontend."
 	},
 	{
 		"category": "functional",
-		"description": "TypeScript - Add trace propagation to invoke wrapper",
+		"description": "Criar client wrapper singleton",
 		"steps": [
-			"Create typesafe invoke wrapper or extend existing pattern",
-			"When trace exists, add trace_id to invoke payload",
-			"Document pattern for using trace with backend calls",
+			"Criar src/lib/opencode/client.ts",
+			"Implementar getClient() que retorna singleton",
+			"Usar createOpencodeClient({ baseUrl })",
+			"Adicionar isConnected() helper",
+			"Adicionar waitForServer() com retry logic",
 			"Run bun tsc --noEmit"
 		],
-		"shouldCommit": true,
-		"passes": false,
-		"notes": "Pattern: invoke('cmd', { trace_id: trace.id, ...params }). Backend can continue_from(trace_id) to link frontend and backend traces."
-	},
-	{
-		"category": "functional",
-		"description": "TypeScript - Integration test with existing component",
-		"steps": [
-			"Pick one simple user action to add tracing",
-			"Create trace at action start",
-			"Add trace.info() at key points",
-			"Use push() for sub-operations",
-			"Ensure trace.end() or 'using' cleanup",
-			"Run bun tsc --noEmit",
-			"Test manually: trigger action, check browser console for trace logs"
+		"acceptance": [
+			"getClient() retorna mesmo client em múltiplas chamadas",
+			"waitForServer() faz retry até servidor responder",
+			"bun tsc --noEmit passa"
 		],
 		"shouldCommit": true,
 		"passes": false,
-		"notes": "Choose an action that also calls backend to test full frontend→backend trace flow. Verify trace_id appears in both frontend console and backend jsonl."
+		"notes": "Singleton evita múltiplas instâncias. waitForServer() útil durante startup."
+	},
+	{
+		"category": "functional",
+		"description": "Criar estado global para sessões (Zustand)",
+		"steps": [
+			"Instalar zustand se não instalado: bun add zustand",
+			"Criar src/lib/opencode/state.ts",
+			"Definir SessionState: { id, status, taskId?, subtaskId?, startedAt, messages }",
+			"Criar store com: sessions Map, currentSessionId",
+			"Implementar actions: addSession, updateSession, removeSession",
+			"Implementar selectors: getSession, getCurrentSession, getSessionByTask",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"Store Zustand criado e funcional",
+			"Ações modificam estado corretamente",
+			"Selectors retornam dados esperados",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Zustand é mais simples que Context para estado global. Estado persiste entre navegações de componentes."
+	},
+	{
+		"category": "functional",
+		"description": "Implementar listener de eventos SSE",
+		"steps": [
+			"Criar src/lib/opencode/events.ts",
+			"Implementar subscribeToEvents(onEvent) usando client.event.subscribe()",
+			"Definir tipos de eventos: SessionUpdate, MessageNew, etc",
+			"Implementar handler que atualiza Zustand store",
+			"Adicionar reconnect logic com backoff exponencial",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"Eventos SSE são recebidos e parseados",
+			"Store é atualizado quando eventos chegam",
+			"Reconexão automática funciona",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "SSE substitui polling. Backoff: 1s, 2s, 4s, 8s, max 30s."
+	},
+	{
+		"category": "functional",
+		"description": "Criar hooks React para OpenCode",
+		"steps": [
+			"Criar src/lib/opencode/hooks.ts",
+			"Implementar useOpenCodeSession(sessionId) - retorna session state",
+			"Implementar useOpenCodeStatus() - retorna status geral",
+			"Implementar useCreateSession() - mutation para criar sessão",
+			"Implementar useSendPrompt() - mutation para enviar prompt",
+			"Implementar useAbortSession() - mutation para abortar",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"Hooks tipados e funcionais",
+			"useOpenCodeSession reage a mudanças de estado",
+			"Mutations chamam SDK corretamente",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Hooks encapsulam lógica e facilitam uso nos componentes React."
+	},
+	{
+		"category": "functional",
+		"description": "Simplificar opencode.rs - extrair server lifecycle",
+		"steps": [
+			"Criar src-tauri/src/plugins/tasks/opencode/ diretório",
+			"Criar opencode/mod.rs com re-exports",
+			"Criar opencode/state.rs - mover OpenCodeServerState",
+			"Criar opencode/server.rs - mover ensure_server, stop_server, health_check",
+			"Atualizar imports em lib.rs",
+			"Run cargo check"
+		],
+		"acceptance": [
+			"Estrutura opencode/ criada",
+			"OpenCodeServerState em state.rs",
+			"Funções de server em server.rs",
+			"cargo check passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Primeiro passo: reorganizar sem remover funcionalidade."
+	},
+	{
+		"category": "functional",
+		"description": "Criar comandos Rust para persistência de sessões",
+		"steps": [
+			"Criar opencode/persistence.rs",
+			"Definir PersistedSession: { session_id, task_id, subtask_id, started_at }",
+			"Criar ActiveSessions: RwLock<HashMap<String, PersistedSession>>",
+			"Implementar comando opencode_persist_session",
+			"Implementar comando opencode_get_persisted_sessions",
+			"Implementar comando opencode_clear_session",
+			"Registrar comandos em lib.rs invoke_handler",
+			"Run cargo check"
+		],
+		"acceptance": [
+			"3 novos comandos implementados",
+			"Sessões são persistidas em memória",
+			"cargo check passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Persistência em memória é suficiente - sessões são efêmeras. Se app reiniciar, sessões são perdidas (comportamento esperado)."
+	},
+	{
+		"category": "functional",
+		"description": "Migrar frontend - criar sessão via SDK",
+		"steps": [
+			"Identificar onde opencode_create_session é chamado",
+			"Criar função createSession() em opencode/actions.ts",
+			"Usar client.session.create() do SDK",
+			"Após criar, chamar opencode_persist_session via Tauri",
+			"Atualizar Zustand store com nova sessão",
+			"Substituir chamadas antigas pela nova função",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"createSession() usa SDK",
+			"Sessão é persistida no Rust",
+			"Store é atualizado",
+			"Chamadas antigas substituídas",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Primeira migração real. Testar fluxo completo antes de continuar."
+	},
+	{
+		"category": "functional",
+		"description": "Migrar frontend - send prompt via SDK",
+		"steps": [
+			"Identificar onde opencode_send_prompt é chamado",
+			"Criar função sendPrompt() em opencode/actions.ts",
+			"Usar client.session.prompt() do SDK",
+			"Resposta chega via SSE events (já configurado)",
+			"Substituir chamadas antigas",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"sendPrompt() usa SDK",
+			"Resposta é recebida via SSE",
+			"Chamadas antigas substituídas",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "SDK prompt() pode retornar resposta diretamente ou via events. Testar ambos modos."
+	},
+	{
+		"category": "functional",
+		"description": "Migrar frontend - abort e status via SDK",
+		"steps": [
+			"Criar função abortSession() usando client.session.abort()",
+			"Remover chamadas a opencode_poll_status (SSE substitui)",
+			"Atualizar componentes para usar estado do Zustand",
+			"Substituir chamadas antigas",
+			"Run bun tsc --noEmit"
+		],
+		"acceptance": [
+			"abortSession() usa SDK",
+			"Polling removido",
+			"UI usa estado do Zustand",
+			"bun tsc --noEmit passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Com SSE, status chega automaticamente. Não precisa mais de polling."
+	},
+	{
+		"category": "functional",
+		"description": "Remover código Rust obsoleto",
+		"steps": [
+			"Remover funções HTTP client (client(), base_url())",
+			"Remover structs duplicados com SDK (CreateSessionRequest, etc)",
+			"Remover POLL_INTERVAL e lógica de polling",
+			"Remover comandos não usados de lib.rs invoke_handler",
+			"Manter: OpenCodeServerState, ensure_server, stop_server, health_check, persist_*",
+			"Run cargo check"
+		],
+		"acceptance": [
+			"opencode/ tem ~200 linhas (vs 1092 original)",
+			"Apenas comandos necessários em invoke_handler",
+			"cargo check passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Objetivo: código Rust focado apenas em server lifecycle e persistência."
+	},
+	{
+		"category": "functional",
+		"description": "Remover shared/errors.rs",
+		"steps": [
+			"Verificar que shared/errors.rs está vazio",
+			"Remover arquivo",
+			"Remover 'pub mod errors' de shared/mod.rs se existir",
+			"Run cargo check"
+		],
+		"acceptance": [
+			"Arquivo removido",
+			"shared/mod.rs atualizado",
+			"cargo check passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Limpeza simples de arquivo órfão."
+	},
+	{
+		"category": "functional",
+		"description": "Atualizar CLAUDE.md com nova arquitetura",
+		"steps": [
+			"Atualizar seção de arquitetura com estrutura opencode/",
+			"Documentar arquitetura híbrida (SDK frontend + lifecycle Rust)",
+			"Documentar comandos Rust que permanecem",
+			"Documentar módulo opencode do frontend",
+			"Run cargo check && bun tsc --noEmit"
+		],
+		"acceptance": [
+			"CLAUDE.md reflete arquitetura atual",
+			"Novos devs entendem a estrutura híbrida",
+			"Build passa"
+		],
+		"shouldCommit": true,
+		"passes": false,
+		"notes": "Documentação é crucial para manutenção futura."
 	},
 	{
 		"category": "test",
-		"description": "Manual testing - Full flow verification",
+		"description": "Testes de integração - Fase 1 e 2 (helpers + traces)",
 		"steps": [
-			"Verify cargo check passes",
-			"Verify bun tsc --noEmit passes",
-			"Trigger traced action from frontend",
-			"Check browser console for frontend trace logs with trace_id",
-			"Check ~/.local/share/jubby/logs/traces/YYYY-MM-DD.jsonl exists",
-			"Verify jsonl contains valid JSON lines with matching trace_id",
-			"Verify trace_end entry exists with duration_ms and status",
-			"Verify context accumulates correctly through push/pop",
-			"Test error path: trigger an error, verify has status='error'",
-			"Test cleanup: create old log file, restart app, verify deleted",
-			"Test concurrent traces: trigger multiple actions, verify separate trace_ids"
+			"cargo check passa sem warnings relevantes",
+			"bun tsc --noEmit passa",
+			"Testar CRUD de folders - funcionalidade preservada",
+			"Testar CRUD de tasks - funcionalidade preservada",
+			"Verificar traces em ~/.local/share/jubby/logs/traces/",
+			"Verificar que helpers reduziram código em commands.rs"
+		],
+		"acceptance": [
+			"Build passa",
+			"CRUD funciona igual antes",
+			"Traces são escritos corretamente"
 		],
 		"shouldCommit": false,
 		"passes": false,
-		"notes": "Full end-to-end validation. Document any issues found for follow-up fixes."
+		"notes": "Checkpoint antes de começar migração OpenCode."
+	},
+	{
+		"category": "test",
+		"description": "Testes de integração - Fase 3 (OpenCode híbrido)",
+		"steps": [
+			"Iniciar app - servidor OpenCode deve iniciar",
+			"Criar sessão via SDK - deve funcionar",
+			"Enviar prompt - resposta via SSE",
+			"Navegar para outro plugin - sessão persiste",
+			"Voltar para Tasks - sessão recuperada do estado",
+			"Abortar sessão - deve funcionar",
+			"Fechar e reabrir app - servidor reinicia"
+		],
+		"acceptance": [
+			"Fluxo completo funciona",
+			"Sessões persistem entre navegações",
+			"SSE events funcionam",
+			"Abort funciona"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Teste end-to-end da migração. Se falhar, rollback para branch anterior."
+	},
+	{
+		"category": "test",
+		"description": "Verificação final e merge",
+		"steps": [
+			"Rodar cargo check - sem erros",
+			"Rodar bun tsc --noEmit - sem erros",
+			"Testar fluxo completo manualmente",
+			"Revisar código removido vs adicionado",
+			"Merge branch de migração para main (se tudo ok)",
+			"Deletar branch de migração"
+		],
+		"acceptance": [
+			"Build passa",
+			"Testes manuais passam",
+			"Código mais limpo que antes",
+			"Branch merged"
+		],
+		"shouldCommit": false,
+		"passes": false,
+		"notes": "Checkpoint final. Só fazer merge se tudo funcionar."
 	}
 ]

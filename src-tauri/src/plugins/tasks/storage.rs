@@ -215,6 +215,173 @@ fn migrate_uuid_filenames_to_kebab() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ============================================================================
+// Per-Folder to Per-Task Migration
+// ============================================================================
+
+/// Checks if the storage uses the old per-folder format (single JSON per folder)
+/// vs the new per-task format (directory per folder with individual task files).
+fn is_using_per_folder_format() -> bool {
+    let tasks_dir = get_tasks_dir();
+    let index = match load_folders_index() {
+        Ok(idx) => idx,
+        Err(_) => return false,
+    };
+
+    // Check if any folder has a .json file instead of a directory
+    for folder in &index.folders {
+        let folder_filename = get_folder_filename(folder);
+        let legacy_file = tasks_dir.join(format!("{}.json", folder_filename));
+        let folder_dir = tasks_dir.join(&folder_filename);
+
+        // If the legacy file exists and it's not a directory, we're in old format
+        if legacy_file.exists() && legacy_file.is_file() && !folder_dir.exists() {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Migrates from per-folder JSON files to per-task JSON files.
+///
+/// Old format:
+/// ```
+/// ~/.local/share/jubby/tasks/
+/// ├── folders.json
+/// ├── my-folder.json      (contains all tasks and tags)
+/// └── work.json
+/// ```
+///
+/// New format:
+/// ```
+/// ~/.local/share/jubby/tasks/
+/// ├── folders.json        (now includes tags)
+/// ├── my-folder/
+/// │   ├── task-one.json
+/// │   └── task-two.json
+/// └── work/
+///     └── fix-bug.json
+/// ```
+fn migrate_per_folder_to_per_task() -> Result<(), Box<dyn std::error::Error>> {
+    if !is_using_per_folder_format() {
+        tracing::debug!(
+            target: "tasks::migration",
+            "No per-folder to per-task migration needed"
+        );
+        return Ok(());
+    }
+
+    tracing::info!(
+        target: "tasks::migration",
+        "Starting per-folder to per-task migration"
+    );
+
+    let tasks_dir = get_tasks_dir();
+    let mut index = load_folders_index()?;
+    let mut all_tags: Vec<Tag> = Vec::new();
+    let mut migrated_folders = 0;
+    let mut migrated_tasks = 0;
+
+    for folder in &index.folders {
+        let folder_filename = get_folder_filename(folder);
+        let legacy_file = tasks_dir.join(format!("{}.json", folder_filename));
+
+        if !legacy_file.exists() || !legacy_file.is_file() {
+            continue;
+        }
+
+        tracing::info!(
+            target: "tasks::migration",
+            folder_id = %folder.id,
+            folder_name = %folder.name,
+            "Migrating folder to per-task format"
+        );
+
+        // Load the legacy folder data
+        let folder_data = match load_legacy_folder_data(&folder_filename, &folder.id) {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!(
+                    target: "tasks::migration",
+                    folder_id = %folder.id,
+                    error = %e,
+                    "Failed to load legacy folder data, skipping"
+                );
+                continue;
+            }
+        };
+
+        // Create folder directory
+        let folder_dir = get_folder_dir(&folder_filename);
+        if let Err(e) = ensure_dir(&folder_dir) {
+            tracing::error!(
+                target: "tasks::migration",
+                folder_id = %folder.id,
+                error = %e,
+                "Failed to create folder directory, skipping"
+            );
+            continue;
+        }
+
+        // Generate unique filenames for tasks and save each one
+        let mut existing_filenames: Vec<String> = Vec::new();
+
+        for task in &folder_data.tasks {
+            let task_filename = generate_unique_task_filename(&task.text, &existing_filenames);
+            existing_filenames.push(task_filename.clone());
+
+            let mut task_to_save = task.clone();
+            task_to_save.filename = task_filename;
+
+            if let Err(e) = save_task(&folder_filename, &task_to_save) {
+                tracing::error!(
+                    target: "tasks::migration",
+                    task_id = %task.id,
+                    error = %e,
+                    "Failed to save task file"
+                );
+            } else {
+                migrated_tasks += 1;
+            }
+        }
+
+        // Collect tags for this folder
+        all_tags.extend(folder_data.tags);
+
+        // Delete the legacy file
+        if let Err(e) = std::fs::remove_file(&legacy_file) {
+            tracing::warn!(
+                target: "tasks::migration",
+                path = %legacy_file.display(),
+                error = %e,
+                "Failed to delete legacy folder file"
+            );
+        } else {
+            tracing::info!(
+                target: "tasks::migration",
+                path = %legacy_file.display(),
+                "Deleted legacy folder file"
+            );
+        }
+
+        migrated_folders += 1;
+    }
+
+    // Update folders index with tags
+    index.tags = all_tags;
+    save_folders_index(&index)?;
+
+    tracing::info!(
+        target: "tasks::migration",
+        migrated_folders = migrated_folders,
+        migrated_tasks = migrated_tasks,
+        "Per-folder to per-task migration completed"
+    );
+
+    Ok(())
+}
+
+// ============================================================================
 // Filename Utilities
 // ============================================================================
 
@@ -303,8 +470,50 @@ fn get_folders_index_path() -> PathBuf {
     get_tasks_dir().join("folders.json")
 }
 
-fn get_folder_data_path(filename: &str) -> PathBuf {
+/// Gets the path for a folder's data file (legacy per-folder storage).
+/// Used during migration from old format.
+fn get_legacy_folder_data_path(filename: &str) -> PathBuf {
     get_tasks_dir().join(format!("{}.json", filename))
+}
+
+/// Gets the directory path for a folder's tasks.
+/// Each folder has its own directory containing individual task JSON files.
+pub fn get_folder_dir(folder_filename: &str) -> PathBuf {
+    get_tasks_dir().join(folder_filename)
+}
+
+/// Gets the full path for a task's JSON file.
+pub fn get_task_file_path(folder_filename: &str, task_filename: &str) -> PathBuf {
+    get_folder_dir(folder_filename).join(format!("{}.json", task_filename))
+}
+
+/// Gets the effective filename for a task.
+/// Returns the filename field if set, otherwise falls back to the task id.
+pub fn get_task_filename(task: &Task) -> String {
+    if task.filename.is_empty() {
+        task.id.clone()
+    } else {
+        task.filename.clone()
+    }
+}
+
+/// Generates a unique kebab-case filename for a task within a folder.
+/// If the base name already exists, appends a numeric suffix (-1, -2, etc.).
+pub fn generate_unique_task_filename(text: &str, existing_filenames: &[String]) -> String {
+    let base = to_kebab_case(text);
+
+    if !existing_filenames.contains(&base) {
+        return base;
+    }
+
+    let mut counter = 1;
+    loop {
+        let candidate = format!("{}-{}", base, counter);
+        if !existing_filenames.contains(&candidate) {
+            return candidate;
+        }
+        counter += 1;
+    }
 }
 
 /// Generates a unique kebab-case filename for a folder.
@@ -360,8 +569,9 @@ pub fn load_or_migrate() -> Result<TasksData, Box<dyn std::error::Error>> {
     let sqlite_path = get_sqlite_path();
 
     if folders_index_path.exists() {
-        // Run UUID-to-kebab migration for existing installations
+        // Run migrations for existing installations
         migrate_uuid_filenames_to_kebab()?;
+        migrate_per_folder_to_per_task()?;
         return load_from_storage();
     }
 
@@ -413,14 +623,16 @@ fn load_from_json(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::Error
 fn load_from_storage() -> Result<TasksData, Box<dyn std::error::Error>> {
     let index = load_folders_index()?;
     let mut tasks = Vec::new();
-    let mut tags = Vec::new();
 
     for folder in &index.folders {
-        let filename = get_folder_filename(folder);
-        let folder_data = load_folder_data(&filename, &folder.id)?;
-        tasks.extend(folder_data.tasks);
-        tags.extend(folder_data.tags);
+        let folder_filename = get_folder_filename(folder);
+        let folder_tasks = load_folder_tasks(&folder_filename, &folder.id)?;
+        tasks.extend(folder_tasks);
     }
+
+    // Tags are now stored in the folders index
+    // folder_id is already set on tags in the index
+    let tags = index.tags.clone();
 
     Ok(TasksData {
         folders: index.folders,
@@ -457,29 +669,41 @@ fn migrate_subtask_data(data: &mut TasksData) -> bool {
 }
 
 fn save_to_storage(data: &TasksData) -> Result<(), Box<dyn std::error::Error>> {
+    // Save folders index with tags
     let index = FoldersIndex {
         folders: data.folders.clone(),
+        tags: data.tags.clone(),
     };
-
     save_folders_index(&index)?;
 
+    // Save each task to its own file
     for folder in &data.folders {
-        let filename = get_folder_filename(folder);
-        let folder_data = FolderData {
-            tasks: data
-                .tasks
-                .iter()
-                .filter(|task| task.folder_id == folder.id)
-                .cloned()
-                .collect(),
-            tags: data
-                .tags
-                .iter()
-                .filter(|tag| tag.folder_id == folder.id)
-                .cloned()
-                .collect(),
-        };
-        save_folder_data(&filename, &folder_data)?;
+        let folder_filename = get_folder_filename(folder);
+        let folder_tasks: Vec<&Task> = data
+            .tasks
+            .iter()
+            .filter(|task| task.folder_id == folder.id)
+            .collect();
+
+        // Ensure folder directory exists
+        let folder_dir = get_folder_dir(&folder_filename);
+        ensure_dir(&folder_dir)?;
+
+        // Get existing filenames to generate unique names for tasks without filename
+        let mut existing_filenames = get_existing_task_filenames(&folder_filename);
+
+        for task in folder_tasks {
+            let mut task_to_save = task.clone();
+
+            // Generate filename if not set
+            if task_to_save.filename.is_empty() {
+                task_to_save.filename =
+                    generate_unique_task_filename(&task.text, &existing_filenames);
+                existing_filenames.push(task_to_save.filename.clone());
+            }
+
+            save_task(&folder_filename, &task_to_save)?;
+        }
     }
 
     Ok(())
@@ -522,16 +746,84 @@ pub fn save_folders_index(data: &FoldersIndex) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-/// Loads folder data from disk.
+/// Loads all tasks for a folder from its directory.
+///
+/// Each task is stored as a separate JSON file in the folder's directory.
+/// The folder_id is set on each task from the parameter.
+///
+/// # Arguments
+/// * `folder_filename` - The kebab-case folder name (directory name)
+/// * `folder_id` - The folder's UUID, used to set folder_id on tasks
+pub fn load_folder_tasks(
+    folder_filename: &str,
+    folder_id: &str,
+) -> Result<Vec<Task>, Box<dyn std::error::Error>> {
+    let folder_dir = get_folder_dir(folder_filename);
+
+    if !folder_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut tasks = Vec::new();
+
+    for entry in std::fs::read_dir(&folder_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Only process .json files
+        if path.extension().map_or(true, |ext| ext != "json") {
+            continue;
+        }
+
+        // Extract filename without extension
+        let task_filename = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(name) => name.to_string(),
+            None => continue,
+        };
+
+        match load_single_task(&path, folder_id, &task_filename) {
+            Ok(task) => tasks.push(task),
+            Err(e) => {
+                tracing::warn!(
+                    target: "tasks::storage",
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to load task file, skipping"
+                );
+            }
+        }
+    }
+
+    // Sort by created_at descending (newest first)
+    tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(tasks)
+}
+
+/// Loads a single task from a JSON file.
+fn load_single_task(
+    path: &PathBuf,
+    folder_id: &str,
+    task_filename: &str,
+) -> Result<Task, Box<dyn std::error::Error>> {
+    let content = std::fs::read_to_string(path)?;
+    let mut task: Task = serde_json::from_str(&content)?;
+    task.folder_id = folder_id.to_string();
+    task.filename = task_filename.to_string();
+    Ok(task)
+}
+
+/// Loads folder data from disk (legacy format - per-folder JSON file).
+/// Used during migration from old storage format.
 ///
 /// # Arguments
 /// * `filename` - The kebab-case filename (without .json extension)
 /// * `folder_id` - The folder's UUID, used to set folder_id on tasks/tags
-pub fn load_folder_data(
+fn load_legacy_folder_data(
     filename: &str,
     folder_id: &str,
 ) -> Result<FolderData, Box<dyn std::error::Error>> {
-    let path = get_folder_data_path(filename);
+    let path = get_legacy_folder_data_path(filename);
     if !path.exists() {
         return Ok(FolderData::default());
     }
@@ -547,73 +839,169 @@ pub fn load_folder_data(
     Ok(data)
 }
 
-/// Saves folder data to disk.
+/// Saves a single task to its JSON file.
+///
+/// Creates the folder directory if it doesn't exist.
+/// The task's folder_id and filename are not serialized to the file.
 ///
 /// # Arguments
-/// * `filename` - The kebab-case filename (without .json extension)
-/// * `data` - The folder data to save
-pub fn save_folder_data(
-    filename: &str,
-    data: &FolderData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = get_tasks_dir();
-    ensure_dir(&dir)?;
+/// * `folder_filename` - The kebab-case folder name (directory name)
+/// * `task` - The task to save
+pub fn save_task(folder_filename: &str, task: &Task) -> Result<(), Box<dyn std::error::Error>> {
+    let folder_dir = get_folder_dir(folder_filename);
+    ensure_dir(&folder_dir)?;
 
-    let data = FolderData {
-        tasks: data
-            .tasks
-            .iter()
-            .cloned()
-            .map(|mut task| {
-                task.folder_id = String::new();
-                task
-            })
-            .collect(),
-        tags: data
-            .tags
-            .iter()
-            .cloned()
-            .map(|mut tag| {
-                tag.folder_id = String::new();
-                tag
-            })
-            .collect(),
+    let task_filename = get_task_filename(task);
+    let path = get_task_file_path(folder_filename, &task_filename);
+
+    // Create a copy without folder_id and filename for serialization
+    let task_for_save = Task {
+        id: task.id.clone(),
+        folder_id: String::new(),
+        filename: String::new(),
+        text: task.text.clone(),
+        status: task.status.clone(),
+        created_at: task.created_at,
+        description: task.description.clone(),
+        working_directory: task.working_directory.clone(),
+        tag_ids: task.tag_ids.clone(),
+        subtasks: task.subtasks.clone(),
     };
 
-    let path = get_folder_data_path(filename);
-    let content = serde_json::to_string_pretty(&data)?;
+    let content = serde_json::to_string_pretty(&task_for_save)?;
     std::fs::write(&path, &content)?;
     record_internal_write(&path);
+
+    tracing::trace!(
+        target: "tasks::storage",
+        task_id = %task.id,
+        path = %path.display(),
+        "Task saved"
+    );
+
     Ok(())
 }
 
-/// Deletes the folder data file from disk.
+/// Deletes a task's JSON file.
 ///
 /// # Arguments
-/// * `filename` - The kebab-case filename (without .json extension)
-pub fn delete_folder_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = get_folder_data_path(filename);
+/// * `folder_filename` - The kebab-case folder name (directory name)
+/// * `task_filename` - The kebab-case task filename (without .json extension)
+pub fn delete_task_file(
+    folder_filename: &str,
+    task_filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_task_file_path(folder_filename, task_filename);
     if path.exists() {
-        std::fs::remove_file(path)?;
+        std::fs::remove_file(&path)?;
+        tracing::trace!(
+            target: "tasks::storage",
+            path = %path.display(),
+            "Task file deleted"
+        );
     }
     Ok(())
 }
 
-/// Renames a folder data file on disk.
+/// Renames a task's JSON file when the task text changes.
 ///
 /// # Arguments
-/// * `old_filename` - The current kebab-case filename (without .json extension)
-/// * `new_filename` - The new kebab-case filename (without .json extension)
-pub fn rename_folder_file(
-    old_filename: &str,
-    new_filename: &str,
+/// * `folder_filename` - The kebab-case folder name (directory name)
+/// * `old_task_filename` - The current filename (without .json extension)
+/// * `new_task_filename` - The new filename (without .json extension)
+pub fn rename_task_file(
+    folder_filename: &str,
+    old_task_filename: &str,
+    new_task_filename: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let old_path = get_folder_data_path(old_filename);
-    let new_path = get_folder_data_path(new_filename);
+    if old_task_filename == new_task_filename {
+        return Ok(());
+    }
+
+    let old_path = get_task_file_path(folder_filename, old_task_filename);
+    let new_path = get_task_file_path(folder_filename, new_task_filename);
 
     if old_path.exists() {
         std::fs::rename(&old_path, &new_path)?;
         record_internal_write(&new_path);
+        tracing::trace!(
+            target: "tasks::storage",
+            old_path = %old_path.display(),
+            new_path = %new_path.display(),
+            "Task file renamed"
+        );
+    }
+
+    Ok(())
+}
+
+/// Gets all existing task filenames in a folder.
+pub fn get_existing_task_filenames(folder_filename: &str) -> Vec<String> {
+    let folder_dir = get_folder_dir(folder_filename);
+
+    if !folder_dir.exists() {
+        return Vec::new();
+    }
+
+    std::fs::read_dir(&folder_dir)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    if path.extension().map_or(true, |ext| ext != "json") {
+                        return None;
+                    }
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Deletes the folder directory and all its task files from disk.
+///
+/// # Arguments
+/// * `folder_filename` - The kebab-case folder name (directory name)
+pub fn delete_folder_dir(folder_filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let folder_dir = get_folder_dir(folder_filename);
+    if folder_dir.exists() {
+        std::fs::remove_dir_all(&folder_dir)?;
+        tracing::trace!(
+            target: "tasks::storage",
+            path = %folder_dir.display(),
+            "Folder directory deleted"
+        );
+    }
+    Ok(())
+}
+
+/// Renames a folder directory on disk.
+///
+/// # Arguments
+/// * `old_filename` - The current kebab-case folder name (directory name)
+/// * `new_filename` - The new kebab-case folder name (directory name)
+pub fn rename_folder_dir(
+    old_filename: &str,
+    new_filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if old_filename == new_filename {
+        return Ok(());
+    }
+
+    let old_dir = get_folder_dir(old_filename);
+    let new_dir = get_folder_dir(new_filename);
+
+    if old_dir.exists() {
+        std::fs::rename(&old_dir, &new_dir)?;
+        tracing::trace!(
+            target: "tasks::storage",
+            old_path = %old_dir.display(),
+            new_path = %new_dir.display(),
+            "Folder directory renamed"
+        );
     }
 
     Ok(())
@@ -658,6 +1046,7 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
             Ok(Task {
                 id: row.get(0)?,
                 folder_id: row.get(1)?,
+                filename: String::new(), // Will be generated during save_to_storage
                 text: row.get(2)?,
                 status: row.get(3)?,
                 created_at: row.get(4)?,

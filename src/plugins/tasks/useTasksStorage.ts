@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createLogger } from "@/lib/logger";
 import { createTrace, tracedInvoke } from "@/lib/trace";
 import type {
 	ExecutionLog,
@@ -18,6 +19,11 @@ import type {
 } from "./types";
 
 const PENDING_DELETE_TIMEOUT_MS = 1500;
+const logger = createLogger("tasks");
+
+interface ReloadOptions {
+	forceReload?: boolean;
+}
 
 interface UsePendingDeleteReturn {
 	pendingId: string | null;
@@ -135,35 +141,14 @@ interface ExecutionResultFromBackend {
 	errorMessage: string | null;
 }
 
-interface GeneratedStepFromBackend {
-	text: string;
-	completed: boolean;
-}
-
-interface GeneratedSubtaskFromBackend {
-	text: string;
-	steps: GeneratedStepFromBackend[];
-	category: string;
-	notes: string;
-	shouldCommit: boolean;
-}
-
 interface GenerateSubtasksResultFromBackend {
-	subtasks: GeneratedSubtaskFromBackend[];
 	sessionId: string;
+	message: string;
 }
 
-export interface GeneratedStep {
-	text: string;
-	completed: boolean;
-}
-
-export interface GeneratedSubtask {
-	text: string;
-	steps: GeneratedStep[];
-	category: SubtaskCategory;
-	notes: string;
-	shouldCommit: boolean;
+export interface GenerateSubtasksResult {
+	sessionId: string;
+	message: string;
 }
 
 interface UseTasksStorageReturn {
@@ -176,6 +161,9 @@ interface UseTasksStorageReturn {
 	executingSubtaskId: string | null;
 	currentSessionId: string | null;
 	isLooping: boolean;
+
+	// Reload function for watcher
+	reloadTasks: (options?: ReloadOptions) => Promise<void>;
 
 	createTask: (text: string, tagIds?: string[]) => Promise<void>;
 	updateTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
@@ -264,19 +252,15 @@ interface UseTasksStorageReturn {
 	stopLoop: () => void;
 
 	// Generate subtasks
-	generateSubtasks: (taskId: string) => Promise<GeneratedSubtask[] | null>;
+	generateSubtasks: (taskId: string) => Promise<GenerateSubtasksResult | null>;
 	isGenerating: boolean;
-	createSubtaskBatch: (
-		taskId: string,
-		subtasks: GeneratedSubtask[],
-	) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
 	folders: Folder[];
 	isLoading: boolean;
 
-	loadFolders: () => Promise<void>;
+	loadFolders: (options?: ReloadOptions) => Promise<void>;
 	createFolder: (name: string) => Promise<Folder | null>;
 	renameFolder: (id: string, name: string) => Promise<boolean>;
 	deleteFolder: (id: string) => Promise<boolean>;
@@ -406,14 +390,38 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	const loopAbortedRef = useRef(false);
 	const [isGenerating, setIsGenerating] = useState(false);
 
+	const fetchTasks = useCallback(
+		async (options?: ReloadOptions) => {
+			if (!folderId) {
+				setTasks([]);
+				setTags([]);
+				return;
+			}
+			const data = await invoke<TasksDataFromBackend>("tasks_get_by_folder", {
+				folderId,
+				forceReload: options?.forceReload,
+			});
+			setTasks(data.tasks.map(mapBackendTask));
+			setTags(data.tags);
+		},
+		[folderId],
+	);
+
+	const reloadTasks = useCallback(
+		async (options?: ReloadOptions) => {
+			try {
+				await fetchTasks(options);
+			} catch (error) {
+				console.error("Failed to reload tasks data:", error);
+			}
+		},
+		[fetchTasks],
+	);
+
 	useEffect(() => {
 		const loadData = async () => {
 			try {
-				const data = await invoke<TasksDataFromBackend>("tasks_get_by_folder", {
-					folderId,
-				});
-				setTasks(data.tasks.map(mapBackendTask));
-				setTags(data.tags);
+				await fetchTasks({ forceReload: true });
 			} catch (error) {
 				console.error("Failed to load tasks data:", error);
 				toast.error("Failed to load data");
@@ -423,7 +431,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		};
 
 		loadData();
-	}, [folderId]);
+	}, [fetchTasks]);
 
 	const createTask = useCallback(
 		async (
@@ -528,8 +536,16 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			});
 
 			try {
-				await invoke("tasks_update_working_directory", { id, path });
+				await invoke("tasks_update_working_directory", {
+					id,
+					workingDirectory: path,
+				});
 			} catch (error) {
+				logger.error("Failed to update working directory", {
+					taskId: id,
+					path,
+					error: String(error),
+				});
 				setTasks(previousTasks);
 				toast.error("Failed to update working directory");
 			}
@@ -1176,24 +1192,40 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				return null;
 			}
 
+			const trace = createTrace({
+				plugin: "tasks",
+				action: "execute_subtask",
+				taskId,
+				subtaskId,
+			});
+
 			setIsExecuting(true);
 			setExecutingSubtaskId(subtaskId);
 
 			try {
-				const result = await invoke<ExecutionResultFromBackend>(
+				trace.info("Starting subtask execution");
+				const result = await tracedInvoke<ExecutionResultFromBackend>(
 					"tasks_execute_subtask",
 					{ taskId, subtaskId },
+					trace,
 				);
 				currentSessionIdRef.current = result.sessionId;
+				trace.info(`Execution completed: ${result.outcome}`);
 				return result;
 			} catch (error) {
-				console.error("Failed to execute subtask:", error);
-				toast.error("Failed to execute subtask");
+				const message =
+					typeof error === "string" ? error : "Failed to execute subtask";
+				trace.error("Subtask execution failed", {
+					message,
+					code: "EXECUTE_SUBTASK_FAILED",
+				});
+				toast.error(message);
 				return null;
 			} finally {
 				setIsExecuting(false);
 				setExecutingSubtaskId(null);
 				currentSessionIdRef.current = null;
+				trace.end();
 			}
 		},
 		[isExecuting],
@@ -1230,6 +1262,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				return;
 			}
 
+			const trace = createTrace({
+				plugin: "tasks",
+				action: "start_loop",
+				taskId,
+			});
+
 			setIsLooping(true);
 			loopAbortedRef.current = false;
 
@@ -1237,23 +1275,53 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				(a, b) => a.order - b.order,
 			);
 
+			const pendingSubtasks = sortedSubtasks.filter(
+				(s) => s.status === "waiting" || s.status === "failed",
+			);
+			trace.info(
+				`Starting loop with ${pendingSubtasks.length} pending subtasks`,
+			);
+
+			let completedCount = 0;
+			let failedCount = 0;
+
 			for (const subtask of sortedSubtasks) {
 				if (loopAbortedRef.current) {
+					trace.info("Loop aborted by user");
 					break;
 				}
 
-				if (subtask.status === "waiting") {
+				if (subtask.status === "waiting" || subtask.status === "failed") {
 					setIsExecuting(true);
 					setExecutingSubtaskId(subtask.id);
 
+					trace.info(`Executing subtask: ${subtask.text}`);
+
 					try {
-						const result = await invoke<ExecutionResultFromBackend>(
+						const result = await tracedInvoke<ExecutionResultFromBackend>(
 							"tasks_execute_subtask",
 							{ taskId, subtaskId: subtask.id },
+							trace,
 						);
 						currentSessionIdRef.current = result.sessionId;
+
+						if (result.outcome === "success") {
+							completedCount++;
+						} else {
+							failedCount++;
+						}
+
+						trace.info(`Subtask completed: ${result.outcome}`);
 					} catch (error) {
-						console.error("Failed to execute subtask in loop:", error);
+						const message =
+							typeof error === "string" ? error : "Failed to execute subtask";
+						trace.error("Subtask execution failed in loop", {
+							message,
+							code: "LOOP_SUBTASK_FAILED",
+						});
+						toast.error(message);
+						failedCount++;
+						break;
 					} finally {
 						setIsExecuting(false);
 						setExecutingSubtaskId(null);
@@ -1262,6 +1330,11 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				}
 			}
 
+			trace.info(
+				`Loop finished: ${completedCount} completed, ${failedCount} failed`,
+			);
+			trace.end();
+
 			setIsLooping(false);
 			loopAbortedRef.current = false;
 		},
@@ -1269,104 +1342,62 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	);
 
 	const generateSubtasks = useCallback(
-		async (taskId: string): Promise<GeneratedSubtask[] | null> => {
+		async (taskId: string): Promise<GenerateSubtasksResult | null> => {
 			if (isGenerating) {
 				toast.error("Generation already in progress");
 				return null;
 			}
 
+			const trace = createTrace({
+				plugin: "tasks",
+				action: "generate_subtasks",
+				taskId,
+			});
+
 			setIsGenerating(true);
 
 			try {
-				const result = await invoke<GenerateSubtasksResultFromBackend>(
+				trace.info("Starting subtask generation");
+				const result = await tracedInvoke<GenerateSubtasksResultFromBackend>(
 					"tasks_generate_subtasks",
 					{ taskId },
+					trace,
 				);
-				return result.subtasks.map((s) => ({
-					text: s.text,
-					steps: s.steps,
-					category: (s.category || "functional") as SubtaskCategory,
-					notes: s.notes,
-					shouldCommit: s.shouldCommit,
-				}));
+
+				trace.info("Generation completed, reloading task data");
+
+				// Reload task data since AI edited tasks.json directly
+				await fetchTasks({ forceReload: true });
+
+				trace.info("Subtasks generated successfully");
+				toast.success("Subtasks generated successfully");
+
+				return {
+					sessionId: result.sessionId,
+					message: result.message,
+				};
 			} catch (error) {
 				const errorMsg = String(error);
 				if (errorMsg.includes("description is empty")) {
+					trace.error("Generation failed - description empty", {
+						message: errorMsg,
+						code: "DESCRIPTION_EMPTY",
+					});
 					toast.error("Please add a description to the task first");
 				} else {
+					trace.error("Generation failed", {
+						message: errorMsg,
+						code: "GENERATE_SUBTASKS_FAILED",
+					});
 					toast.error("Failed to generate subtasks");
 				}
 				return null;
 			} finally {
 				setIsGenerating(false);
+				trace.end();
 			}
 		},
-		[isGenerating],
-	);
-
-	const createSubtaskBatch = useCallback(
-		async (taskId: string, subtasksToCreate: GeneratedSubtask[]) => {
-			for (const subtask of subtasksToCreate) {
-				const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-				const task = tasks.find((t) => t.id === taskId);
-				const maxOrder =
-					task?.subtasks.reduce((max, s) => Math.max(max, s.order), -1) ?? -1;
-
-				const optimisticSubtask = createDefaultSubtask(
-					tempId,
-					subtask.text,
-					maxOrder + 1,
-				);
-				optimisticSubtask.category = subtask.category;
-				optimisticSubtask.notes = subtask.notes;
-				optimisticSubtask.shouldCommit = subtask.shouldCommit;
-				optimisticSubtask.steps = subtask.steps.map((step, i) => ({
-					id: `temp-step-${i}`,
-					text: step.text,
-					completed: step.completed,
-				}));
-
-				setTasks((prev) =>
-					prev.map((t) =>
-						t.id === taskId
-							? { ...t, subtasks: [...t.subtasks, optimisticSubtask] }
-							: t,
-					),
-				);
-
-				try {
-					const newSubtask = await invoke<SubtaskFromBackend>(
-						"subtasks_create",
-						{
-							taskId,
-							text: subtask.text,
-						},
-					);
-					setTasks((prev) =>
-						prev.map((t) =>
-							t.id === taskId
-								? {
-										...t,
-										subtasks: t.subtasks.map((s) =>
-											s.id === tempId ? mapBackendSubtask(newSubtask) : s,
-										),
-									}
-								: t,
-						),
-					);
-				} catch (error) {
-					setTasks((prev) =>
-						prev.map((t) =>
-							t.id === taskId
-								? { ...t, subtasks: t.subtasks.filter((s) => s.id !== tempId) }
-								: t,
-						),
-					);
-					toast.error("Failed to create subtask");
-				}
-			}
-		},
-		[tasks],
+		[fetchTasks, isGenerating],
 	);
 
 	return {
@@ -1377,6 +1408,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		executingSubtaskId,
 		currentSessionId: currentSessionIdRef.current,
 		isLooping,
+		reloadTasks,
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
@@ -1408,7 +1440,6 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		stopLoop,
 		generateSubtasks,
 		isGenerating,
-		createSubtaskBatch,
 	};
 }
 
@@ -1534,14 +1565,16 @@ export function useFolderStorage(): UseFolderStorageReturn {
 	const [folders, setFolders] = useState<Folder[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 
-	const loadFolders = useCallback(async () => {
+	const loadFolders = useCallback(async (options?: ReloadOptions) => {
 		const trace = createTrace({ plugin: "tasks", action: "load_folders" });
 		trace.info("Loading folders");
 
 		try {
 			const data = await tracedInvoke<FolderFromBackend[]>(
 				"folder_get_all",
-				{},
+				{
+					forceReload: options?.forceReload,
+				},
 				trace,
 			);
 			trace.info(`Loaded ${data.length} folders`);
@@ -1560,7 +1593,7 @@ export function useFolderStorage(): UseFolderStorageReturn {
 	}, []);
 
 	useEffect(() => {
-		loadFolders();
+		loadFolders({ forceReload: true });
 	}, [loadFolders]);
 
 	const createFolder = useCallback(

@@ -564,13 +564,38 @@ fn update_subtask_status(
     status: super::types::TaskStatus,
 ) {
     let mut data = store.write();
+
+    // Get folder info first
+    let (folder_filename, task_exists) = {
+        if let Some(task) = data.tasks.iter().find(|t| t.id == task_id) {
+            let folder_id = task.folder_id.clone();
+            if let Some(folder) = data.folders.iter().find(|f| f.id == folder_id) {
+                (super::storage::get_folder_filename(folder), true)
+            } else {
+                (String::new(), false)
+            }
+        } else {
+            (String::new(), false)
+        }
+    };
+
+    if !task_exists || folder_filename.is_empty() {
+        tracing::error!(target: "tasks", "Task or folder not found for status update");
+        return;
+    }
+
+    // Update the subtask status
     if let Some(task) = data.tasks.iter_mut().find(|t| t.id == task_id) {
         if let Some(subtask) = task.subtasks.iter_mut().find(|s| s.id == subtask_id) {
             subtask.status = status;
         }
     }
-    if let Err(e) = super::storage::save_to_json(&data) {
-        tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
+
+    // Save only this task's file
+    if let Some(task) = data.tasks.iter().find(|t| t.id == task_id) {
+        if let Err(e) = super::storage::save_task(&folder_filename, task) {
+            tracing::error!(target: "tasks", "Failed to save subtask status update: {}", e);
+        }
     }
 }
 

@@ -35,9 +35,7 @@ fn get_hyprland_conf_path() -> Option<PathBuf> {
 }
 
 fn reload_hyprland_config() {
-    let _ = std::process::Command::new("hyprctl")
-        .arg("reload")
-        .spawn();
+    let _ = std::process::Command::new("hyprctl").arg("reload").spawn();
 }
 
 fn build_binding_line(shortcut: &str) -> String {
@@ -113,9 +111,9 @@ pub fn ensure_hyprland_binding(shortcut: &str) -> Result<(), String> {
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
 
     let needs_update = if content.contains(JUBBY_BINDING_MARKER) {
-        content.lines().any(|line| {
-            line.contains(JUBBY_BINDING_MARKER) && line.contains("jubby-toggle")
-        })
+        content
+            .lines()
+            .any(|line| line.contains(JUBBY_BINDING_MARKER) && line.contains("jubby-toggle"))
     } else {
         true
     };
