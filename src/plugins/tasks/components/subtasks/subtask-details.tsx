@@ -7,13 +7,35 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { SubtaskCategory } from "../../types";
+import type { Subtask, SubtaskCategory } from "../../types";
 import { NotesModal } from "../modals/notes-modal";
+
+/**
+ * Returns the errorMessage from the most recent execution log with outcome 'failed'.
+ * Returns null if there are no failed execution logs or if the most recent failed log has no error message.
+ */
+export function getLatestErrorMessage(subtask: Subtask): string | null {
+	const failedLogs = subtask.executionLogs.filter(
+		(log) => log.outcome === "failed",
+	);
+
+	if (failedLogs.length === 0) {
+		return null;
+	}
+
+	// Sort by startedAt descending to get the most recent first
+	const sortedFailedLogs = [...failedLogs].sort(
+		(a, b) => b.startedAt - a.startedAt,
+	);
+
+	return sortedFailedLogs[0].errorMessage;
+}
 
 interface SubtaskDetailsProps {
 	category: SubtaskCategory;
 	shouldCommit: boolean;
 	notes: string;
+	subtask: Subtask;
 	onUpdateCategory: (category: SubtaskCategory) => void;
 	onUpdateShouldCommit: (shouldCommit: boolean) => void;
 }
@@ -22,11 +44,14 @@ function SubtaskDetails({
 	category,
 	shouldCommit,
 	notes,
+	subtask,
 	onUpdateCategory,
 	onUpdateShouldCommit,
 }: SubtaskDetailsProps) {
 	const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
 	const hasNotes = notes.trim().length > 0;
+	const errorMessage =
+		subtask.status === "failed" ? getLatestErrorMessage(subtask) : null;
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -113,6 +138,17 @@ function SubtaskDetails({
 					</button>
 				</div>
 			</div>
+
+			{errorMessage && (
+				<div className="flex flex-col gap-1">
+					<span className="text-[9px] font-medium uppercase tracking-wider text-red-400/50">
+						Error
+					</span>
+					<p className="rounded bg-red-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-red-400/70">
+						{errorMessage}
+					</p>
+				</div>
+			)}
 
 			{isNotesModalOpen && (
 				<NotesModal notes={notes} onClose={() => setIsNotesModalOpen(false)} />

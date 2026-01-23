@@ -302,6 +302,7 @@ function SubtaskItem({
 								category={subtask.category}
 								shouldCommit={subtask.shouldCommit}
 								notes={subtask.notes}
+								subtask={subtask}
 								onUpdateCategory={onUpdateCategory}
 								onUpdateShouldCommit={onUpdateShouldCommit}
 							/>
