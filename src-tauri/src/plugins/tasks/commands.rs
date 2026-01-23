@@ -958,39 +958,22 @@ pub fn subtasks_reorder(
         .with("task_id", task_id.clone());
     trace.info("subtask reorder requested");
 
-    let mut data = store.write();
-
-    // Get folder info first
-    let task = find_task(&data, &task_id).ok_or_else(|| {
-        trace.info("task not found");
-        format!("Task not found: {}", task_id)
-    })?;
-    let folder_id = task.folder_id.clone();
-    let folder =
-        find_folder(&data, &folder_id).ok_or_else(|| format!("Folder not found: {}", folder_id))?;
-    let folder_filename = get_folder_filename(folder);
-
-    // Now get mutable reference
-    let task = data
-        .tasks
-        .iter_mut()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    for (index, subtask_id) in subtask_ids.iter().enumerate() {
-        if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
-            subtask.order = index as u32;
+    let result = with_task_mut(store.inner(), &task_id, |task| {
+        for (index, subtask_id) in subtask_ids.iter().enumerate() {
+            if let Some(subtask) = task.subtasks.iter_mut().find(|s| &s.id == subtask_id) {
+                subtask.order = index as u32;
+            }
         }
+        Ok(())
+    });
+
+    match &result {
+        Ok(_) => trace.info("subtask reorder complete"),
+        Err(_) => trace.info("subtask reorder failed"),
     }
-
-    // Save only this task's file
-    let task = find_task(&data, &task_id).expect("Task should exist");
-    save_task(&folder_filename, task).map_err(|e| e.to_string())?;
-
-    trace.info("subtask reorder complete");
     drop(trace);
 
-    Ok(())
+    result
 }
 
 #[tauri::command]
