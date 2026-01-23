@@ -16,7 +16,7 @@ import { type AggregatedLog, HistoryModal } from "../modals/history-modal";
 import { SubtaskInput } from "../subtasks/subtask-input";
 import { SubtaskList } from "../subtasks/subtask-list";
 import { SubtaskHeaderActions } from "./subtask-header-actions";
-import { TaskInfoCard } from "./task-info-card";
+import { TaskDetailHeader } from "./task-detail-header";
 
 interface TaskDetailActions {
 	updateTaskStatus: (status: TaskStatus) => Promise<void>;
@@ -127,7 +127,7 @@ function TaskDetail({
 					}
 				/>
 
-				<TaskInfoCard
+				<TaskDetailHeader
 					task={task}
 					tags={tags}
 					onUpdateStatus={actions.updateTaskStatus}
