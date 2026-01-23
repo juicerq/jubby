@@ -65,6 +65,7 @@ function TasksPlugin(_props: PluginProps) {
 		createTask,
 		updateTaskStatus,
 		updateTaskText,
+		updateTaskDescription,
 		updateTaskWorkingDirectory,
 		deleteTask,
 		setTaskTags,
@@ -452,6 +453,8 @@ function TasksPlugin(_props: PluginProps) {
 			updateTaskStatus: (status: TaskStatus) =>
 				updateTaskStatus(currentTask.id, status),
 			updateTaskText: (text: string) => updateTaskText(currentTask.id, text),
+			updateTaskDescription: (description: string) =>
+				updateTaskDescription(currentTask.id, description),
 			setTaskTags: (tagIds: string[]) => setTaskTags(currentTask.id, tagIds),
 			deleteTask: () => deleteTask(currentTask.id),
 			createSubtask: (text: string) => createSubtask(currentTask.id, text),

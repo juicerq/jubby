@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, Minus, Pencil, Tag } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, FileText, Minus, Pencil, Tag, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Tag as TagType, Task, TaskStatus } from "../../types";
@@ -9,6 +9,7 @@ interface TaskDetailHeaderProps {
 	tags: TagType[];
 	onUpdateStatus: (status: TaskStatus) => Promise<void>;
 	onUpdateText: (text: string) => Promise<void>;
+	onUpdateDescription: (description: string) => Promise<void>;
 	onToggleTag: (tagId: string) => void;
 }
 
@@ -17,6 +18,7 @@ function TaskDetailHeader({
 	tags,
 	onUpdateStatus,
 	onUpdateText,
+	onUpdateDescription,
 	onToggleTag,
 }: TaskDetailHeaderProps) {
 	const {
@@ -35,7 +37,14 @@ function TaskDetailHeader({
 		isTruncated,
 		toggleExpanded,
 		descriptionRef,
-	} = useCollapsibleDescription(task.description);
+		isEditingDescription,
+		descriptionEditValue,
+		setDescriptionEditValue,
+		startEditingDescription,
+		saveDescription,
+		cancelEditingDescription,
+		descriptionTextareaRef,
+	} = useCollapsibleDescription(task.description, onUpdateDescription);
 
 	const taskTags = (task.tagIds ?? [])
 		.map((tagId) => tags.find((t) => t.id === tagId))
@@ -162,37 +171,100 @@ function TaskDetailHeader({
 				</button>
 			</div>
 
-			{/* Description row - collapsible */}
-			{hasDescription && (
+			{/* Description row - collapsible with edit mode */}
+			{(hasDescription || isEditingDescription) ? (
+				<div className="ml-[30px]">
+					{isEditingDescription ? (
+						<div className="flex flex-col gap-2">
+							<textarea
+								ref={descriptionTextareaRef}
+								value={descriptionEditValue}
+								onChange={(e) => setDescriptionEditValue(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Escape") {
+										e.preventDefault();
+										cancelEditingDescription();
+									} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+										e.preventDefault();
+										saveDescription();
+									}
+								}}
+								className="min-h-[80px] w-full resize-none rounded-md border border-white/10 bg-white/[0.02] px-2.5 py-2 text-[12px] leading-[1.5] text-white/70 outline-none placeholder:text-white/30 focus:border-white/20 focus:bg-white/[0.04]"
+								placeholder="Add a description..."
+								autoComplete="off"
+							/>
+							<div className="flex items-center justify-end gap-2">
+								<button
+									type="button"
+									onClick={cancelEditingDescription}
+									className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/70 active:scale-[0.96]"
+								>
+									<X className="h-3 w-3" />
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={saveDescription}
+									className="flex h-7 items-center gap-1.5 rounded-md bg-white/10 px-2.5 text-[11px] font-medium text-white/80 transition-all duration-150 ease-out hover:bg-white/15 hover:text-white/90 active:scale-[0.96]"
+								>
+									<Check className="h-3 w-3" />
+									Save
+								</button>
+							</div>
+						</div>
+					) : (
+						<div className="group flex w-full items-start gap-1.5 rounded-md text-left">
+							<button
+								type="button"
+								onClick={isTruncated || isExpanded ? toggleExpanded : undefined}
+								className={cn(
+									"flex flex-1 items-start gap-1.5 text-left transition-all duration-150 ease-out",
+									(isTruncated || isExpanded) && "cursor-pointer",
+								)}
+								disabled={!isTruncated && !isExpanded}
+							>
+								<p
+									ref={descriptionRef}
+									className={cn(
+										"flex-1 text-[12px] leading-[1.5] text-white/50 transition-all duration-150 ease-out",
+										!isExpanded && "line-clamp-2",
+										task.status === "completed" && "text-white/30",
+									)}
+								>
+									{task.description}
+								</p>
+								{(isTruncated || isExpanded) && (
+									<span className="mt-0.5 shrink-0 text-white/30 transition-colors duration-150 group-hover:text-white/50">
+										{isExpanded ? (
+											<ChevronUp className="h-3.5 w-3.5" />
+										) : (
+											<ChevronDown className="h-3.5 w-3.5" />
+										)}
+									</span>
+								)}
+							</button>
+							{isExpanded && (
+								<button
+									type="button"
+									onClick={startEditingDescription}
+									className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-white/30 opacity-0 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/50 group-hover:opacity-100 active:scale-90"
+									aria-label="Edit description"
+								>
+									<Pencil className="h-3 w-3" />
+								</button>
+							)}
+						</div>
+					)}
+				</div>
+			) : (
 				<div className="ml-[30px]">
 					<button
 						type="button"
-						onClick={isTruncated || isExpanded ? toggleExpanded : undefined}
-						className={cn(
-							"group flex w-full items-start gap-1.5 rounded-md text-left transition-all duration-150 ease-out",
-							(isTruncated || isExpanded) && "cursor-pointer hover:bg-white/[0.02]",
-						)}
-						disabled={!isTruncated && !isExpanded}
+						onClick={startEditingDescription}
+						className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-white/30 transition-all duration-150 ease-out hover:bg-white/[0.03] hover:text-white/50"
 					>
-						<p
-							ref={descriptionRef}
-							className={cn(
-								"flex-1 text-[12px] leading-[1.5] text-white/50 transition-all duration-150 ease-out",
-								!isExpanded && "line-clamp-2",
-								task.status === "completed" && "text-white/30",
-							)}
-						>
-							{task.description}
-						</p>
-						{(isTruncated || isExpanded) && (
-							<span className="mt-0.5 shrink-0 text-white/30 transition-colors duration-150 group-hover:text-white/50">
-								{isExpanded ? (
-									<ChevronUp className="h-3.5 w-3.5" />
-								) : (
-									<ChevronDown className="h-3.5 w-3.5" />
-								)}
-							</span>
-						)}
+						<FileText className="h-3 w-3" />
+						Add description
 					</button>
 				</div>
 			)}
@@ -200,10 +272,16 @@ function TaskDetailHeader({
 	);
 }
 
-function useCollapsibleDescription(description: string | undefined) {
+function useCollapsibleDescription(
+	description: string | undefined,
+	onUpdateDescription: (description: string) => Promise<void>,
+) {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [isTruncated, setIsTruncated] = useState(false);
+	const [isEditingDescription, setIsEditingDescription] = useState(false);
+	const [descriptionEditValue, setDescriptionEditValue] = useState(description ?? "");
 	const descriptionRef = useRef<HTMLParagraphElement>(null);
+	const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const checkTruncation = useCallback(() => {
 		const element = descriptionRef.current;
@@ -230,15 +308,55 @@ function useCollapsibleDescription(description: string | undefined) {
 		setIsExpanded(false);
 	}, [description]);
 
+	// Sync edit value when description changes externally
+	useEffect(() => {
+		setDescriptionEditValue(description ?? "");
+	}, [description]);
+
+	// Focus textarea when editing starts
+	useEffect(() => {
+		if (isEditingDescription && descriptionTextareaRef.current) {
+			descriptionTextareaRef.current.focus();
+			// Move cursor to end
+			const len = descriptionTextareaRef.current.value.length;
+			descriptionTextareaRef.current.setSelectionRange(len, len);
+		}
+	}, [isEditingDescription]);
+
 	const toggleExpanded = useCallback(() => {
 		setIsExpanded((prev) => !prev);
 	}, []);
+
+	const startEditingDescription = useCallback(() => {
+		setDescriptionEditValue(description ?? "");
+		setIsEditingDescription(true);
+	}, [description]);
+
+	const saveDescription = useCallback(() => {
+		const trimmed = descriptionEditValue.trim();
+		if (trimmed !== (description ?? "").trim()) {
+			onUpdateDescription(trimmed);
+		}
+		setIsEditingDescription(false);
+	}, [descriptionEditValue, description, onUpdateDescription]);
+
+	const cancelEditingDescription = useCallback(() => {
+		setDescriptionEditValue(description ?? "");
+		setIsEditingDescription(false);
+	}, [description]);
 
 	return {
 		isExpanded,
 		isTruncated,
 		toggleExpanded,
 		descriptionRef,
+		isEditingDescription,
+		descriptionEditValue,
+		setDescriptionEditValue,
+		startEditingDescription,
+		saveDescription,
+		cancelEditingDescription,
+		descriptionTextareaRef,
 	};
 }
 

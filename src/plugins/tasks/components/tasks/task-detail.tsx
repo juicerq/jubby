@@ -21,6 +21,7 @@ import { TaskDetailHeader } from "./task-detail-header";
 interface TaskDetailActions {
 	updateTaskStatus: (status: TaskStatus) => Promise<void>;
 	updateTaskText: (text: string) => Promise<void>;
+	updateTaskDescription: (description: string) => Promise<void>;
 	setTaskTags: (tagIds: string[]) => Promise<void>;
 	deleteTask: () => Promise<void>;
 	createSubtask: (text: string) => Promise<void>;
@@ -132,6 +133,7 @@ function TaskDetail({
 					tags={tags}
 					onUpdateStatus={actions.updateTaskStatus}
 					onUpdateText={actions.updateTaskText}
+					onUpdateDescription={actions.updateTaskDescription}
 					onToggleTag={handleToggleTag}
 				/>
 			</section>
