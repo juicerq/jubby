@@ -1,7 +1,25 @@
-import { History, Loader2, Play, Sparkles, Square } from "lucide-react";
+import {
+	ChevronDown,
+	History,
+	Loader2,
+	Play,
+	Sparkles,
+	Square,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useClickOutside } from "../../hooks/use-click-outside";
 import type { Task } from "../../types";
 import type { GenerateSubtasksResult } from "../../useTasksStorage";
+
+const MODEL_OPTIONS = [
+	{ id: "openai/gpt-5.2-codex", label: "GPT-5.2 Codex" },
+	{ id: "anthropic/claude-opus-4-5", label: "Opus 4.5" },
+	{ id: "anthropic/claude-sonnet-4-5", label: "Sonnet 4.5" },
+	{ id: "anthropic/claude-haiku-4-5", label: "Haiku 4.5" },
+] as const;
+
+type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
 
 interface SubtaskHeaderActionsProps {
 	task: Task;
@@ -13,7 +31,9 @@ interface SubtaskHeaderActionsProps {
 	onStartLoop: () => void;
 	onStopLoop: () => void;
 	onOpenHistory: () => void;
-	onGenerateSubtasks: () => Promise<GenerateSubtasksResult | null>;
+	onGenerateSubtasks: (
+		modelId: string,
+	) => Promise<GenerateSubtasksResult | null>;
 }
 
 function SubtaskHeaderActions({
@@ -28,13 +48,24 @@ function SubtaskHeaderActions({
 	onOpenHistory,
 	onGenerateSubtasks,
 }: SubtaskHeaderActionsProps) {
-	const { canRunAll, hasDescription, hasWaitingSubtasks, handleGenerate } =
-		useSubtaskHeaderState({
-			task,
-			hasWorkingDirectory,
-			isExecuting,
-			onGenerateSubtasks,
-		});
+	const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	useClickOutside(
+		dropdownRef,
+		() => setIsModelDropdownOpen(false),
+		isModelDropdownOpen,
+	);
+
+	const hasWaitingSubtasks = task.subtasks.some((s) => s.status === "waiting");
+	const hasDescription = task.description.trim().length > 0;
+	const canRunAll = hasWorkingDirectory && hasWaitingSubtasks && !isExecuting;
+	const canGenerate = !isGenerating && !isExecuting && hasDescription;
+
+	const handleSelectModel = async (modelId: ModelId) => {
+		setIsModelDropdownOpen(false);
+		await onGenerateSubtasks(modelId);
+	};
 
 	return (
 		<div className="flex items-center gap-1.5">
@@ -50,34 +81,55 @@ function SubtaskHeaderActions({
 				</button>
 			)}
 
-			<button
-				type="button"
-				onClick={handleGenerate}
-				disabled={isGenerating || isExecuting || !hasDescription}
-				className={cn(
-					"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
-					isGenerating || isExecuting || !hasDescription
-						? "cursor-not-allowed bg-white/4 text-white/25"
-						: "cursor-pointer bg-violet-500/15 text-violet-400 hover:bg-violet-500/25",
+			<div className="relative" ref={dropdownRef}>
+				<button
+					type="button"
+					onClick={() =>
+						canGenerate && setIsModelDropdownOpen(!isModelDropdownOpen)
+					}
+					disabled={!canGenerate}
+					className={cn(
+						"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+						!canGenerate
+							? "cursor-not-allowed bg-white/4 text-white/25"
+							: "cursor-pointer bg-violet-500/15 text-violet-400 hover:bg-violet-500/25",
+					)}
+					aria-label="Generate subtasks with AI"
+					title={
+						!hasDescription
+							? "Add a description first"
+							: isGenerating
+								? "Generating..."
+								: isExecuting
+									? "Execution in progress"
+									: "Generate subtasks with AI"
+					}
+				>
+					{isGenerating ? (
+						<Loader2 className="h-3 w-3 animate-spin" />
+					) : (
+						<Sparkles className="h-3 w-3" />
+					)}
+					{isGenerating ? "Generating..." : "Generate"}
+					{!isGenerating && <ChevronDown className="h-3 w-3 -mr-0.5" />}
+				</button>
+
+				{isModelDropdownOpen && (
+					<div className="absolute right-0 top-full z-20 mt-1 w-[140px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg">
+						{MODEL_OPTIONS.map((option) => (
+							<button
+								key={option.id}
+								type="button"
+								onClick={() => handleSelectModel(option.id)}
+								className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-[12px] text-violet-400 transition-colors hover:bg-violet-500/10"
+							>
+								<Sparkles className="h-3 w-3" />
+								{option.label}
+							</button>
+						))}
+					</div>
 				)}
-				aria-label="Generate subtasks with AI"
-				title={
-					!hasDescription
-						? "Add a description first"
-						: isGenerating
-							? "Generating..."
-							: isExecuting
-								? "Execution in progress"
-								: "Generate subtasks with AI"
-				}
-			>
-				{isGenerating ? (
-					<Loader2 className="h-3 w-3 animate-spin" />
-				) : (
-					<Sparkles className="h-3 w-3" />
-				)}
-				{isGenerating ? "Generating..." : "Generate"}
-			</button>
+			</div>
 
 			{isLooping ? (
 				<button
@@ -117,28 +169,6 @@ function SubtaskHeaderActions({
 			)}
 		</div>
 	);
-}
-
-function useSubtaskHeaderState({
-	task,
-	hasWorkingDirectory,
-	isExecuting,
-	onGenerateSubtasks,
-}: {
-	task: Task;
-	hasWorkingDirectory: boolean;
-	isExecuting: boolean;
-	onGenerateSubtasks: () => Promise<GenerateSubtasksResult | null>;
-}) {
-	const hasWaitingSubtasks = task.subtasks.some((s) => s.status === "waiting");
-	const hasDescription = task.description.trim().length > 0;
-	const canRunAll = hasWorkingDirectory && hasWaitingSubtasks && !isExecuting;
-
-	const handleGenerate = async () => {
-		await onGenerateSubtasks();
-	};
-
-	return { canRunAll, hasDescription, hasWaitingSubtasks, handleGenerate };
 }
 
 export { SubtaskHeaderActions };

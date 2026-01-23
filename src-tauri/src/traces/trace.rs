@@ -5,6 +5,7 @@ use std::time::Instant;
 use chrono::{SecondsFormat, Utc};
 use serde_json::Value;
 
+use super::get_policy;
 use super::get_writer_tx;
 use super::guard::ContextGuard;
 use super::types::{LogEntry, LogLevel, TraceError};
@@ -94,8 +95,15 @@ impl Trace {
 
     /// Emit a log entry with the given level, message, and optional error
     fn emit(&self, level: LogLevel, msg: &str, err: Option<TraceError>) {
+        // Always track errors even if we don't log the entry
         if err.is_some() {
             self.has_error.store(true, Ordering::Relaxed);
+        }
+
+        // Check policy before writing
+        let policy = get_policy();
+        if !policy.should_log(level) {
+            return;
         }
 
         let entry = LogEntry {
@@ -140,12 +148,16 @@ unsafe impl Sync for Trace {}
 
 impl Drop for Trace {
     fn drop(&mut self) {
+        let has_error = self.has_error.load(Ordering::Relaxed);
+
+        // Check policy before emitting trace_end
+        let policy = get_policy();
+        if !policy.should_emit_trace_end(has_error) {
+            return;
+        }
+
         let duration_ms = self.started_at.elapsed().as_millis() as u64;
-        let status = if self.has_error.load(Ordering::Relaxed) {
-            "error"
-        } else {
-            "ok"
-        };
+        let status = if has_error { "error" } else { "ok" };
 
         let entry = LogEntry {
             ts: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),

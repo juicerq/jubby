@@ -1015,12 +1015,37 @@ This marker signals that you are truly done. Do NOT include this marker if you s
     )
 }
 
+fn parse_model_id(model_id: &str) -> Result<ModelConfig, String> {
+    match model_id {
+        "anthropic/claude-opus-4-5" => Ok(ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-opus-4-5".to_string(),
+        }),
+        "anthropic/claude-sonnet-4-5" => Ok(ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-sonnet-4-5".to_string(),
+        }),
+        "anthropic/claude-haiku-4-5" => Ok(ModelConfig {
+            provider_id: "anthropic".to_string(),
+            model_id: "claude-haiku-4-5".to_string(),
+        }),
+        "openai/gpt-5.2-codex" => Ok(ModelConfig {
+            provider_id: "openai".to_string(),
+            model_id: "gpt-5.2-codex".to_string(),
+        }),
+        _ => Err(format!("Invalid model ID: {}", model_id)),
+    }
+}
+
 #[tauri::command]
 pub async fn tasks_generate_subtasks(
     store: State<'_, super::TasksStore>,
     server_state: State<'_, OpenCodeServerState>,
     task_id: String,
+    model_id: String,
 ) -> Result<GenerateSubtasksResult, String> {
+    let model_config = parse_model_id(&model_id)?;
+
     let (task, working_directory, task_file_path, initial_subtask_count) = {
         let data = store.read();
         let mut task = data.tasks
@@ -1070,7 +1095,8 @@ pub async fn tasks_generate_subtasks(
         .with("action", "tasks_generate_subtasks")
         .with("task_id", task_id.clone())
         .with("task_file_path", task_file_path.clone())
-        .with("initial_subtask_count", initial_subtask_count);
+        .with("initial_subtask_count", initial_subtask_count)
+        .with("model_id", model_id.clone());
 
     if task.description.trim().is_empty() {
         trace.error(
@@ -1123,7 +1149,7 @@ pub async fn tasks_generate_subtasks(
 
     trace.debug("Sending prompt for subtask generation");
 
-    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, None).await {
+    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, Some(model_config)).await {
         trace.error(
             "Failed to send prompt for generation",
             TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
@@ -1132,7 +1158,7 @@ pub async fn tasks_generate_subtasks(
         return Err(e);
     }
 
-    trace.info("Prompt sent for subtask generation");
+    trace.info(&format!("Prompt sent for subtask generation with model: {}", model_id));
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(GENERATE_TIMEOUT_SECS);
