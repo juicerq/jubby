@@ -1,5 +1,5 @@
-import { Check, Minus, Pencil, Tag } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronUp, Minus, Pencil, Tag } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Tag as TagType, Task, TaskStatus } from "../../types";
 import { TagBadge, TagEditorPopover } from "../tags/tag-elements";
@@ -30,12 +30,19 @@ function TaskDetailHeader({
 		handleStatusClick,
 	} = useTaskDetailHeaderState(task, onUpdateStatus, onUpdateText);
 	const [isEditingTags, setIsEditingTags] = useState(false);
+	const {
+		isExpanded,
+		isTruncated,
+		toggleExpanded,
+		descriptionRef,
+	} = useCollapsibleDescription(task.description);
 
 	const taskTags = (task.tagIds ?? [])
 		.map((tagId) => tags.find((t) => t.id === tagId))
 		.filter((t): t is TagType => t !== undefined);
 
 	const hasTags = tags.length > 0;
+	const hasDescription = task.description && task.description.trim().length > 0;
 
 	return (
 		<div className="flex flex-col gap-2 rounded-lg bg-white/[0.02] px-3 py-3">
@@ -154,8 +161,85 @@ function TaskDetailHeader({
 					<Pencil className="h-3.5 w-3.5" />
 				</button>
 			</div>
+
+			{/* Description row - collapsible */}
+			{hasDescription && (
+				<div className="ml-[30px]">
+					<button
+						type="button"
+						onClick={isTruncated || isExpanded ? toggleExpanded : undefined}
+						className={cn(
+							"group flex w-full items-start gap-1.5 rounded-md text-left transition-all duration-150 ease-out",
+							(isTruncated || isExpanded) && "cursor-pointer hover:bg-white/[0.02]",
+						)}
+						disabled={!isTruncated && !isExpanded}
+					>
+						<p
+							ref={descriptionRef}
+							className={cn(
+								"flex-1 text-[12px] leading-[1.5] text-white/50 transition-all duration-150 ease-out",
+								!isExpanded && "line-clamp-2",
+								task.status === "completed" && "text-white/30",
+							)}
+						>
+							{task.description}
+						</p>
+						{(isTruncated || isExpanded) && (
+							<span className="mt-0.5 shrink-0 text-white/30 transition-colors duration-150 group-hover:text-white/50">
+								{isExpanded ? (
+									<ChevronUp className="h-3.5 w-3.5" />
+								) : (
+									<ChevronDown className="h-3.5 w-3.5" />
+								)}
+							</span>
+						)}
+					</button>
+				</div>
+			)}
 		</div>
 	);
+}
+
+function useCollapsibleDescription(description: string | undefined) {
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [isTruncated, setIsTruncated] = useState(false);
+	const descriptionRef = useRef<HTMLParagraphElement>(null);
+
+	const checkTruncation = useCallback(() => {
+		const element = descriptionRef.current;
+		if (element) {
+			// Check if text is truncated by comparing scroll height with client height
+			const isTrunc = element.scrollHeight > element.clientHeight;
+			setIsTruncated(isTrunc);
+		}
+	}, []);
+
+	// Check truncation after render and on window resize
+	useLayoutEffect(() => {
+		checkTruncation();
+	}, [description, checkTruncation]);
+
+	useEffect(() => {
+		const handleResize = () => checkTruncation();
+		window.addEventListener("resize", handleResize);
+		return () => window.removeEventListener("resize", handleResize);
+	}, [checkTruncation]);
+
+	// Reset expanded state when description changes
+	useEffect(() => {
+		setIsExpanded(false);
+	}, [description]);
+
+	const toggleExpanded = useCallback(() => {
+		setIsExpanded((prev) => !prev);
+	}, []);
+
+	return {
+		isExpanded,
+		isTruncated,
+		toggleExpanded,
+		descriptionRef,
+	};
 }
 
 function useTaskDetailHeaderState(
