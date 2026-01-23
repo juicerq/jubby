@@ -48,7 +48,7 @@ function HistoryModal({ logs, subtaskName, onClose }: HistoryModalProps) {
 				animate={{ opacity: 1, scale: 1, y: 0 }}
 				exit={{ opacity: 0, scale: 0.95, y: 10 }}
 				transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-				className="mx-4 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0c0c0c] shadow-2xl"
+				className="mx-4 flex min-h-[80vh] max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0c0c0c] shadow-2xl"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
