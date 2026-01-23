@@ -1,5 +1,5 @@
 mod core;
-mod plugins;
+pub mod plugins;
 mod shared;
 mod traces;
 
