@@ -253,8 +253,12 @@ interface UseTasksStorageReturn {
 	stopLoop: () => void;
 
 	// Generate subtasks
-	generateSubtasks: (taskId: string) => Promise<GenerateSubtasksResult | null>;
-	isGenerating: boolean;
+	generateSubtasks: (
+		taskId: string,
+		modelId: string,
+	) => Promise<GenerateSubtasksResult | null>;
+	generatingTaskIds: Set<string>;
+	isTaskGenerating: (taskId: string) => boolean;
 }
 
 interface UseFolderStorageReturn {
@@ -391,7 +395,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 
 	const [isLooping, setIsLooping] = useState(false);
 	const loopAbortedRef = useRef(false);
-	const [isGenerating, setIsGenerating] = useState(false);
+	const [generatingTaskIds, setGeneratingTaskIds] = useState<Set<string>>(
+		new Set(),
+	);
 
 	const fetchTasks = useCallback(
 		async (options?: ReloadOptions) => {
@@ -1348,9 +1354,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	);
 
 	const generateSubtasks = useCallback(
-		async (taskId: string): Promise<GenerateSubtasksResult | null> => {
-			if (isGenerating) {
-				toast.error("Generation already in progress");
+		async (
+			taskId: string,
+			modelId: string,
+		): Promise<GenerateSubtasksResult | null> => {
+			if (generatingTaskIds.has(taskId)) {
+				toast.error("Generation already in progress for this task");
 				return null;
 			}
 
@@ -1358,15 +1367,16 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				plugin: "tasks",
 				action: "generate_subtasks",
 				taskId,
+				modelId,
 			});
 
-			setIsGenerating(true);
+			setGeneratingTaskIds((prev) => new Set(prev).add(taskId));
 
 			try {
 				trace.info("Starting subtask generation");
 				const result = await tracedInvoke<GenerateSubtasksResultFromBackend>(
 					"tasks_generate_subtasks",
-					{ taskId },
+					{ taskId, modelId },
 					trace,
 				);
 
@@ -1399,11 +1409,22 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				}
 				return null;
 			} finally {
-				setIsGenerating(false);
+				setGeneratingTaskIds((prev) => {
+					const next = new Set(prev);
+					next.delete(taskId);
+					return next;
+				});
 				trace.end();
 			}
 		},
-		[fetchTasks, isGenerating],
+		[fetchTasks, generatingTaskIds],
+	);
+
+	const isTaskGenerating = useCallback(
+		(taskId: string): boolean => {
+			return generatingTaskIds.has(taskId);
+		},
+		[generatingTaskIds],
 	);
 
 	return {
@@ -1445,7 +1466,8 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		startLoop,
 		stopLoop,
 		generateSubtasks,
-		isGenerating,
+		generatingTaskIds,
+		isTaskGenerating,
 	};
 }
 
