@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { CATEGORY_ICONS } from "../../constants";
 import type { SubtaskCategory } from "../../types";
 
 interface SubtaskCategoryBadgeProps {
@@ -16,6 +17,7 @@ const categoryStyles: Record<SubtaskCategory, string> = {
 };
 
 function SubtaskCategoryBadge({ category }: SubtaskCategoryBadgeProps) {
+	const Icon = CATEGORY_ICONS[category];
 	return (
 		<span
 			className={cn(
@@ -23,6 +25,7 @@ function SubtaskCategoryBadge({ category }: SubtaskCategoryBadgeProps) {
 				categoryStyles[category],
 			)}
 		>
+			<Icon className="h-2.5 w-2.5" />
 			{category}
 		</span>
 	);
