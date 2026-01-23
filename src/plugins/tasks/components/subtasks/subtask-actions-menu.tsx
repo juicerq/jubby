@@ -147,7 +147,9 @@ function SubtaskActionsMenu({
 						onClick={(e) => {
 							e.stopPropagation();
 							onDelete();
-							setIsOpen(false);
+							if (isPendingDelete) {
+								setIsOpen(false);
+							}
 						}}
 						className={cn(
 							"flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors",

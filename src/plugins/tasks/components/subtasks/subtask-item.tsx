@@ -72,6 +72,7 @@ function SubtaskItem({
 	const editStepInputRef = useRef<HTMLInputElement>(null);
 
 	const isCompleted = subtask.status === "completed";
+	const isInProgress = subtask.status === "in_progress";
 
 	useEffect(() => {
 		setEditValue(subtask.text);
@@ -186,7 +187,7 @@ function SubtaskItem({
 				"group/subtask flex flex-col rounded-md p-1 transition-all duration-150 ease-out hover:bg-white/[0.03]",
 				isDragging && "opacity-40 scale-[0.98] pointer-events-none",
 				isExpanded && "bg-white/[0.04]",
-				isThisExecuting && "neon-border-executing",
+				isInProgress && "neon-border-executing",
 			)}
 		>
 			<div
