@@ -1270,8 +1270,19 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			taskId: string,
 			subtaskId: string,
 		): Promise<ExecutionResultFromBackend | null> => {
-			if (isExecuting) {
-				toast.error("Another subtask is already executing");
+			// Get the task to find its working directory
+			const task = tasks.find((t) => t.id === taskId);
+			if (!task) {
+				toast.error("Task not found");
+				return null;
+			}
+
+			// Get working directory from task (falls back to empty string)
+			const workingDirectory = task.workingDirectory || "";
+
+			// Check if we're already executing in this directory
+			if (isExecutingInDirectory(workingDirectory)) {
+				toast.error("Another subtask is already executing in this directory");
 				return null;
 			}
 
@@ -1280,8 +1291,16 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				action: "execute_subtask",
 				taskId,
 				subtaskId,
+				workingDirectory,
 			});
 
+			// Set per-directory execution state
+			setExecutingInDirectory(workingDirectory, {
+				isExecuting: true,
+				subtaskId,
+				sessionId: null,
+			});
+			// Keep legacy state for backward compatibility during migration
 			setIsExecuting(true);
 			setExecutingSubtaskId(subtaskId);
 
@@ -1293,6 +1312,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 					trace,
 				);
 				currentSessionIdRef.current = result.sessionId;
+				// Update per-directory state with session ID for abort routing
+				setExecutingInDirectory(workingDirectory, {
+					isExecuting: true,
+					subtaskId,
+					sessionId: result.sessionId,
+				});
 				trace.info(`Execution completed: ${result.outcome}`);
 				return result;
 			} catch (error) {
@@ -1305,13 +1330,21 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				toast.error(message);
 				return null;
 			} finally {
+				// Clear per-directory execution state
+				clearExecutingInDirectory(workingDirectory);
+				// Keep legacy state for backward compatibility during migration
 				setIsExecuting(false);
 				setExecutingSubtaskId(null);
 				currentSessionIdRef.current = null;
 				trace.end();
 			}
 		},
-		[isExecuting],
+		[
+			tasks,
+			isExecutingInDirectory,
+			setExecutingInDirectory,
+			clearExecutingInDirectory,
+		],
 	);
 
 	const abortExecution = useCallback(async (): Promise<void> => {
