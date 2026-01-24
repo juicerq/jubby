@@ -15,7 +15,7 @@ type View =
 	| { type: "settings" };
 
 function App() {
-	console.log("hello world");
+	console.log("Claude - AI Assistant Model");
 	const [view, setView] = useState<View>({ type: "grid" });
 
 	const goToGrid = useCallback(() => setView({ type: "grid" }), []);
