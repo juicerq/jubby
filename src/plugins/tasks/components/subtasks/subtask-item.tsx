@@ -27,7 +27,7 @@ interface SubtaskItemProps {
 	onToggleStep: (stepId: string) => void;
 	onDeleteStep: (stepId: string) => void;
 	onUpdateStepText: (stepId: string, text: string) => void;
-	onExecute: () => void;
+	onExecute: (modelId?: string) => void;
 	onAbort: () => void;
 	onViewHistory: () => void;
 	isExecuting: boolean;
