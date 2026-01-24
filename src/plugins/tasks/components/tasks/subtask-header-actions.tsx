@@ -78,8 +78,10 @@ function SubtaskHeaderActions({
 }: SubtaskHeaderActionsProps) {
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 	const [isOpencodeDropdownOpen, setIsOpencodeDropdownOpen] = useState(false);
+	const [isRunAllDropdownOpen, setIsRunAllDropdownOpen] = useState(false);
 	const modelDropdownRef = useRef<HTMLDivElement>(null);
 	const opencodeDropdownRef = useRef<HTMLDivElement>(null);
+	const runAllDropdownRef = useRef<HTMLDivElement>(null);
 
 	useClickOutside(
 		modelDropdownRef,
@@ -93,6 +95,12 @@ function SubtaskHeaderActions({
 		isOpencodeDropdownOpen,
 	);
 
+	useClickOutside(
+		runAllDropdownRef,
+		() => setIsRunAllDropdownOpen(false),
+		isRunAllDropdownOpen,
+	);
+
 	const hasWaitingSubtasks = task.subtasks.some((s) => s.status === "waiting");
 	const hasDescription = task.description.trim().length > 0;
 	const canRunAll = hasWorkingDirectory && hasWaitingSubtasks && !isExecuting;
@@ -101,6 +109,11 @@ function SubtaskHeaderActions({
 	const handleSelectModel = async (modelId: ModelId) => {
 		setIsModelDropdownOpen(false);
 		await onGenerateSubtasks(modelId);
+	};
+
+	const handleSelectRunAllModel = (modelId: ModelId) => {
+		setIsRunAllDropdownOpen(false);
+		onStartLoop(modelId);
 	};
 
 	return (
@@ -230,30 +243,51 @@ function SubtaskHeaderActions({
 					Stop
 				</button>
 			) : (
-				<button
-					type="button"
-					onClick={() => onStartLoop()}
-					disabled={!canRunAll}
-					className={cn(
-						"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
-						!canRunAll
-							? "cursor-not-allowed bg-white/4 text-white/25"
-							: "cursor-pointer bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
+				<div className="relative" ref={runAllDropdownRef}>
+					<button
+						type="button"
+						onClick={() =>
+							canRunAll && setIsRunAllDropdownOpen(!isRunAllDropdownOpen)
+						}
+						disabled={!canRunAll}
+						className={cn(
+							"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+							!canRunAll
+								? "cursor-not-allowed bg-white/4 text-white/25"
+								: "cursor-pointer bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
+						)}
+						aria-label="Run all waiting subtasks"
+						title={
+							!hasWorkingDirectory
+								? "Set working directory in settings first"
+								: !hasWaitingSubtasks
+									? "No waiting subtasks"
+									: isExecuting
+										? "Execution in progress"
+										: "Run all waiting subtasks"
+						}
+					>
+						<Play className="h-3 w-3 fill-current" />
+						Run All
+						<ChevronDown className="h-3 w-3 -mr-0.5" />
+					</button>
+
+					{isRunAllDropdownOpen && (
+						<div className="absolute right-0 top-full z-20 mt-1 w-[140px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg">
+							{MODEL_OPTIONS.map((option) => (
+								<button
+									key={option.id}
+									type="button"
+									onClick={() => handleSelectRunAllModel(option.id)}
+									className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-[12px] text-emerald-400 transition-colors hover:bg-emerald-500/10"
+								>
+									<Play className="h-3 w-3 fill-current" />
+									{option.label}
+								</button>
+							))}
+						</div>
 					)}
-					aria-label="Run all waiting subtasks"
-					title={
-						!hasWorkingDirectory
-							? "Set working directory in settings first"
-							: !hasWaitingSubtasks
-								? "No waiting subtasks"
-								: isExecuting
-									? "Execution in progress"
-									: "Run all waiting subtasks"
-					}
-				>
-					<Play className="h-3 w-3 fill-current" />
-					Run All
-				</button>
+				</div>
 			)}
 		</div>
 	);
