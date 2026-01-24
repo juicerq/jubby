@@ -1,5 +1,6 @@
 import {
 	Check,
+	ChevronRight,
 	History,
 	MoreHorizontal,
 	Pencil,
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MODEL_OPTIONS, type ModelId } from "../../constants";
 import { useClickOutside } from "../../hooks/use-click-outside";
 
 interface SubtaskActionsMenuProps {
@@ -18,7 +20,7 @@ interface SubtaskActionsMenuProps {
 	isPendingDelete: boolean;
 	hasHistory: boolean;
 	hasWorkingDirectory: boolean;
-	onExecute: () => void;
+	onExecute: (modelId?: string) => void;
 	onAbort: () => void;
 	onEdit: () => void;
 	onViewHistory: () => void;
@@ -39,9 +41,23 @@ function SubtaskActionsMenu({
 	onDelete,
 }: SubtaskActionsMenuProps) {
 	const [isOpen, setIsOpen] = useState(false);
+	const [isRunSubmenuOpen, setIsRunSubmenuOpen] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 
-	useClickOutside(menuRef, () => setIsOpen(false), isOpen);
+	useClickOutside(
+		menuRef,
+		() => {
+			setIsOpen(false);
+			setIsRunSubmenuOpen(false);
+		},
+		isOpen,
+	);
+
+	const handleSelectModel = (modelId: ModelId) => {
+		onExecute(modelId);
+		setIsOpen(false);
+		setIsRunSubmenuOpen(false);
+	};
 
 	return (
 		<div className="relative" ref={menuRef}>
@@ -78,40 +94,70 @@ function SubtaskActionsMenu({
 							Stop
 						</button>
 					) : (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								if (hasWorkingDirectory && !isExecuting) {
-									onExecute();
-									setIsOpen(false);
+						<div className="relative">
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									if (hasWorkingDirectory && !isExecuting) {
+										setIsRunSubmenuOpen(!isRunSubmenuOpen);
+									}
+								}}
+								disabled={!hasWorkingDirectory || isExecuting}
+								title={
+									!hasWorkingDirectory
+										? "Set working directory in settings first"
+										: isExecuting
+											? "Execution in progress"
+											: "Run this subtask"
 								}
-							}}
-							disabled={!hasWorkingDirectory || isExecuting}
-							title={
-								!hasWorkingDirectory
-									? "Set working directory in settings first"
-									: isExecuting
-										? "Execution in progress"
-										: "Run this subtask"
-							}
-							className={cn(
-								"flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors",
-								!hasWorkingDirectory || isExecuting
-									? "cursor-not-allowed text-white/30"
-									: "cursor-pointer text-emerald-400 hover:bg-emerald-500/10",
-							)}
-						>
-							<Play
 								className={cn(
-									"h-3 w-3",
+									"flex w-full items-center justify-between px-3 py-1.5 text-left text-[12px] transition-colors",
 									!hasWorkingDirectory || isExecuting
-										? "fill-white/30"
-										: "fill-emerald-400",
+										? "cursor-not-allowed text-white/30"
+										: "cursor-pointer text-emerald-400 hover:bg-emerald-500/10",
 								)}
-							/>
-							Run
-						</button>
+							>
+								<span className="flex items-center gap-2">
+									<Play
+										className={cn(
+											"h-3 w-3",
+											!hasWorkingDirectory || isExecuting
+												? "fill-white/30"
+												: "fill-emerald-400",
+										)}
+									/>
+									Run
+								</span>
+								<ChevronRight
+									className={cn(
+										"h-3 w-3",
+										!hasWorkingDirectory || isExecuting
+											? "text-white/30"
+											: "text-emerald-400",
+									)}
+								/>
+							</button>
+
+							{isRunSubmenuOpen && (
+								<div className="absolute left-full top-0 z-30 ml-1 w-[140px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg">
+									{MODEL_OPTIONS.map((option) => (
+										<button
+											key={option.id}
+											type="button"
+											onClick={(e) => {
+												e.stopPropagation();
+												handleSelectModel(option.id);
+											}}
+											className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-[12px] text-emerald-400 transition-colors hover:bg-emerald-500/10"
+										>
+											<Play className="h-3 w-3 fill-emerald-400" />
+											{option.label}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
 					)}
 
 					<button
