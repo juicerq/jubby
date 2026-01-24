@@ -2,6 +2,7 @@ use super::helpers::{
     find_folder, find_folder_mut, find_tag, find_task, with_step_mut, with_subtask_mut,
     with_tag_mut, with_task_mut,
 };
+use super::opencode::OPENCODE_PORT_START;
 use super::storage::{
     delete_folder_dir, delete_task_file, generate_unique_filename, generate_unique_task_filename,
     get_existing_task_filenames, get_folder_filename, get_task_filename, reload_from_disk,
@@ -1612,8 +1613,11 @@ async fn run_auto_tag_background(
         .with("action", "tasks_auto_tag_background")
         .with("task_id", task_id.clone());
 
+    // Use default port for auto-tag (will be updated in subtask 6 to use per-directory ports)
+    let port = OPENCODE_PORT_START;
+
     // Check if OpenCode server is running via health check
-    if super::opencode::opencode_health_check().await.is_err() {
+    if super::opencode::opencode_health_check(port).await.is_err() {
         trace.warn("OpenCode server not running, skipping auto-tag");
         drop(trace);
         return;
@@ -1654,7 +1658,7 @@ Example response: ["tag-id-1", "tag-id-2"]"#,
     trace.info("creating OpenCode session for auto-tag");
 
     // Create session
-    let session = match super::opencode::opencode_create_session(Some(format!(
+    let session = match super::opencode::opencode_create_session(port, Some(format!(
         "Auto-tag: {}",
         task_text
     )))
@@ -1678,7 +1682,7 @@ Example response: ["tag-id-1", "tag-id-2"]"#,
 
     // Send prompt
     if let Err(e) =
-        super::opencode::opencode_send_prompt(session_id.clone(), prompt, None, Some(model)).await
+        super::opencode::opencode_send_prompt(port, session_id.clone(), prompt, None, Some(model)).await
     {
         trace.warn(&format!("Failed to send prompt: {}", e));
         drop(trace);
@@ -1695,14 +1699,14 @@ Example response: ["tag-id-1", "tag-id-2"]"#,
     loop {
         if start.elapsed() > timeout {
             trace.warn("auto-tag timed out");
-            let _ = super::opencode::opencode_abort_session(session_id.clone()).await;
+            let _ = super::opencode::opencode_abort_session(port, session_id.clone()).await;
             drop(trace);
             return;
         }
 
         tokio::time::sleep(poll_interval).await;
 
-        match super::opencode::opencode_poll_status(session_id.clone()).await {
+        match super::opencode::opencode_poll_status(port, session_id.clone()).await {
             Ok(status) if status.status == "idle" => {
                 trace.info("auto-tag session completed");
                 break;
@@ -1716,7 +1720,7 @@ Example response: ["tag-id-1", "tag-id-2"]"#,
     }
 
     // Get the response
-    let response = match get_auto_tag_response(&session_id).await {
+    let response = match get_auto_tag_response(port, &session_id).await {
         Ok(r) => r,
         Err(e) => {
             trace.warn(&format!("Failed to get response: {}", e));
@@ -1810,7 +1814,7 @@ Example response: ["tag-id-1", "tag-id-2"]"#,
     drop(trace);
 }
 
-async fn get_auto_tag_response(session_id: &str) -> Result<String, String> {
+async fn get_auto_tag_response(port: u16, session_id: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -1835,7 +1839,7 @@ async fn get_auto_tag_response(session_id: &str) -> Result<String, String> {
         messages: Vec<Message>,
     }
 
-    let base_url = format!("http://127.0.0.1:4096");
+    let base_url = super::opencode::base_url_for_port(port);
 
     let response = client
         .get(format!("{}/session/{}", base_url, session_id))

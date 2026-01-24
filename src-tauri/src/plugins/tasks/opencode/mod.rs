@@ -176,16 +176,17 @@ fn truncate_for_trace(value: &str) -> String {
 
 
 #[tauri::command]
-pub async fn opencode_health_check() -> Result<HealthResponse, String> {
+pub async fn opencode_health_check(port: u16) -> Result<HealthResponse, String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
-        .with("action", "opencode_health_check");
+        .with("action", "opencode_health_check")
+        .with("port", port);
     trace.info("Checking OpenCode server health");
 
     let client = client();
 
     let response = client
-        .get(format!("{}/global/health", base_url()))
+        .get(format!("{}/global/health", base_url_for_port(port)))
         .send()
         .await
         .map_err(|e| {
@@ -228,11 +229,13 @@ pub async fn opencode_health_check() -> Result<HealthResponse, String> {
 
 #[tauri::command]
 pub async fn opencode_create_session(
+    port: u16,
     title: Option<String>,
 ) -> Result<CreateSessionResponse, String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "opencode_create_session")
+        .with("port", port)
         .with("has_title", title.is_some());
 
     trace.info("Creating OpenCode session");
@@ -242,7 +245,7 @@ pub async fn opencode_create_session(
     let request = CreateSessionRequest { title };
 
     let response = client
-        .post(format!("{}/session", base_url()))
+        .post(format!("{}/session", base_url_for_port(port)))
         .json(&request)
         .send()
         .await
@@ -315,6 +318,7 @@ pub async fn opencode_create_session(
 
 #[tauri::command]
 pub async fn opencode_send_prompt(
+    port: u16,
     session_id: String,
     prompt: String,
     agent: Option<String>,
@@ -323,6 +327,7 @@ pub async fn opencode_send_prompt(
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "opencode_send_prompt")
+        .with("port", port)
         .with("session_id", session_id.clone())
         .with("prompt_length", prompt.len())
         .with("has_agent", agent.is_some())
@@ -344,7 +349,7 @@ pub async fn opencode_send_prompt(
     let response = client
         .post(format!(
             "{}/session/{}/prompt_async",
-            base_url(),
+            base_url_for_port(port),
             session_id
         ))
         .json(&request)
@@ -378,17 +383,18 @@ pub async fn opencode_send_prompt(
 }
 
 #[tauri::command]
-pub async fn opencode_poll_status(session_id: String) -> Result<SessionStatus, String> {
+pub async fn opencode_poll_status(port: u16, session_id: String) -> Result<SessionStatus, String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "opencode_poll_status")
+        .with("port", port)
         .with("session_id", session_id.clone());
     trace.debug("Polling OpenCode session status");
 
     let client = client();
 
     let response = client
-        .get(format!("{}/session/status", base_url()))
+        .get(format!("{}/session/status", base_url_for_port(port)))
         .send()
         .await
         .map_err(|e| {
@@ -459,17 +465,18 @@ pub async fn opencode_poll_status(session_id: String) -> Result<SessionStatus, S
 }
 
 #[tauri::command]
-pub async fn opencode_abort_session(session_id: String) -> Result<(), String> {
+pub async fn opencode_abort_session(port: u16, session_id: String) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "opencode_abort_session")
+        .with("port", port)
         .with("session_id", session_id.clone());
     trace.info("Aborting OpenCode session");
 
     let client = client();
 
     let response = client
-        .post(format!("{}/session/{}/abort", base_url(), session_id))
+        .post(format!("{}/session/{}/abort", base_url_for_port(port), session_id))
         .send()
         .await
         .map_err(|e| {
@@ -732,6 +739,7 @@ fn update_subtask_status(
 pub async fn tasks_execute_subtask(
     store: State<'_, super::TasksStore>,
     server_state: State<'_, OpenCodeServersState>,
+    sessions: State<'_, ActiveSessions>,
     app_handle: AppHandle,
     task_id: String,
     subtask_id: String,
@@ -812,16 +820,19 @@ pub async fn tasks_execute_subtask(
 
     trace.info("Starting subtask execution, ensuring OpenCode server");
 
-    if let Err(e) = opencode_ensure_server_with_dir(server_state, Some(working_directory.clone())).await {
-        trace.error(
-            "Failed to ensure OpenCode server",
-            TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
-        );
-        drop(trace);
-        return Err(e);
-    }
+    let port = match opencode_ensure_server_with_dir(server_state, Some(working_directory.clone())).await {
+        Ok(p) => p,
+        Err(e) => {
+            trace.error(
+                "Failed to ensure OpenCode server",
+                TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
+            );
+            drop(trace);
+            return Err(e);
+        }
+    };
 
-    trace.info("OpenCode server ready for execution");
+    trace.info(&format!("OpenCode server ready for execution on port {}", port));
 
     let prompt = build_execution_prompt(&task, &subtask, &task_file_path);
 
@@ -833,7 +844,7 @@ pub async fn tasks_execute_subtask(
 
     trace.debug("Creating OpenCode session for subtask");
 
-    let session = match opencode_create_session(Some(format!("{}: {}", task.text, subtask.text))).await {
+    let session = match opencode_create_session(port, Some(format!("{}: {}", task.text, subtask.text))).await {
         Ok(s) => s,
         Err(e) => {
             trace.error(
@@ -848,9 +859,42 @@ pub async fn tasks_execute_subtask(
 
     trace.info(&format!("Created session: {}", session_id));
 
+    // Persist session with port and working_directory for abort routing
+    let started_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    {
+        let mut sessions_lock = sessions.0.write().map_err(|e| {
+            trace.error(
+                "Failed to lock active sessions",
+                TraceError::new(e.to_string(), "SESSIONS_LOCK_FAILED"),
+            );
+            format!("Failed to lock active sessions: {}", e)
+        })?;
+
+        sessions_lock.insert(
+            session_id.clone(),
+            persistence::PersistedSession {
+                session_id: session_id.clone(),
+                task_id: task_id.clone(),
+                subtask_id: Some(subtask_id.clone()),
+                started_at,
+                port,
+                working_directory: working_directory.clone(),
+            },
+        );
+    }
+
+    trace.info(&format!(
+        "Persisted session {} with port {} and working_directory {}",
+        session_id, port, working_directory
+    ));
+
     trace.debug("Sending prompt to OpenCode session");
 
-    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, None).await {
+    if let Err(e) = opencode_send_prompt(port, session_id.clone(), prompt, None, None).await {
         trace.error(
             "Failed to send prompt to OpenCode session",
             TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
@@ -871,9 +915,14 @@ pub async fn tasks_execute_subtask(
     loop {
         if start.elapsed() > timeout {
             trace.warn(&format!("Execution timeout for session: {}", session_id));
-            let _ = opencode_abort_session(session_id.clone()).await;
+            let _ = opencode_abort_session(port, session_id.clone()).await;
 
             update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Failed, Some(&app_handle));
+
+            // Clear persisted session
+            if let Ok(mut sessions_lock) = sessions.0.write() {
+                sessions_lock.remove(&session_id);
+            }
 
             drop(trace);
             return Ok(ExecutionResult {
@@ -886,14 +935,14 @@ pub async fn tasks_execute_subtask(
 
         tokio::time::sleep(POLL_INTERVAL).await;
 
-        match opencode_poll_status(session_id.clone()).await {
+        match opencode_poll_status(port, session_id.clone()).await {
             Ok(status) => {
                 trace.debug(&format!("Session {} status: {}", session_id, status.status));
 
                 match status.status.as_str() {
                     "idle" => {
                         // Check if the agent truly completed by looking for the promise marker
-                        match check_session_completion(&session_id).await {
+                        match check_session_completion(port, &session_id).await {
                             CompletionCheckResult::Completed(_) => {
                                 // Marker found - agent completed successfully
                                 trace.info(&format!(
@@ -914,6 +963,11 @@ pub async fn tasks_execute_subtask(
 
                                 update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
 
+                                // Clear persisted session
+                                if let Ok(mut sessions_lock) = sessions.0.write() {
+                                    sessions_lock.remove(&session_id);
+                                }
+
                                 drop(trace);
                                 return Ok(ExecutionResult {
                                     session_id,
@@ -931,7 +985,7 @@ pub async fn tasks_execute_subtask(
                                         session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
                                     ));
 
-                                    if let Err(e) = send_continue(&session_id).await {
+                                    if let Err(e) = send_continue(port, &session_id).await {
                                         trace.warn(&format!("Failed to send continue: {}", e));
                                     }
                                     continue;
@@ -955,6 +1009,11 @@ pub async fn tasks_execute_subtask(
                                 }
 
                                 update_subtask_status(&store, &task_id, &subtask_id, super::types::TaskStatus::Completed, Some(&app_handle));
+
+                                // Clear persisted session
+                                if let Ok(mut sessions_lock) = sessions.0.write() {
+                                    sessions_lock.remove(&session_id);
+                                }
 
                                 drop(trace);
                                 return Ok(ExecutionResult {
@@ -1241,16 +1300,19 @@ pub async fn tasks_generate_subtasks(
 
     // Use working_directory if available (for better context), but don't require it for generation
     let server_dir = if working_directory.is_empty() { None } else { Some(working_directory.clone()) };
-    if let Err(e) = opencode_ensure_server_with_dir(server_state, server_dir).await {
-        trace.error(
-            "Failed to ensure OpenCode server for generation",
-            TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
-        );
-        drop(trace);
-        return Err(e);
-    }
+    let port = match opencode_ensure_server_with_dir(server_state, server_dir).await {
+        Ok(p) => p,
+        Err(e) => {
+            trace.error(
+                "Failed to ensure OpenCode server for generation",
+                TraceError::new(e.clone(), "OPENCODE_ENSURE_SERVER_FAILED"),
+            );
+            drop(trace);
+            return Err(e);
+        }
+    };
 
-    trace.info("OpenCode server ready for subtask generation");
+    trace.info(&format!("OpenCode server ready for subtask generation on port {}", port));
 
     let prompt = build_generate_prompt(&task, &task_file_path);
 
@@ -1262,7 +1324,7 @@ pub async fn tasks_generate_subtasks(
 
     trace.debug("Creating OpenCode session for generation");
 
-    let session = match opencode_create_session(Some(format!("Generate subtasks: {}", task.text))).await {
+    let session = match opencode_create_session(port, Some(format!("Generate subtasks: {}", task.text))).await {
         Ok(s) => s,
         Err(e) => {
             trace.error(
@@ -1279,7 +1341,7 @@ pub async fn tasks_generate_subtasks(
 
     trace.debug("Sending prompt for subtask generation");
 
-    if let Err(e) = opencode_send_prompt(session_id.clone(), prompt, None, Some(model_config)).await {
+    if let Err(e) = opencode_send_prompt(port, session_id.clone(), prompt, None, Some(model_config)).await {
         trace.error(
             "Failed to send prompt for generation",
             TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
@@ -1299,7 +1361,7 @@ pub async fn tasks_generate_subtasks(
     loop {
         if start.elapsed() > timeout {
             trace.warn(&format!("Generation timeout for session: {}", session_id));
-            let _ = opencode_abort_session(session_id.clone()).await;
+            let _ = opencode_abort_session(port, session_id.clone()).await;
             drop(trace);
             return Err(format!(
                 "Generation timed out after {} seconds",
@@ -1309,7 +1371,7 @@ pub async fn tasks_generate_subtasks(
 
         tokio::time::sleep(POLL_INTERVAL).await;
 
-        match opencode_poll_status(session_id.clone()).await {
+        match opencode_poll_status(port, session_id.clone()).await {
             Ok(status) => {
                 trace.debug(&format!(
                     "Generation session {} status: {}",
@@ -1318,7 +1380,7 @@ pub async fn tasks_generate_subtasks(
 
                 if status.status == "idle" {
                     // Check if the agent truly completed by looking for the promise marker
-                    match check_session_completion(&session_id).await {
+                    match check_session_completion(port, &session_id).await {
                         CompletionCheckResult::Completed(message) => {
                             // Marker found - agent completed successfully
                             trace.info(&format!(
@@ -1327,7 +1389,7 @@ pub async fn tasks_generate_subtasks(
                             ));
 
                             // Get the last message for the result (cleaner output)
-                            let response = get_session_last_message(&session_id)
+                            let response = get_session_last_message(port, &session_id)
                                 .await
                                 .unwrap_or(message);
 
@@ -1388,7 +1450,7 @@ pub async fn tasks_generate_subtasks(
                                     session_id, continue_attempts, MAX_CONTINUE_ATTEMPTS
                                 ));
 
-                                if let Err(e) = send_continue(&session_id).await {
+                                if let Err(e) = send_continue(port, &session_id).await {
                                     trace.warn(&format!("Failed to send continue: {}", e));
                                 }
                                 continue;
@@ -1400,7 +1462,7 @@ pub async fn tasks_generate_subtasks(
                                 session_id, MAX_CONTINUE_ATTEMPTS
                             ));
 
-                            let response = get_session_last_message(&session_id)
+                            let response = get_session_last_message(port, &session_id)
                                 .await
                                 .unwrap_or_else(|e| {
                                     trace.warn(&format!(
@@ -1537,11 +1599,11 @@ enum SessionTextResult {
 /// Fetches session data and extracts ALL assistant message text.
 /// Scans all assistant messages to find the promise marker, not just the last one.
 /// If JSON parsing fails, returns the raw body so caller can search for marker directly.
-async fn get_session_messages_text(session_id: &str) -> SessionTextResult {
+async fn get_session_messages_text(port: u16, session_id: &str) -> SessionTextResult {
     let client = client();
 
     let response = match client
-        .get(format!("{}/session/{}", base_url(), session_id))
+        .get(format!("{}/session/{}", base_url_for_port(port), session_id))
         .send()
         .await
     {
@@ -1601,11 +1663,11 @@ async fn get_session_messages_text(session_id: &str) -> SessionTextResult {
 
 /// Fetches the last assistant message from a session.
 /// Used to return the final message content as a result.
-async fn get_session_last_message(session_id: &str) -> Result<String, String> {
+async fn get_session_last_message(port: u16, session_id: &str) -> Result<String, String> {
     let client = client();
 
     let response = client
-        .get(format!("{}/session/{}", base_url(), session_id))
+        .get(format!("{}/session/{}", base_url_for_port(port), session_id))
         .send()
         .await
         .map_err(|e| {
@@ -1674,8 +1736,8 @@ enum CompletionCheckResult {
 /// - Completed: marker found, stop polling
 /// - NotCompleted: marker not found, send continue
 /// - MessageUnavailable: transient error, keep polling without sending continue
-async fn check_session_completion(session_id: &str) -> CompletionCheckResult {
-    match get_session_messages_text(session_id).await {
+async fn check_session_completion(port: u16, session_id: &str) -> CompletionCheckResult {
+    match get_session_messages_text(port, session_id).await {
         SessionTextResult::Parsed(text) => {
             if text.contains(PROMISE_COMPLETED_MARKER) {
                 tracing::debug!(target: "tasks", "check_session_completion: marker found in parsed text for session {}", session_id);
@@ -1703,7 +1765,7 @@ async fn check_session_completion(session_id: &str) -> CompletionCheckResult {
     }
 }
 
-async fn send_continue(session_id: &str) -> Result<(), String> {
+async fn send_continue(port: u16, session_id: &str) -> Result<(), String> {
     let client = client();
 
     let request = SendPromptRequest {
@@ -1718,7 +1780,7 @@ async fn send_continue(session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!(
             "{}/session/{}/prompt_async",
-            base_url(),
+            base_url_for_port(port),
             session_id
         ))
         .json(&request)
