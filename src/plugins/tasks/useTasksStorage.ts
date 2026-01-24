@@ -267,6 +267,7 @@ interface UseTasksStorageReturn {
 	executeSubtask: (
 		taskId: string,
 		subtaskId: string,
+		modelId?: string,
 	) => Promise<ExecutionResultFromBackend | null>;
 	abortExecution: (workingDirectory: string) => Promise<void>;
 
@@ -275,7 +276,7 @@ interface UseTasksStorageReturn {
 	isLoopingInDirectory: (directory: string) => boolean;
 
 	// Loop functions
-	startLoop: (taskId: string) => Promise<void>;
+	startLoop: (taskId: string, modelId?: string) => Promise<void>;
 	stopLoop: (workingDirectory: string) => void;
 
 	// Generate subtasks
@@ -1291,6 +1292,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		async (
 			taskId: string,
 			subtaskId: string,
+			modelId?: string,
 		): Promise<ExecutionResultFromBackend | null> => {
 			// Get the task to find its working directory
 			const task = tasks.find((t) => t.id === taskId);
@@ -1314,6 +1316,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				taskId,
 				subtaskId,
 				workingDirectory,
+				modelId: modelId ?? "default",
 			});
 
 			// Set per-directory execution state
@@ -1327,10 +1330,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			setExecutingSubtaskId(subtaskId);
 
 			try {
-				trace.info("Starting subtask execution");
+				trace.info(
+					`Starting subtask execution with model: ${modelId ?? "default"}`,
+				);
 				const result = await tracedInvoke<ExecutionResultFromBackend>(
 					"tasks_execute_subtask",
-					{ taskId, subtaskId },
+					{ taskId, subtaskId, modelId: modelId ?? null },
 					trace,
 				);
 				currentSessionIdRef.current = result.sessionId;
@@ -1421,7 +1426,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	);
 
 	const startLoop = useCallback(
-		async (taskId: string): Promise<void> => {
+		async (taskId: string, modelId?: string): Promise<void> => {
 			const task = tasks.find((t) => t.id === taskId);
 			if (!task) {
 				toast.error("Task not found");
@@ -1450,6 +1455,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				action: "start_loop",
 				taskId,
 				workingDirectory,
+				modelId: modelId ?? "default",
 			});
 
 			// Set per-directory loop state
@@ -1496,12 +1502,14 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 					setIsExecuting(true);
 					setExecutingSubtaskId(subtask.id);
 
-					trace.info(`Executing subtask: ${subtask.text}`);
+					trace.info(
+						`Executing subtask: ${subtask.text} with model: ${modelId ?? "default"}`,
+					);
 
 					try {
 						const result = await tracedInvoke<ExecutionResultFromBackend>(
 							"tasks_execute_subtask",
-							{ taskId, subtaskId: subtask.id },
+							{ taskId, subtaskId: subtask.id, modelId: modelId ?? null },
 							trace,
 						);
 						currentSessionIdRef.current = result.sessionId;
