@@ -147,6 +147,8 @@ pub struct Task {
     pub description: String,
     #[serde(default)]
     pub working_directory: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
     #[serde(default)]
     pub tag_ids: Vec<String>,
     #[serde(default)]

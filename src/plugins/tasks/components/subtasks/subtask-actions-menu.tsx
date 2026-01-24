@@ -150,7 +150,12 @@ function SubtaskActionsMenu({
 				<DropdownMenuSeparator className="mx-2 my-1 bg-white/[0.06]" />
 
 				<DropdownMenuItem
-					onClick={onDelete}
+					onClick={(e) => {
+						if (!isPendingDelete) {
+							e.preventDefault();
+						}
+						onDelete();
+					}}
 					className={cn(
 						"gap-2 px-3 py-1.5 text-[12px]",
 						isPendingDelete
@@ -160,12 +165,12 @@ function SubtaskActionsMenu({
 				>
 					{isPendingDelete ? (
 						<>
-							<Check className="h-3 w-3" />
+							<Check className="h-3 w-3 text-red-400" />
 							Confirm
 						</>
 					) : (
 						<>
-							<Trash2 className="h-3 w-3" />
+							<Trash2 className="h-3 w-3 text-red-400" />
 							Delete
 						</>
 					)}

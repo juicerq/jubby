@@ -131,6 +131,7 @@ interface TaskFromBackend {
 	createdAt: number;
 	description: string;
 	workingDirectory: string;
+	gitBranch?: string | null;
 	tagIds: string[];
 	subtasks: SubtaskFromBackend[];
 	brainstorm?: string | null;
@@ -360,6 +361,7 @@ function mapBackendTask(task: TaskFromBackend): Task {
 		createdAt: task.createdAt,
 		description: task.description ?? "",
 		workingDirectory: task.workingDirectory ?? "",
+		gitBranch: task.gitBranch ?? null,
 		tagIds: task.tagIds,
 		subtasks: task.subtasks
 			.map(mapBackendSubtask)

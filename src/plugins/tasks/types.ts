@@ -65,6 +65,7 @@ export interface Task {
 	createdAt: number;
 	description: string;
 	workingDirectory: string;
+	gitBranch?: string | null;
 	tagIds?: string[];
 	subtasks: Subtask[];
 	brainstorm: string | null;

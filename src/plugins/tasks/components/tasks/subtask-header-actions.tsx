@@ -116,7 +116,7 @@ function SubtaskHeaderActions({
 			)}
 
 			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
+				<DropdownMenuTrigger asChild disabled={isExecuting}>
 					<button
 						type="button"
 						disabled={isExecuting}
@@ -165,7 +165,7 @@ function SubtaskHeaderActions({
 			</DropdownMenu>
 
 			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
+				<DropdownMenuTrigger asChild disabled={!canGenerate}>
 					<button
 						type="button"
 						disabled={!canGenerate}
@@ -228,7 +228,7 @@ function SubtaskHeaderActions({
 				</button>
 			) : (
 				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
+					<DropdownMenuTrigger asChild disabled={!canRunAll}>
 						<button
 							type="button"
 							disabled={!canRunAll}
