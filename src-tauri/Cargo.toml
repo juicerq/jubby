@@ -1,6 +1,6 @@
 [package]
 name = "jubby"
-version = "0.3.5"
+version = "0.3.6"
 description = "Hub de mini-apps pessoais para Linux"
 authors = ["you"]
 edition = "2021"
