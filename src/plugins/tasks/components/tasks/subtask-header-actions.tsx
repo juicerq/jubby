@@ -1,6 +1,9 @@
 import {
+	Blocks,
+	CheckCircle,
 	ChevronDown,
 	History,
+	Lightbulb,
 	Loader2,
 	Play,
 	Sparkles,
@@ -10,7 +13,7 @@ import {
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useClickOutside } from "../../hooks/use-click-outside";
-import type { Task } from "../../types";
+import type { OpencodeMode, Task } from "../../types";
 import type { GenerateSubtasksResult } from "../../useTasksStorage";
 
 const MODEL_OPTIONS = [
@@ -21,6 +24,36 @@ const MODEL_OPTIONS = [
 ] as const;
 
 type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
+
+const OPENCODE_MODE_OPTIONS: {
+	id: OpencodeMode;
+	label: string;
+	icon: typeof Lightbulb;
+	colorClass: string;
+	hoverClass: string;
+}[] = [
+	{
+		id: "brainstorm",
+		label: "Brainstorm",
+		icon: Lightbulb,
+		colorClass: "text-amber-400",
+		hoverClass: "hover:bg-amber-500/10",
+	},
+	{
+		id: "architecture",
+		label: "Architecture",
+		icon: Blocks,
+		colorClass: "text-blue-400",
+		hoverClass: "hover:bg-blue-500/10",
+	},
+	{
+		id: "review",
+		label: "Review",
+		icon: CheckCircle,
+		colorClass: "text-green-400",
+		hoverClass: "hover:bg-green-500/10",
+	},
+];
 
 interface SubtaskHeaderActionsProps {
 	task: Task;
@@ -35,7 +68,7 @@ interface SubtaskHeaderActionsProps {
 	onGenerateSubtasks: (
 		modelId: string,
 	) => Promise<GenerateSubtasksResult | null>;
-	onOpenOpencodeTerminal: () => Promise<void>;
+	onOpenOpencodeTerminal: (mode?: OpencodeMode) => Promise<void>;
 }
 
 function SubtaskHeaderActions({
@@ -52,12 +85,20 @@ function SubtaskHeaderActions({
 	onOpenOpencodeTerminal,
 }: SubtaskHeaderActionsProps) {
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-	const dropdownRef = useRef<HTMLDivElement>(null);
+	const [isOpencodeDropdownOpen, setIsOpencodeDropdownOpen] = useState(false);
+	const modelDropdownRef = useRef<HTMLDivElement>(null);
+	const opencodeDropdownRef = useRef<HTMLDivElement>(null);
 
 	useClickOutside(
-		dropdownRef,
+		modelDropdownRef,
 		() => setIsModelDropdownOpen(false),
 		isModelDropdownOpen,
+	);
+
+	useClickOutside(
+		opencodeDropdownRef,
+		() => setIsOpencodeDropdownOpen(false),
+		isOpencodeDropdownOpen,
 	);
 
 	const hasWaitingSubtasks = task.subtasks.some((s) => s.status === "waiting");
@@ -84,28 +125,59 @@ function SubtaskHeaderActions({
 				</button>
 			)}
 
-			<button
-				type="button"
-				onClick={onOpenOpencodeTerminal}
-				disabled={isExecuting}
-				className={cn(
-					"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
-					isExecuting
-						? "cursor-not-allowed bg-white/4 text-white/25"
-						: "cursor-pointer bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25",
-				)}
-				aria-label="Open OpenCode in terminal"
-				title={
-					isExecuting
-						? "Execution in progress"
-						: "Open OpenCode in terminal with task context"
-				}
-			>
-				<Terminal className="h-3 w-3" />
-				OpenCode
-			</button>
+			<div className="relative" ref={opencodeDropdownRef}>
+				<button
+					type="button"
+					onClick={() =>
+						!isExecuting && setIsOpencodeDropdownOpen(!isOpencodeDropdownOpen)
+					}
+					disabled={isExecuting}
+					className={cn(
+						"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
+						isExecuting
+							? "cursor-not-allowed bg-white/4 text-white/25"
+							: "cursor-pointer bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25",
+					)}
+					aria-label="Open OpenCode in terminal"
+					title={
+						isExecuting
+							? "Execution in progress"
+							: "Open OpenCode in terminal with task context"
+					}
+				>
+					<Terminal className="h-3 w-3" />
+					OpenCode
+					<ChevronDown className="h-3 w-3 -mr-0.5" />
+				</button>
 
-			<div className="relative" ref={dropdownRef}>
+				{isOpencodeDropdownOpen && (
+					<div className="absolute right-0 top-full z-20 mt-1 w-[140px] rounded-lg border border-white/10 bg-[#0a0a0a] py-1 shadow-lg">
+						{OPENCODE_MODE_OPTIONS.map((option) => {
+							const Icon = option.icon;
+							return (
+								<button
+									key={option.id}
+									type="button"
+									onClick={() => {
+										setIsOpencodeDropdownOpen(false);
+										onOpenOpencodeTerminal(option.id);
+									}}
+									className={cn(
+										"flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors",
+										option.colorClass,
+										option.hoverClass,
+									)}
+								>
+									<Icon className="h-3 w-3" />
+									{option.label}
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</div>
+
+			<div className="relative" ref={modelDropdownRef}>
 				<button
 					type="button"
 					onClick={() =>

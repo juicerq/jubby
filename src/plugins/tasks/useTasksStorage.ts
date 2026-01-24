@@ -8,6 +8,7 @@ import type {
 	ExecutionOutcome,
 	Folder,
 	Learnings,
+	OpencodeMode,
 	RecentTask,
 	Step,
 	Subtask,
@@ -118,6 +119,9 @@ interface TaskFromBackend {
 	workingDirectory: string;
 	tagIds: string[];
 	subtasks: SubtaskFromBackend[];
+	brainstorm?: string | null;
+	architecture?: string | null;
+	review?: string | null;
 }
 
 interface TasksDataFromBackend {
@@ -261,7 +265,7 @@ interface UseTasksStorageReturn {
 	isTaskGenerating: (taskId: string) => boolean;
 
 	// Open OpenCode in terminal
-	openOpencodeTerminal: (taskId: string) => Promise<void>;
+	openOpencodeTerminal: (taskId: string, mode?: OpencodeMode) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -333,6 +337,9 @@ function mapBackendTask(task: TaskFromBackend): Task {
 		workingDirectory: task.workingDirectory ?? "",
 		tagIds: task.tagIds,
 		subtasks: task.subtasks.map(mapBackendSubtask),
+		brainstorm: task.brainstorm ?? null,
+		architecture: task.architecture ?? null,
+		review: task.review ?? null,
 	};
 }
 
@@ -382,6 +389,9 @@ function createDefaultTask(
 		workingDirectory: workingDirectory ?? "",
 		tagIds,
 		subtasks: [],
+		brainstorm: null,
+		architecture: null,
+		review: null,
 	};
 }
 
@@ -1430,29 +1440,39 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[generatingTaskIds],
 	);
 
-	const openOpencodeTerminal = useCallback(async (taskId: string) => {
-		const trace = createTrace({
-			plugin: "tasks",
-			action: "open_opencode_terminal",
-			taskId,
-		});
-
-		try {
-			trace.info("Opening OpenCode in terminal");
-			await tracedInvoke("tasks_open_opencode_terminal", { taskId }, trace);
-			trace.info("OpenCode terminal opened successfully");
-		} catch (error) {
-			const message =
-				typeof error === "string" ? error : "Failed to open OpenCode terminal";
-			trace.error("Failed to open OpenCode terminal", {
-				message,
-				code: "OPEN_OPENCODE_TERMINAL_FAILED",
+	const openOpencodeTerminal = useCallback(
+		async (taskId: string, mode?: OpencodeMode) => {
+			const trace = createTrace({
+				plugin: "tasks",
+				action: "open_opencode_terminal",
+				taskId,
+				mode: mode ?? "default",
 			});
-			toast.error(message);
-		} finally {
-			trace.end();
-		}
-	}, []);
+
+			try {
+				trace.info(`Opening OpenCode in terminal with mode: ${mode ?? "default"}`);
+				await tracedInvoke(
+					"tasks_open_opencode_terminal",
+					{ taskId, mode: mode ?? null },
+					trace,
+				);
+				trace.info("OpenCode terminal opened successfully");
+			} catch (error) {
+				const message =
+					typeof error === "string"
+						? error
+						: "Failed to open OpenCode terminal";
+				trace.error("Failed to open OpenCode terminal", {
+					message,
+					code: "OPEN_OPENCODE_TERMINAL_FAILED",
+				});
+				toast.error(message);
+			} finally {
+				trace.end();
+			}
+		},
+		[],
+	);
 
 	return {
 		tasks,
@@ -1622,29 +1642,16 @@ export function useFolderStorage(): UseFolderStorageReturn {
 	const [isLoading, setIsLoading] = useState(true);
 
 	const loadFolders = useCallback(async (options?: ReloadOptions) => {
-		const trace = createTrace({ plugin: "tasks", action: "load_folders" });
-		trace.info("Loading folders");
-
 		try {
-			const data = await tracedInvoke<FolderFromBackend[]>(
-				"folder_get_all",
-				{
-					forceReload: options?.forceReload,
-				},
-				trace,
-			);
-			trace.info(`Loaded ${data.length} folders`);
+			const data = await invoke<FolderFromBackend[]>("folder_get_all", {
+				forceReload: options?.forceReload,
+			});
 			setFolders(data.map(mapBackendFolder));
 		} catch (error) {
 			console.error("Failed to load folders:", error);
-			trace.error("Failed to load folders", {
-				message: String(error),
-				code: "LOAD_FOLDERS_FAILED",
-			});
 			toast.error("Failed to load folders");
 		} finally {
 			setIsLoading(false);
-			trace.end();
 		}
 	}, []);
 

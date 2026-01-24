@@ -866,6 +866,9 @@ pub fn save_task(folder_filename: &str, task: &Task) -> Result<(), Box<dyn std::
         working_directory: task.working_directory.clone(),
         tag_ids: task.tag_ids.clone(),
         subtasks: task.subtasks.clone(),
+        brainstorm: task.brainstorm.clone(),
+        architecture: task.architecture.clone(),
+        review: task.review.clone(),
     };
 
     let content = serde_json::to_string_pretty(&task_for_save)?;
@@ -1055,6 +1058,9 @@ fn migrate_from_sqlite(path: &PathBuf) -> Result<TasksData, Box<dyn std::error::
                 working_directory: String::new(),
                 tag_ids: Vec::new(),
                 subtasks: Vec::new(),
+                brainstorm: None,
+                architecture: None,
+                review: None,
             })
         })?;
         for row in rows {

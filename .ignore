@@ -1,0 +1,14 @@
+# Ripgrep ignore - heavy directories
+**/node_modules/**
+**/target/**
+**/dist/**
+**/.git/**
+**/build/**
+**/.next/**
+**/coverage/**
+**/__pycache__/**
+**/.venv/**
+**/venv/**
+**/.cache/**
+**/vendor/**
+

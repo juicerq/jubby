@@ -1061,7 +1061,7 @@ Remember: An AI agent will execute these subtasks sequentially with NO human int
 - taskId: {task_id}
 - taskText: {task_text}
 - taskDescription: {task_description}
-
+{brainstorm_section}{architecture_section}{review_section}
 ## Subtask schema (append to this task's subtasks array)
 
 - id: run `uuidgen` to generate
@@ -1102,6 +1102,15 @@ This marker signals that you are truly done. Do NOT include this marker if you s
         task_id = task.id,
         task_text = task.text,
         task_description = task.description,
+        brainstorm_section = task.brainstorm.as_ref().map_or(String::new(), |b| {
+            format!("\n## Brainstorm Notes\n\n{}\n", b)
+        }),
+        architecture_section = task.architecture.as_ref().map_or(String::new(), |a| {
+            format!("\n## Architecture Notes\n\n{}\n", a)
+        }),
+        review_section = task.review.as_ref().map_or(String::new(), |r| {
+            format!("\n## Review Notes\n\n{}\n", r)
+        }),
     )
 }
 
@@ -1714,27 +1723,112 @@ const FALLBACK_TERMINALS: &[&str] = &[
     "xterm",
 ];
 
-/// Builds a single-line prompt for OpenCode from task data.
-/// 
-/// Creates a prompt in the format: "Task: {text} - {description}. Task file: {path}"
-/// Newlines in the description are replaced with spaces.
-pub fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str) -> String {
-    let description = if task.description.is_empty() {
-        String::new()
-    } else {
-        format!(" - {}", task.description.replace('\n', " ").replace('\r', ""))
-    };
-    
-    format!(
-        "Task: {}{}. Task file: {}",
-        task.text,
-        description,
-        task_file_path
-    )
+/// Builds a prompt for OpenCode based on the selected mode.
+///
+/// For default mode (None): Creates a simple prompt in the format: "Task: {text} - {description}. Task file: {path}"
+/// For specific modes: Creates detailed prompts with instructions for brainstorm, architecture, or review sessions.
+pub fn build_terminal_prompt(task: &super::types::Task, task_file_path: &str, mode: Option<OpencodeMode>) -> String {
+    let description = task.description.replace('\n', " ").replace('\r', "");
+
+    match mode {
+        None => {
+            // Default mode: simple prompt
+            let desc_part = if description.is_empty() {
+                String::new()
+            } else {
+                format!(" - {}", description)
+            };
+            format!(
+                "Task: {}{}. Task file: {}",
+                task.text,
+                desc_part,
+                task_file_path
+            )
+        }
+        Some(OpencodeMode::Brainstorm) => {
+            format!(
+                r#"Modo: BRAINSTORM CRIATIVO
+
+Task: {} - {}
+Task file: {}
+
+REGRAS:
+- NÃO busque código, NÃO explore o codebase
+- Foco 100% em COMO deve funcionar, UX e DX
+- Discussão criativa: pergunte, sugira, explore ideias
+- Ignore limitações técnicas por enquanto
+
+AO FINALIZAR:
+Pergunte se devo salvar. Se sim, atualize o campo "brainstorm"
+no JSON ({}) com um resumo conciso da discussão."#,
+                task.text,
+                description,
+                task_file_path,
+                task_file_path
+            )
+        }
+        Some(OpencodeMode::Architecture) => {
+            format!(
+                r#"Modo: ARQUITETURA & IMPLEMENTAÇÃO
+
+Task: {} - {}
+Task file: {}
+
+FOCO:
+- Decisões arquiteturais e trade-offs
+- Performance e manutenibilidade
+- Como implementar na estrutura existente
+- Explore o código livremente
+
+AO FINALIZAR:
+Pergunte se devo salvar. Se sim, atualize o campo "architecture"
+no JSON ({}) com um resumo conciso das decisões."#,
+                task.text,
+                description,
+                task_file_path,
+                task_file_path
+            )
+        }
+        Some(OpencodeMode::Review) => {
+            format!(
+                r#"Modo: CODE REVIEW
+
+Task: {} - {}
+Task file: {}
+
+FORMATO DO REVIEW:
+Score por categoria (0-100):
+- Código: qualidade, legibilidade, patterns
+- Arquitetura: decisões, separação, coesão
+- Testes: cobertura, casos edge
+- Performance: eficiência, otimizações
+- Manutenibilidade: facilidade de manter/evoluir
+
+Breakdown: conciso, sacrifique gramática por clareza.
+
+AO FINALIZAR:
+Pergunte se devo salvar. Se sim, atualize o campo "review"
+no JSON ({}) com o resultado completo do review."#,
+                task.text,
+                description,
+                task_file_path,
+                task_file_path
+            )
+        }
+    }
 }
 
 /// Tmux session name prefix for task-specific sessions.
 pub const TMUX_SESSION_PREFIX: &str = "jubby-";
+
+/// Mode for OpenCode terminal sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpencodeMode {
+    Brainstorm,
+    Architecture,
+    Review,
+}
 
 /// Gets the tmux session name for a task (used when spawning GUI terminals).
 /// 
@@ -1812,63 +1906,164 @@ fn open_in_gui_terminal(
         terminal, tmux_session
     ));
 
-    // Escape single quotes in the prompt for shell
-    let escaped_prompt = prompt.replace('\'', "'\\''");
-    
-    // Build the tmux command that creates/attaches to a session and runs opencode
-    // -A: attach if session exists, else create new
+    // Pass tmux arguments directly via argv - no shell escaping needed.
+    // The OS handles spaces and special characters correctly when args are
+    // passed as separate argv entries rather than shell-parsed strings.
+    //
+    // tmux flags:
+    // -A: attach-if-exists or create new session (eliminates need for kill-session)
     // -s: session name
     // -c: starting directory
-    let tmux_cmd = format!(
-        "tmux new-session -A -s '{}' -c '{}' opencode '{}'",
-        tmux_session.replace('\'', "'\\''"),
-        working_dir.replace('\'', "'\\''"),
-        escaped_prompt
-    );
 
-    trace.debug(&format!("tmux command: {}", tmux_cmd));
+    // Detailed logging to debug argument passing
+    trace.info(&format!("=== TERMINAL SPAWN DEBUG ==="));
+    trace.info(&format!("terminal: '{}'", terminal));
+    trace.info(&format!("working_dir: '{}'", working_dir));
+    trace.info(&format!("working_dir len: {}", working_dir.len()));
+    trace.info(&format!("tmux_session: '{}'", tmux_session));
+    trace.info(&format!("prompt (first 100 chars): '{}'", &prompt.chars().take(100).collect::<String>()));
+    trace.info(&format!("prompt len: {}", prompt.len()));
+
+    // Log each byte of working_dir to detect any hidden characters
+    trace.info(&format!("working_dir bytes: {:?}", working_dir.as_bytes()));
 
     // Different terminals have different ways to execute commands
-    let result = match terminal {
+    // Pass args directly to tmux without sh -c wrapper to avoid shell parsing issues
+    // Extract basename for matching (TERMINAL env var may contain full path like /usr/bin/xdg-terminal-exec)
+    let terminal_name = std::path::Path::new(terminal)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(terminal);
+
+    let result = match terminal_name {
         "ghostty" => {
+            // Ghostty: use -- to prevent Ghostty from interpreting tmux's -c flag
+            // as its own --config-file flag
+            let args = [
+                "-e",
+                "--",
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+                prompt,
+            ];
+            trace.info(&format!("Ghostty args: {:?}", args));
+            // Log shell-escaped version for manual testing
+            trace.info(&format!(
+                "Manual test cmd: ghostty -e -- tmux new-session -A -s '{}' -c '{}' opencode '{}'",
+                tmux_session,
+                working_dir,
+                prompt.replace('\'', "'\\''")
+            ));
             std::process::Command::new(terminal)
-                .args(["-e", "sh", "-c", &tmux_cmd])
+                .args(args)
+                .spawn()
+        }
+        "alacritty" | "konsole" => {
+            // These terminals use -e to execute a command
+            std::process::Command::new(terminal)
+                .args([
+                    "-e",
+                    "tmux",
+                    "new-session",
+                    "-A",
+                    "-s",
+                    tmux_session,
+                    "-c",
+                    working_dir,
+                    "opencode",
+                    prompt,
+                ])
+                .spawn()
+        }
+        "xdg-terminal-exec" => {
+            // xdg-terminal-exec uses --dir= and takes command directly after --
+            let dir_arg = format!("--dir={}", working_dir);
+            std::process::Command::new(terminal)
+                .args([
+                    dir_arg.as_str(),
+                    "--",
+                    "tmux",
+                    "new-session",
+                    "-A",
+                    "-s",
+                    tmux_session,
+                    "-c",
+                    working_dir,
+                    "opencode",
+                    "--prompt",
+                    prompt,
+                ])
                 .spawn()
         }
         "kitty" => {
+            // Kitty doesn't need -e flag
             std::process::Command::new(terminal)
-                .args(["sh", "-c", &tmux_cmd])
-                .spawn()
-        }
-        "alacritty" => {
-            std::process::Command::new(terminal)
-                .args(["-e", "sh", "-c", &tmux_cmd])
+                .args([
+                    "tmux",
+                    "new-session",
+                    "-A",
+                    "-s",
+                    tmux_session,
+                    "-c",
+                    working_dir,
+                    "opencode",
+                    prompt,
+                ])
                 .spawn()
         }
         "wezterm" => {
+            // Wezterm uses "start --" to execute commands
             std::process::Command::new(terminal)
-                .args(["start", "--", "sh", "-c", &tmux_cmd])
+                .args([
+                    "start",
+                    "--",
+                    "tmux",
+                    "new-session",
+                    "-A",
+                    "-s",
+                    tmux_session,
+                    "-c",
+                    working_dir,
+                    "opencode",
+                    prompt,
+                ])
                 .spawn()
         }
         "gnome-terminal" => {
+            // GNOME Terminal uses "--" to separate options from command
             std::process::Command::new(terminal)
-                .args(["--", "sh", "-c", &tmux_cmd])
+                .args([
+                    "--",
+                    "tmux",
+                    "new-session",
+                    "-A",
+                    "-s",
+                    tmux_session,
+                    "-c",
+                    working_dir,
+                    "opencode",
+                    prompt,
+                ])
                 .spawn()
         }
-        "konsole" => {
+        "xfce4-terminal" | "xterm" | _ => {
+            // Fallback: these terminals may need sh -c wrapper
+            // Use .arg() separately for the shell command to avoid argv splitting issues
+            let shell_cmd = format!(
+                "tmux new-session -A -s '{}' -c '{}' opencode '{}'",
+                tmux_session.replace('\'', "'\\''"),
+                working_dir.replace('\'', "'\\''"),
+                prompt.replace('\'', "'\\''")
+            );
             std::process::Command::new(terminal)
-                .args(["-e", "sh", "-c", &tmux_cmd])
-                .spawn()
-        }
-        "xfce4-terminal" => {
-            std::process::Command::new(terminal)
-                .args(["-e", &tmux_cmd])
-                .spawn()
-        }
-        _ => {
-            // Generic fallback: try -e with sh -c
-            std::process::Command::new(terminal)
-                .args(["-e", "sh", "-c", &tmux_cmd])
+                .args(["-e", "sh", "-c"])
+                .arg(&shell_cmd)
                 .spawn()
         }
     };
@@ -1894,13 +2089,15 @@ fn open_in_gui_terminal(
 pub async fn tasks_open_opencode_terminal(
     store: State<'_, super::TasksStore>,
     task_id: String,
+    mode: Option<OpencodeMode>,
 ) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_open_opencode_terminal")
-        .with("task_id", task_id.clone());
+        .with("task_id", task_id.clone())
+        .with("mode", format!("{:?}", mode));
 
-    trace.info("Opening OpenCode terminal for task");
+    trace.info(&format!("Opening OpenCode terminal for task with mode: {:?}", mode));
 
     // Resolve task, folder, and compute paths
     let (task, working_directory, task_file_path) = {
@@ -1949,9 +2146,9 @@ pub async fn tasks_open_opencode_terminal(
         (task, working_directory, task_file_path)
     };
 
-    // Build the prompt
-    let prompt = build_terminal_prompt(&task, &task_file_path);
-    trace.info(&format!("Prompt built (len={})", prompt.len()));
+    // Build the prompt based on mode
+    let prompt = build_terminal_prompt(&task, &task_file_path, mode);
+    trace.info(&format!("Prompt built (len={}, mode={:?})", prompt.len(), mode));
 
     // Get tmux session name for this task
     let tmux_session = get_tmux_session_name(&task_id);

@@ -67,7 +67,12 @@ export interface Task {
 	workingDirectory: string;
 	tagIds?: string[];
 	subtasks: Subtask[];
+	brainstorm: string | null;
+	architecture: string | null;
+	review: string | null;
 }
+
+export type OpencodeMode = "brainstorm" | "architecture" | "review";
 
 export interface RecentTask {
 	id: string;

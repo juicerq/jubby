@@ -2,6 +2,7 @@ import { Check, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import type {
+	OpencodeMode,
 	SubtaskCategory,
 	SubtaskStatus,
 	Tag as TagType,
@@ -55,7 +56,7 @@ interface TaskDetailActions {
 	stopLoop: () => void;
 	navigateBack: () => void;
 	generateSubtasks: (modelId: string) => Promise<GenerateSubtasksResult | null>;
-	openOpencodeTerminal: () => Promise<void>;
+	openOpencodeTerminal: (mode?: OpencodeMode) => Promise<void>;
 }
 
 interface TaskDetailProps {

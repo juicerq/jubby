@@ -25,30 +25,19 @@ pub fn folder_get_all(
     store: State<TasksStore>,
     force_reload: Option<bool>,
 ) -> Result<Vec<FolderWithPreview>, String> {
-    let trace = Trace::new()
-        .with("plugin", "tasks")
-        .with("action", "folder_get_all");
-
     if force_reload.unwrap_or(false) {
         match reload_from_disk() {
             Ok(new_data) => {
                 let mut data = store.write();
                 *data = new_data;
-                trace.info("store reloaded from disk");
             }
             Err(e) => {
-                trace.error(
-                    "failed to reload tasks data",
-                    TraceError::new(e.to_string(), "TASKS_RELOAD_FAILED"),
-                );
-                drop(trace);
                 return Err(e.to_string());
             }
         }
     }
 
     let data = store.read();
-    trace.info("store read acquired");
 
     let mut result: Vec<FolderWithPreview> = data
         .folders
@@ -85,9 +74,6 @@ pub fn folder_get_all(
         .collect();
 
     result.sort_by_key(|f| f.position);
-
-    trace.info(&format!("returning {} folders", result.len()));
-    drop(trace);
 
     Ok(result)
 }
@@ -448,6 +434,9 @@ pub fn tasks_create(
         working_directory: working_directory.unwrap_or_default(),
         tag_ids: tag_ids.clone().unwrap_or_default(),
         subtasks: Vec::new(),
+        brainstorm: None,
+        architecture: None,
+        review: None,
     };
 
     // Save the task to its own file

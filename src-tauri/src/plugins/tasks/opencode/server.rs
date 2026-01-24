@@ -24,6 +24,7 @@ async fn check_server_running() -> bool {
 }
 
 async fn stop_server_internal(state: &OpenCodeServerState) {
+    // First, try to stop via stored PID
     if let Some(pid) = state.get_pid() {
         tracing::info!(target: "tasks", "Stopping OpenCode server with PID: {}", pid);
 
@@ -33,12 +34,26 @@ async fn stop_server_internal(state: &OpenCodeServerState) {
                 .args(["-TERM", &pid.to_string()])
                 .status();
         }
-
-        state.set_pid(None);
-        state.set_directory(None);
-
-        tokio::time::sleep(Duration::from_millis(500)).await;
     }
+
+    // Also kill any process listening on our port (handles orphaned servers from previous Jubby sessions)
+    #[cfg(unix)]
+    {
+        let port = super::OPENCODE_PORT.to_string();
+        if let Ok(output) = std::process::Command::new("fuser")
+            .args(["-k", &format!("{}/tcp", port)])
+            .output()
+        {
+            if output.status.success() {
+                tracing::info!(target: "tasks", "Killed process on port {} via fuser", port);
+            }
+        }
+    }
+
+    state.set_pid(None);
+    state.set_directory(None);
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
 }
 
 #[tauri::command]
@@ -132,6 +147,12 @@ pub async fn opencode_ensure_server_with_dir(
     let mut cmd = Command::new("opencode");
     cmd.args(["serve", "--port", &OPENCODE_PORT.to_string()])
         .env("OPENCODE_PERMISSION", OPENCODE_PERMISSIONS)
+        .env(
+            "RIPGREP_CONFIG_PATH",
+            dirs::config_dir()
+                .map(|p| p.join("ripgrep/config"))
+                .unwrap_or_default(),
+        )
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 

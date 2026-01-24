@@ -92,7 +92,7 @@ function BreadcrumbItem({ label, onClick, isLast }: BreadcrumbItemProps) {
   if (isLast) {
     return (
       <motion.span
-        className="text-[13px] font-medium text-white/90 tracking-tight truncate"
+        className="text-[13px] font-medium text-white/90 tracking-tight"
         aria-current="page"
         initial={{ scale: 0.97, opacity: 0.8 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -108,7 +108,7 @@ function BreadcrumbItem({ label, onClick, isLast }: BreadcrumbItemProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        'text-[13px] font-medium tracking-tight truncate',
+        'text-[13px] font-medium tracking-tight',
         'text-white/50 hover:text-white/80',
         'transition-colors duration-150 ease-out',
         'cursor-pointer bg-transparent border-none p-0'

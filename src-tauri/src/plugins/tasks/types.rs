@@ -151,6 +151,15 @@ pub struct Task {
     pub tag_ids: Vec<String>,
     #[serde(default)]
     pub subtasks: Vec<Subtask>,
+    /// Brainstorm session notes - creative discussion about how the task should work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brainstorm: Option<String>,
+    /// Architecture notes - technical decisions and implementation approach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    /// Code review results - scores and breakdown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -17,7 +17,12 @@ import { TaskInputArea } from "./components/tasks/task-input-area";
 import { TaskList } from "./components/tasks/task-list";
 import { TaskSettingsMenu } from "./components/tasks/task-settings-menu";
 import { useTasksWatcher } from "./hooks/useTasksWatcher";
-import type { SubtaskCategory, SubtaskStatus, TaskStatus } from "./types";
+import type {
+	OpencodeMode,
+	SubtaskCategory,
+	SubtaskStatus,
+	TaskStatus,
+} from "./types";
 import {
 	useFolderStorage,
 	useOpenCodeServer,
@@ -30,7 +35,7 @@ type TasksView = "folders" | "list" | "task";
 const RESYNC_INTERVAL_MS = 5000;
 
 function TasksPlugin(_props: PluginProps) {
-	const { status: serverStatus, startServer } = useOpenCodeServer();
+	const { startServer } = useOpenCodeServer();
 
 	useEffect(() => {
 		startServer();
@@ -169,10 +174,7 @@ function TasksPlugin(_props: PluginProps) {
 		},
 		currentTask && {
 			id: `task-${currentTaskId}`,
-			label:
-				currentTask.text.length > 20
-					? `${currentTask.text.slice(0, 20)}...`
-					: currentTask.text,
+			label: currentTask.text,
 		},
 	]);
 
@@ -413,17 +415,8 @@ function TasksPlugin(_props: PluginProps) {
 		);
 	}
 
-	const serverStatusIndicator =
-		serverStatus === "starting" ? (
-			<div className="flex items-center gap-1.5 text-white/40">
-				<span className="h-3 w-3 animate-spin rounded-full border border-white/20 border-t-white/50" />
-				<span className="text-[11px]">Starting server...</span>
-			</div>
-		) : null;
-
 	const taskSettingsButton = currentTask ? (
 		<div className="flex items-center gap-2">
-			{serverStatusIndicator}
 			<div className="relative">
 				<button
 					type="button"
@@ -489,7 +482,8 @@ function TasksPlugin(_props: PluginProps) {
 			navigateBack: handleNavigateToList,
 			generateSubtasks: (modelId: string) =>
 				generateSubtasks(currentTask.id, modelId),
-			openOpencodeTerminal: () => openOpencodeTerminal(currentTask.id),
+			openOpencodeTerminal: (mode?: OpencodeMode) =>
+				openOpencodeTerminal(currentTask.id, mode),
 		};
 
 		return (
