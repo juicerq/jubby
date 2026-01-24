@@ -25,7 +25,6 @@ import type {
 } from "./types";
 import {
 	useFolderStorage,
-	useOpenCodeServer,
 	usePendingDelete,
 	useTasksStorage,
 } from "./useTasksStorage";
@@ -35,12 +34,6 @@ type TasksView = "folders" | "list" | "task";
 const RESYNC_INTERVAL_MS = 5000;
 
 function TasksPlugin(_props: PluginProps) {
-	const { startServer } = useOpenCodeServer();
-
-	useEffect(() => {
-		startServer();
-	}, [startServer]);
-
 	const {
 		folders,
 		isLoading: foldersLoading,

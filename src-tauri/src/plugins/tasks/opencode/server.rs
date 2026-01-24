@@ -308,38 +308,4 @@ pub async fn opencode_stop_all_servers(state: State<'_, OpenCodeServersState>) -
     Ok(())
 }
 
-// ============================================================================
-// DEPRECATED: Temporary backward-compatible wrappers during migration.
-// These will be removed once all callers are updated to use OpenCodeServersState.
-// ============================================================================
 
-use super::OpenCodeServerState;
-
-/// Deprecated: Use opencode_ensure_server_with_dir with OpenCodeServersState instead.
-///
-/// This wrapper maintains backward compatibility during the migration to per-directory
-/// server management. It will be removed once all callers are updated.
-#[deprecated(note = "Use opencode_ensure_server_with_dir with OpenCodeServersState instead")]
-pub async fn opencode_ensure_server_with_dir_compat(
-    _old_state: State<'_, OpenCodeServerState>,
-    servers_state: State<'_, OpenCodeServersState>,
-    working_directory: Option<String>,
-) -> Result<u16, String> {
-    opencode_ensure_server_with_dir(servers_state, working_directory).await
-}
-
-/// Deprecated: Simple wrapper for backward compatibility.
-/// The old command expected no directory parameter and used a fixed port.
-#[tauri::command]
-#[deprecated(note = "Use opencode_ensure_server_with_dir with a specific directory instead")]
-pub async fn opencode_ensure_server(
-    servers_state: State<'_, OpenCodeServersState>,
-) -> Result<bool, String> {
-    // For backward compatibility, we can't start a server without a directory
-    // in the new model. Return an error indicating the API has changed.
-    tracing::warn!(
-        target: "tasks",
-        "opencode_ensure_server called without directory - this API is deprecated"
-    );
-    Err("opencode_ensure_server is deprecated. Use opencode_ensure_server_with_dir with a working_directory.".to_string())
-}

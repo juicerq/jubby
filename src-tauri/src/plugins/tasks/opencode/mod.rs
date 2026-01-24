@@ -12,12 +12,10 @@ use crate::traces::{Trace, TraceError};
 use super::watcher::StorageUpdatedPayload;
 
 pub use server::{
-    opencode_ensure_server, opencode_ensure_server_with_dir,
-    opencode_ensure_server_with_dir_compat, opencode_stop_all_servers, opencode_stop_server,
+    opencode_ensure_server_with_dir, opencode_stop_all_servers, opencode_stop_server,
     stop_server_for_directory,
 };
 pub use persistence::ActiveSessions;
-pub use state::OpenCodeServerState;
 pub use state::{OpenCodeServersState, ServerInfo};
 
 // Port range for dynamic allocation (supports up to 100 concurrent directories)
@@ -132,12 +130,6 @@ pub struct SessionStatus {
 /// Build base URL for a specific port.
 pub fn base_url_for_port(port: u16) -> String {
     format!("http://{}:{}", OPENCODE_HOST, port)
-}
-
-/// Build base URL using the first port in the range (for backward compatibility during migration).
-/// DEPRECATED: Use base_url_for_port() with a dynamically allocated port instead.
-fn base_url() -> String {
-    base_url_for_port(OPENCODE_PORT_START)
 }
 
 /// Allocate the first available port in the range [OPENCODE_PORT_START, OPENCODE_PORT_END).

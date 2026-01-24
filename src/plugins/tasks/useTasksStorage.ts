@@ -264,7 +264,6 @@ interface UseTasksStorageReturn {
 	) => Promise<void>;
 
 	// Execution functions
-	ensureOpenCodeServer: () => Promise<boolean>;
 	executeSubtask: (
 		taskId: string,
 		subtaskId: string,
@@ -1288,17 +1287,6 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[],
 	);
 
-	const ensureOpenCodeServer = useCallback(async (): Promise<boolean> => {
-		try {
-			await invoke("opencode_ensure_server");
-			return true;
-		} catch (error) {
-			console.error("Failed to ensure OpenCode server:", error);
-			toast.error("Failed to start OpenCode server");
-			return false;
-		}
-	}, []);
-
 	const executeSubtask = useCallback(
 		async (
 			taskId: string,
@@ -1728,7 +1716,6 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		deleteStep,
 		updateStepText,
 		createExecutionLog,
-		ensureOpenCodeServer,
 		executeSubtask,
 		abortExecution,
 		startLoop,
@@ -1737,124 +1724,6 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		generatingTaskIds,
 		isTaskGenerating,
 		openOpencodeTerminal,
-	};
-}
-
-type ServerStatus = "idle" | "starting" | "ready" | "error";
-
-interface UseOpenCodeServerReturn {
-	status: ServerStatus;
-	error: string | null;
-	isReady: boolean;
-	startServer: () => Promise<boolean>;
-	checkHealth: () => Promise<boolean>;
-}
-
-const HEALTH_CHECK_INTERVAL_MS = 30_000;
-
-export function useOpenCodeServer(): UseOpenCodeServerReturn {
-	const [status, setStatus] = useState<ServerStatus>("idle");
-	const [error, setError] = useState<string | null>(null);
-	const restartAttemptedRef = useRef(false);
-	const healthCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-		null,
-	);
-
-	const checkHealth = useCallback(async (): Promise<boolean> => {
-		try {
-			const result = await invoke<{ healthy: boolean; version: string }>(
-				"opencode_health_check",
-			);
-			return result.healthy;
-		} catch {
-			return false;
-		}
-	}, []);
-
-	const startServer = useCallback(async (): Promise<boolean> => {
-		if (status === "starting") return false;
-
-		setStatus("starting");
-		setError(null);
-
-		try {
-			await invoke("opencode_ensure_server");
-			setStatus("ready");
-			restartAttemptedRef.current = false;
-			return true;
-		} catch (err) {
-			const errorMsg = err instanceof Error ? err.message : String(err);
-			setError(errorMsg);
-			setStatus("error");
-			return false;
-		}
-	}, [status]);
-
-	const handleHealthCheckFailure = useCallback(async () => {
-		if (status !== "ready") return;
-
-		if (!restartAttemptedRef.current) {
-			restartAttemptedRef.current = true;
-			console.warn(
-				"[OpenCode] Server health check failed, attempting restart...",
-			);
-			const success = await startServer();
-			if (!success) {
-				toast.error("OpenCode server crashed and could not be restarted", {
-					action: {
-						label: "Retry",
-						onClick: () => {
-							restartAttemptedRef.current = false;
-							startServer();
-						},
-					},
-				});
-			}
-		} else {
-			setStatus("error");
-			setError("Server crashed and restart failed");
-			toast.error("OpenCode server is not responding", {
-				action: {
-					label: "Retry",
-					onClick: () => {
-						restartAttemptedRef.current = false;
-						startServer();
-					},
-				},
-			});
-		}
-	}, [status, startServer]);
-
-	useEffect(() => {
-		if (status !== "ready") {
-			if (healthCheckIntervalRef.current) {
-				clearInterval(healthCheckIntervalRef.current);
-				healthCheckIntervalRef.current = null;
-			}
-			return;
-		}
-
-		healthCheckIntervalRef.current = setInterval(async () => {
-			const healthy = await checkHealth();
-			if (!healthy) {
-				handleHealthCheckFailure();
-			}
-		}, HEALTH_CHECK_INTERVAL_MS);
-
-		return () => {
-			if (healthCheckIntervalRef.current) {
-				clearInterval(healthCheckIntervalRef.current);
-				healthCheckIntervalRef.current = null;
-			}
-		};
-	}, [status, checkHealth, handleHealthCheckFailure]);
-
-	return {
-		status,
-		error,
-		isReady: status === "ready",
-		startServer,
-		checkHealth,
 	};
 }
 

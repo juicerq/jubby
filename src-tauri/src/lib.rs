@@ -141,7 +141,6 @@ pub fn run() {
             plugins::tasks::commands::steps_delete,
             plugins::tasks::commands::steps_update_text,
             plugins::tasks::commands::execution_logs_create,
-            plugins::tasks::opencode::server::opencode_ensure_server,
             plugins::tasks::opencode::opencode_health_check,
             plugins::tasks::opencode::opencode_create_session,
             plugins::tasks::opencode::opencode_send_prompt,
