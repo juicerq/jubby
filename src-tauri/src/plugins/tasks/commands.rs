@@ -447,6 +447,7 @@ pub fn tasks_create(
         created_at: now_ms(),
         description: description.unwrap_or_default(),
         working_directory: working_directory.unwrap_or_default(),
+        git_branch: None,
         tag_ids: tag_ids.clone().unwrap_or_default(),
         subtasks: Vec::new(),
         brainstorm: None,
