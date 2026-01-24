@@ -269,7 +269,7 @@ interface UseTasksStorageReturn {
 		taskId: string,
 		subtaskId: string,
 	) => Promise<ExecutionResultFromBackend | null>;
-	abortExecution: () => Promise<void>;
+	abortExecution: (workingDirectory: string) => Promise<void>;
 
 	// Loop functions
 	startLoop: (taskId: string) => Promise<void>;
@@ -1347,19 +1347,44 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		],
 	);
 
-	const abortExecution = useCallback(async (): Promise<void> => {
-		const sessionId = currentSessionIdRef.current;
-		if (!sessionId) {
-			return;
-		}
+	const abortExecution = useCallback(
+		async (workingDirectory: string): Promise<void> => {
+			// Look up sessionId from per-directory state
+			const executingState = executingByDirectory.get(workingDirectory);
+			const sessionId = executingState?.sessionId;
 
-		try {
-			await invoke("opencode_abort_session", { sessionId });
-		} catch (error) {
-			console.error("Failed to abort execution:", error);
-			toast.error("Failed to abort execution");
-		}
-	}, []);
+			if (!sessionId) {
+				// Fall back to legacy ref for backward compatibility
+				const legacySessionId = currentSessionIdRef.current;
+				if (!legacySessionId) {
+					return;
+				}
+				try {
+					await invoke("opencode_abort_session", {
+						sessionId: legacySessionId,
+					});
+				} catch (error) {
+					console.error("Failed to abort execution:", error);
+					toast.error("Failed to abort execution");
+				}
+				return;
+			}
+
+			try {
+				await invoke("opencode_abort_session", { sessionId });
+				// Clear execution state for this directory after abort
+				clearExecutingInDirectory(workingDirectory);
+				// Keep legacy state for backward compatibility during migration
+				setIsExecuting(false);
+				setExecutingSubtaskId(null);
+				currentSessionIdRef.current = null;
+			} catch (error) {
+				console.error("Failed to abort execution:", error);
+				toast.error("Failed to abort execution");
+			}
+		},
+		[executingByDirectory, clearExecutingInDirectory],
+	);
 
 	const stopLoop = useCallback(() => {
 		loopAbortedRef.current = true;

@@ -476,7 +476,7 @@ function TasksPlugin(_props: PluginProps) {
 				updateStepText(currentTask.id, subtaskId, stepId, text),
 			executeSubtask: (subtaskId: string) =>
 				executeSubtask(currentTask.id, subtaskId),
-			abortExecution,
+			abortExecution: () => abortExecution(currentTask.workingDirectory || ""),
 			startLoop: () => startLoop(currentTask.id),
 			stopLoop,
 			navigateBack: handleNavigateToList,
