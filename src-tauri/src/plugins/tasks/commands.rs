@@ -2,7 +2,7 @@ use super::helpers::{
     find_folder, find_folder_mut, find_tag, find_task, with_step_mut, with_subtask_mut,
     with_tag_mut, with_task_mut,
 };
-use super::opencode::OPENCODE_PORT_START;
+use super::opencode::{opencode_ensure_server_with_dir, OpenCodeServersState};
 use super::storage::{
     delete_folder_dir, delete_task_file, generate_unique_filename, generate_unique_task_filename,
     get_existing_task_filenames, get_folder_filename, get_task_filename, reload_from_disk,
@@ -1543,12 +1543,14 @@ pub async fn tasks_auto_tag(
     app_handle: AppHandle,
     task_id: String,
     folder_id: String,
+    working_directory: String,
 ) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_auto_tag")
         .with("task_id", task_id.clone())
-        .with("folder_id", folder_id.clone());
+        .with("folder_id", folder_id.clone())
+        .with("working_directory", working_directory.clone());
     trace.info("auto-tag requested");
 
     // Gather task and tags info while holding the lock briefly
@@ -1584,12 +1586,13 @@ pub async fn tasks_auto_tag(
     drop(trace);
 
     // Spawn background task - fire and forget
-    // Use app_handle.state() to access store from within the spawned task
+    // Use app_handle.state() to access store and server state from within the spawned task
     tokio::spawn(async move {
         run_auto_tag_background(
             app_handle,
             task_id,
             folder_id,
+            working_directory,
             task_text,
             task_description,
             available_tags,
@@ -1604,6 +1607,7 @@ async fn run_auto_tag_background(
     app_handle: AppHandle,
     task_id: String,
     folder_id: String,
+    working_directory: String,
     task_text: String,
     task_description: String,
     available_tags: Vec<(String, String)>,
@@ -1611,17 +1615,19 @@ async fn run_auto_tag_background(
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_auto_tag_background")
-        .with("task_id", task_id.clone());
+        .with("task_id", task_id.clone())
+        .with("working_directory", working_directory.clone());
 
-    // Use default port for auto-tag (will be updated in subtask 6 to use per-directory ports)
-    let port = OPENCODE_PORT_START;
-
-    // Check if OpenCode server is running via health check
-    if super::opencode::opencode_health_check(port).await.is_err() {
-        trace.warn("OpenCode server not running, skipping auto-tag");
-        drop(trace);
-        return;
-    }
+    // Get or create server for this directory using per-directory port management
+    let server_state: State<'_, OpenCodeServersState> = app_handle.state();
+    let port = match opencode_ensure_server_with_dir(server_state, Some(working_directory)).await {
+        Ok(p) => p,
+        Err(e) => {
+            trace.warn(&format!("Failed to ensure OpenCode server: {}", e));
+            drop(trace);
+            return;
+        }
+    };
 
     // Build the prompt for tag suggestion
     let tags_list = available_tags

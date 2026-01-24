@@ -486,7 +486,11 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				);
 
 				// Fire-and-forget: auto-tag the task in background
-				invoke("tasks_auto_tag", { taskId: newTask.id }).catch(() => {});
+				invoke("tasks_auto_tag", {
+					taskId: newTask.id,
+					folderId,
+					workingDirectory: newTask.workingDirectory,
+				}).catch(() => {});
 			} catch (error) {
 				setTasks((prev) => prev.filter((t) => t.id !== tempId));
 				toast.error("Failed to create task");
@@ -1450,7 +1454,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			});
 
 			try {
-				trace.info(`Opening OpenCode in terminal with mode: ${mode ?? "default"}`);
+				trace.info(
+					`Opening OpenCode in terminal with mode: ${mode ?? "default"}`,
+				);
 				await tracedInvoke(
 					"tasks_open_opencode_terminal",
 					{ taskId, mode: mode ?? null },
