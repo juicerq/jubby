@@ -361,7 +361,9 @@ function mapBackendTask(task: TaskFromBackend): Task {
 		description: task.description ?? "",
 		workingDirectory: task.workingDirectory ?? "",
 		tagIds: task.tagIds,
-		subtasks: task.subtasks.map(mapBackendSubtask),
+		subtasks: task.subtasks
+			.map(mapBackendSubtask)
+			.sort((a, b) => a.order - b.order),
 		brainstorm: task.brainstorm ?? null,
 		architecture: task.architecture ?? null,
 		review: task.review ?? null,
