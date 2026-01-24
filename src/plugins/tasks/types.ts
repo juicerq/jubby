@@ -65,6 +65,7 @@ export interface Task {
 	createdAt: number;
 	description: string;
 	workingDirectory: string;
+	/** Optional git branch name to use for this task. */
 	gitBranch?: string | null;
 	tagIds?: string[];
 	subtasks: Subtask[];

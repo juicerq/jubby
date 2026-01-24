@@ -131,6 +131,7 @@ interface TaskFromBackend {
 	createdAt: number;
 	description: string;
 	workingDirectory: string;
+	/** Optional git branch name stored on the task. */
 	gitBranch?: string | null;
 	tagIds: string[];
 	subtasks: SubtaskFromBackend[];
