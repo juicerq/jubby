@@ -11,7 +11,11 @@ use crate::traces::{Trace, TraceError};
 
 use super::watcher::StorageUpdatedPayload;
 
-pub use server::opencode_ensure_server_with_dir;
+pub use server::{
+    opencode_ensure_server, opencode_ensure_server_with_dir,
+    opencode_ensure_server_with_dir_compat, opencode_stop_all_servers, opencode_stop_server,
+    stop_server_for_directory,
+};
 pub use persistence::ActiveSessions;
 pub use state::OpenCodeServerState;
 pub use state::{OpenCodeServersState, ServerInfo};
@@ -727,7 +731,7 @@ fn update_subtask_status(
 #[tauri::command]
 pub async fn tasks_execute_subtask(
     store: State<'_, super::TasksStore>,
-    server_state: State<'_, OpenCodeServerState>,
+    server_state: State<'_, OpenCodeServersState>,
     app_handle: AppHandle,
     task_id: String,
     subtask_id: String,
@@ -1166,7 +1170,7 @@ fn parse_model_id(model_id: &str) -> Result<ModelConfig, String> {
 #[tauri::command]
 pub async fn tasks_generate_subtasks(
     store: State<'_, super::TasksStore>,
-    server_state: State<'_, OpenCodeServerState>,
+    server_state: State<'_, OpenCodeServersState>,
     task_id: String,
     model_id: String,
 ) -> Result<GenerateSubtasksResult, String> {

@@ -203,7 +203,7 @@ pub fn run() {
             }
             app.manage(watcher_state);
 
-            app.manage(plugins::tasks::opencode::OpenCodeServerState::new());
+            app.manage(plugins::tasks::opencode::OpenCodeServersState::new());
             app.manage(plugins::tasks::opencode::ActiveSessions::new());
 
             let (coordinator, command_tx) = plugins::quickclip::recorder::coordinator::RecordingCoordinator::new(app.handle().clone());
