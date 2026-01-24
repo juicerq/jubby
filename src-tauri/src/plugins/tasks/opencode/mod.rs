@@ -14,9 +14,12 @@ use super::watcher::StorageUpdatedPayload;
 pub use server::opencode_ensure_server_with_dir;
 pub use persistence::ActiveSessions;
 pub use state::OpenCodeServerState;
+pub use state::{OpenCodeServersState, ServerInfo};
 
-const OPENCODE_PORT: u16 = 4096;
-const OPENCODE_HOST: &str = "127.0.0.1";
+// Port range for dynamic allocation (supports up to 100 concurrent directories)
+pub const OPENCODE_PORT_START: u16 = 4096;
+pub const OPENCODE_PORT_END: u16 = 4196;
+pub const OPENCODE_HOST: &str = "127.0.0.1";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -122,8 +125,32 @@ pub struct SessionStatus {
     pub message: Option<String>,
 }
 
+/// Build base URL for a specific port.
+pub fn base_url_for_port(port: u16) -> String {
+    format!("http://{}:{}", OPENCODE_HOST, port)
+}
+
+/// Build base URL using the first port in the range (for backward compatibility during migration).
+/// DEPRECATED: Use base_url_for_port() with a dynamically allocated port instead.
 fn base_url() -> String {
-    format!("http://{}:{}", OPENCODE_HOST, OPENCODE_PORT)
+    base_url_for_port(OPENCODE_PORT_START)
+}
+
+/// Allocate the first available port in the range [OPENCODE_PORT_START, OPENCODE_PORT_END).
+/// Returns None if all ports are in use.
+///
+/// This function checks the OpenCodeServersState to avoid ports already used by other
+/// running servers, supporting up to 100 concurrent directories.
+pub fn allocate_port(servers_state: &state::OpenCodeServersState) -> Option<u16> {
+    for port in OPENCODE_PORT_START..OPENCODE_PORT_END {
+        if !servers_state.is_port_in_use(port) {
+            // Double-check by trying to bind to the port (in case of external usage)
+            if std::net::TcpListener::bind((OPENCODE_HOST, port)).is_ok() {
+                return Some(port);
+            }
+        }
+    }
+    None
 }
 
 fn client() -> reqwest::Client {
