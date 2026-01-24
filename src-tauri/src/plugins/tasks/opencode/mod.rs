@@ -1957,15 +1957,26 @@ pub enum OpencodeMode {
 /// Gets the tmux session name for a task (used when spawning GUI terminals).
 /// 
 /// Uses the first 8 characters of the task ID for readability.
-/// Example: task_id "e4a3e70e-4fe3-4c9c" -> "jubby-e4a3e70e"
-pub fn get_tmux_session_name(task_id: &str) -> String {
+/// Each mode gets its own session to allow independent conversations.
+/// 
+/// Examples:
+/// - task_id "e4a3e70e-4fe3-4c9c", mode=None -> "jubby-e4a3e70e"
+/// - task_id "e4a3e70e-4fe3-4c9c", mode=Brainstorm -> "jubby-e4a3e70e-brainstorm"
+/// - task_id "e4a3e70e-4fe3-4c9c", mode=Architecture -> "jubby-e4a3e70e-arch"
+/// - task_id "e4a3e70e-4fe3-4c9c", mode=Review -> "jubby-e4a3e70e-review"
+pub fn get_tmux_session_name(task_id: &str, mode: Option<&OpencodeMode>) -> String {
     // Use first 8 chars of task ID for readability
     let short_id = if task_id.len() > 8 {
         &task_id[..8]
     } else {
         task_id
     };
-    format!("{}{}", TMUX_SESSION_PREFIX, short_id)
+    match mode {
+        Some(OpencodeMode::Brainstorm) => format!("{}{}-brainstorm", TMUX_SESSION_PREFIX, short_id),
+        Some(OpencodeMode::Architecture) => format!("{}{}-arch", TMUX_SESSION_PREFIX, short_id),
+        Some(OpencodeMode::Review) => format!("{}{}-review", TMUX_SESSION_PREFIX, short_id),
+        None => format!("{}{}", TMUX_SESSION_PREFIX, short_id),
+    }
 }
 
 /// Finds an available GUI terminal emulator.
@@ -2018,6 +2029,7 @@ fn open_in_gui_terminal(
     prompt: &str,
     terminal: &str,
     tmux_session: &str,
+    model_id: Option<&str>,
 ) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
@@ -2051,6 +2063,9 @@ fn open_in_gui_terminal(
     // Log each byte of working_dir to detect any hidden characters
     trace.info(&format!("working_dir bytes: {:?}", working_dir.as_bytes()));
 
+    // Build opencode arguments: [--model, model_id] if model_id is provided, then [prompt]
+    let model_flag = model_id.map(|m| format!("--model={}", m));
+    
     // Different terminals have different ways to execute commands
     // Pass args directly to tmux without sh -c wrapper to avoid shell parsing issues
     // Extract basename for matching (TERMINAL env var may contain full path like /usr/bin/xdg-terminal-exec)
@@ -2063,7 +2078,7 @@ fn open_in_gui_terminal(
         "ghostty" => {
             // Ghostty: use -- to prevent Ghostty from interpreting tmux's -c flag
             // as its own --config-file flag
-            let args = [
+            let mut args: Vec<&str> = vec![
                 "-e",
                 "--",
                 "tmux",
@@ -2074,14 +2089,18 @@ fn open_in_gui_terminal(
                 "-c",
                 working_dir,
                 "opencode",
-                prompt,
             ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push(prompt);
             trace.info(&format!("Ghostty args: {:?}", args));
             // Log shell-escaped version for manual testing
             trace.info(&format!(
-                "Manual test cmd: ghostty -e -- tmux new-session -A -s '{}' -c '{}' opencode '{}'",
+                "Manual test cmd: ghostty -e -- tmux new-session -A -s '{}' -c '{}' opencode {} '{}'",
                 tmux_session,
                 working_dir,
+                model_flag.as_deref().unwrap_or(""),
                 prompt.replace('\'', "'\\''")
             ));
             std::process::Command::new(terminal)
@@ -2090,99 +2109,121 @@ fn open_in_gui_terminal(
         }
         "alacritty" | "konsole" => {
             // These terminals use -e to execute a command
+            let mut args: Vec<&str> = vec![
+                "-e",
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+            ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push(prompt);
             std::process::Command::new(terminal)
-                .args([
-                    "-e",
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    tmux_session,
-                    "-c",
-                    working_dir,
-                    "opencode",
-                    prompt,
-                ])
+                .args(args)
                 .spawn()
         }
         "xdg-terminal-exec" => {
             // xdg-terminal-exec uses --dir= and takes command directly after --
             let dir_arg = format!("--dir={}", working_dir);
+            let mut args: Vec<&str> = vec![
+                dir_arg.as_str(),
+                "--",
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+            ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push("--prompt");
+            args.push(prompt);
             std::process::Command::new(terminal)
-                .args([
-                    dir_arg.as_str(),
-                    "--",
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    tmux_session,
-                    "-c",
-                    working_dir,
-                    "opencode",
-                    "--prompt",
-                    prompt,
-                ])
+                .args(args)
                 .spawn()
         }
         "kitty" => {
             // Kitty doesn't need -e flag
+            let mut args: Vec<&str> = vec![
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+            ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push(prompt);
             std::process::Command::new(terminal)
-                .args([
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    tmux_session,
-                    "-c",
-                    working_dir,
-                    "opencode",
-                    prompt,
-                ])
+                .args(args)
                 .spawn()
         }
         "wezterm" => {
             // Wezterm uses "start --" to execute commands
+            let mut args: Vec<&str> = vec![
+                "start",
+                "--",
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+            ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push(prompt);
             std::process::Command::new(terminal)
-                .args([
-                    "start",
-                    "--",
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    tmux_session,
-                    "-c",
-                    working_dir,
-                    "opencode",
-                    prompt,
-                ])
+                .args(args)
                 .spawn()
         }
         "gnome-terminal" => {
             // GNOME Terminal uses "--" to separate options from command
+            let mut args: Vec<&str> = vec![
+                "--",
+                "tmux",
+                "new-session",
+                "-A",
+                "-s",
+                tmux_session,
+                "-c",
+                working_dir,
+                "opencode",
+            ];
+            if let Some(ref flag) = model_flag {
+                args.push(flag.as_str());
+            }
+            args.push(prompt);
             std::process::Command::new(terminal)
-                .args([
-                    "--",
-                    "tmux",
-                    "new-session",
-                    "-A",
-                    "-s",
-                    tmux_session,
-                    "-c",
-                    working_dir,
-                    "opencode",
-                    prompt,
-                ])
+                .args(args)
                 .spawn()
         }
         "xfce4-terminal" | "xterm" | _ => {
             // Fallback: these terminals may need sh -c wrapper
             // Use .arg() separately for the shell command to avoid argv splitting issues
+            let model_part = model_flag.as_ref().map(|f| format!(" {}", f)).unwrap_or_default();
             let shell_cmd = format!(
-                "tmux new-session -A -s '{}' -c '{}' opencode '{}'",
+                "tmux new-session -A -s '{}' -c '{}' opencode{} '{}'",
                 tmux_session.replace('\'', "'\\''"),
                 working_dir.replace('\'', "'\\''"),
+                model_part,
                 prompt.replace('\'', "'\\''")
             );
             std::process::Command::new(terminal)
@@ -2214,14 +2255,16 @@ pub async fn tasks_open_opencode_terminal(
     store: State<'_, super::TasksStore>,
     task_id: String,
     mode: Option<OpencodeMode>,
+    model_id: Option<String>,
 ) -> Result<(), String> {
     let trace = Trace::new()
         .with("plugin", "tasks")
         .with("action", "tasks_open_opencode_terminal")
         .with("task_id", task_id.clone())
-        .with("mode", format!("{:?}", mode));
+        .with("mode", format!("{:?}", mode))
+        .with("model_id", model_id.clone().unwrap_or_else(|| "default".to_string()));
 
-    trace.info(&format!("Opening OpenCode terminal for task with mode: {:?}", mode));
+    trace.info(&format!("Opening OpenCode terminal for task with mode: {:?}, model: {:?}", mode, model_id));
 
     // Resolve task, folder, and compute paths
     let (task, working_directory, task_file_path) = {
@@ -2274,9 +2317,9 @@ pub async fn tasks_open_opencode_terminal(
     let prompt = build_terminal_prompt(&task, &task_file_path, mode);
     trace.info(&format!("Prompt built (len={}, mode={:?})", prompt.len(), mode));
 
-    // Get tmux session name for this task
-    let tmux_session = get_tmux_session_name(&task_id);
-    trace.info(&format!("Using tmux session: {}", tmux_session));
+    // Get tmux session name for this task and mode (each mode gets its own session)
+    let tmux_session = get_tmux_session_name(&task_id, mode.as_ref());
+    trace.info(&format!("Using tmux session: {} (mode: {:?})", tmux_session, mode));
 
     // Always spawn a new GUI terminal with a task-specific tmux session.
     // - Same task = attaches to existing session (tmux new-session -A)
@@ -2294,7 +2337,7 @@ pub async fn tasks_open_opencode_terminal(
 
     trace.info(&format!("Found GUI terminal: {}", terminal));
 
-    let result = open_in_gui_terminal(&working_directory, &prompt, &terminal, &tmux_session);
+    let result = open_in_gui_terminal(&working_directory, &prompt, &terminal, &tmux_session, model_id.as_deref());
     
     match &result {
         Ok(_) => trace.info("OpenCode opened in GUI terminal with tmux session"),

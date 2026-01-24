@@ -439,8 +439,8 @@ function TasksPlugin(_props: PluginProps) {
 			navigateBack: handleNavigateToList,
 			generateSubtasks: (modelId: string) =>
 				generateSubtasks(currentTask.id, modelId),
-			openOpencodeTerminal: (mode?: OpencodeMode) =>
-				openOpencodeTerminal(currentTask.id, mode),
+			openOpencodeTerminal: (mode?: OpencodeMode, modelId?: string) =>
+				openOpencodeTerminal(currentTask.id, mode, modelId),
 		};
 
 		return (

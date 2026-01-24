@@ -292,7 +292,11 @@ interface UseTasksStorageReturn {
 	isTaskGenerating: (taskId: string) => boolean;
 
 	// Open OpenCode in terminal
-	openOpencodeTerminal: (taskId: string, mode?: OpencodeMode) => Promise<void>;
+	openOpencodeTerminal: (
+		taskId: string,
+		mode?: OpencodeMode,
+		modelId?: string,
+	) => Promise<void>;
 }
 
 interface UseFolderStorageReturn {
@@ -1671,21 +1675,22 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	);
 
 	const openOpencodeTerminal = useCallback(
-		async (taskId: string, mode?: OpencodeMode) => {
+		async (taskId: string, mode?: OpencodeMode, modelId?: string) => {
 			const trace = createTrace({
 				plugin: "tasks",
 				action: "open_opencode_terminal",
 				taskId,
 				mode: mode ?? "default",
+				modelId: modelId ?? "default",
 			});
 
 			try {
 				trace.info(
-					`Opening OpenCode in terminal with mode: ${mode ?? "default"}`,
+					`Opening OpenCode in terminal with mode: ${mode ?? "default"}, model: ${modelId ?? "default"}`,
 				);
 				await tracedInvoke(
 					"tasks_open_opencode_terminal",
-					{ taskId, mode: mode ?? null },
+					{ taskId, mode: mode ?? null, modelId: modelId ?? null },
 					trace,
 				);
 				trace.info("OpenCode terminal opened successfully");

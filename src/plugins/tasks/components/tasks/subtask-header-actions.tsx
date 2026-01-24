@@ -1,5 +1,6 @@
 import {
 	Blocks,
+	Check,
 	CheckCircle,
 	ChevronRight,
 	History,
@@ -10,13 +11,16 @@ import {
 	Square,
 	Terminal,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import type { ModelId, ModelOption } from "../../constants";
 import type { OpencodeMode, Task } from "../../types";
 import type { GenerateSubtasksResult } from "../../useTasksStorage";
@@ -65,7 +69,10 @@ interface SubtaskHeaderActionsProps {
 	onGenerateSubtasks: (
 		modelId: string,
 	) => Promise<GenerateSubtasksResult | null>;
-	onOpenOpencodeTerminal: (mode?: OpencodeMode) => Promise<void>;
+	onOpenOpencodeTerminal: (
+		mode?: OpencodeMode,
+		modelId?: string,
+	) => Promise<void>;
 }
 
 function SubtaskHeaderActions({
@@ -116,21 +123,23 @@ function SubtaskHeaderActions({
 			)}
 
 			<DropdownMenu>
-				<DropdownMenuTrigger asChild disabled={isExecuting}>
+				<DropdownMenuTrigger asChild disabled={isExecuting || !hasModelOptions}>
 					<button
 						type="button"
-						disabled={isExecuting}
+						disabled={isExecuting || !hasModelOptions}
 						className={cn(
 							"group flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
-							isExecuting
+							isExecuting || !hasModelOptions
 								? "cursor-not-allowed bg-white/4 text-white/25"
 								: "cursor-pointer bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25",
 						)}
 						aria-label="Open OpenCode in terminal"
 						title={
-							isExecuting
-								? "Execution in progress"
-								: "Open OpenCode in terminal with task context"
+							!hasModelOptions
+								? "No models available"
+								: isExecuting
+									? "Execution in progress"
+									: "Open OpenCode in terminal with task context"
 						}
 					>
 						<Terminal className="h-3 w-3" />
@@ -142,23 +151,45 @@ function SubtaskHeaderActions({
 					align="end"
 					sideOffset={4}
 					collisionPadding={8}
-					className="w-[160px] py-1"
+					className="w-[180px] py-1"
 				>
-					{OPENCODE_MODE_OPTIONS.map((option) => {
-						const Icon = option.icon;
+					{OPENCODE_MODE_OPTIONS.map((modeOption) => {
+						const Icon = modeOption.icon;
+						const isCompleted = Boolean(task[modeOption.id]?.trim());
 						return (
-							<DropdownMenuItem
-								key={option.id}
-								onClick={() => onOpenOpencodeTerminal(option.id)}
-								className={cn(
-									"gap-2 px-3 py-1.5 text-[12px]",
-									option.colorClass,
-									option.hoverClass,
-								)}
-							>
-								<Icon className={cn("h-3 w-3", option.colorClass)} />
-								{option.label}
-							</DropdownMenuItem>
+							<DropdownMenuSub key={modeOption.id}>
+								<DropdownMenuSubTrigger
+									className={cn(
+										"gap-2 px-3 py-1.5 text-[12px]",
+										modeOption.colorClass,
+										modeOption.hoverClass,
+									)}
+								>
+									<Icon className={cn("h-3 w-3", modeOption.colorClass)} />
+									{modeOption.label}
+									{isCompleted && (
+										<Check className="ml-auto h-3 w-3 text-green-500" />
+									)}
+								</DropdownMenuSubTrigger>
+								<DropdownMenuSubContent className="w-[160px]">
+									{modelOptions.map((model) => (
+										<DropdownMenuItem
+											key={model.id}
+											onClick={() =>
+												onOpenOpencodeTerminal(modeOption.id, model.id)
+											}
+											className={cn(
+												"gap-2 px-3 py-1.5 text-[12px]",
+												modeOption.colorClass,
+												modeOption.hoverClass,
+											)}
+										>
+											<Icon className={cn("h-3 w-3", modeOption.colorClass)} />
+											{model.label}
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuSubContent>
+							</DropdownMenuSub>
 						);
 					})}
 				</DropdownMenuContent>

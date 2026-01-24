@@ -5,7 +5,7 @@
 //! are correctly escaped.
 
 use jubby_lib::plugins::tasks::opencode::{
-    build_terminal_prompt, get_tmux_session_name, TMUX_SESSION_PREFIX,
+    build_terminal_prompt, get_tmux_session_name, OpencodeMode, TMUX_SESSION_PREFIX,
 };
 use jubby_lib::plugins::tasks::types::Task;
 
@@ -20,8 +20,12 @@ fn create_test_task(id: &str, text: &str, description: &str) -> Task {
         created_at: 0,
         description: description.to_string(),
         working_directory: String::new(),
+        git_branch: None,
         tag_ids: vec![],
         subtasks: vec![],
+        brainstorm: None,
+        architecture: None,
+        review: None,
     }
 }
 
@@ -32,7 +36,7 @@ fn create_test_task(id: &str, text: &str, description: &str) -> Task {
 #[test]
 fn test_tmux_session_name_uses_correct_prefix() {
     let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
-    let session_name = get_tmux_session_name(task_id);
+    let session_name = get_tmux_session_name(task_id, None);
 
     assert!(
         session_name.starts_with(TMUX_SESSION_PREFIX),
@@ -45,7 +49,7 @@ fn test_tmux_session_name_uses_correct_prefix() {
 #[test]
 fn test_tmux_session_name_truncates_task_id_to_8_chars() {
     let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
-    let session_name = get_tmux_session_name(task_id);
+    let session_name = get_tmux_session_name(task_id, None);
 
     // Expected: "jubby-e4a3e70e" (prefix + first 8 chars of task ID)
     let expected = format!("{}e4a3e70e", TMUX_SESSION_PREFIX);
@@ -56,7 +60,7 @@ fn test_tmux_session_name_truncates_task_id_to_8_chars() {
 fn test_tmux_session_name_short_task_id() {
     // Task ID shorter than 8 characters should use the full ID
     let task_id = "abc123";
-    let session_name = get_tmux_session_name(task_id);
+    let session_name = get_tmux_session_name(task_id, None);
 
     let expected = format!("{}{}", TMUX_SESSION_PREFIX, task_id);
     assert_eq!(session_name, expected);
@@ -65,7 +69,7 @@ fn test_tmux_session_name_short_task_id() {
 #[test]
 fn test_tmux_session_name_exactly_8_chars() {
     let task_id = "12345678";
-    let session_name = get_tmux_session_name(task_id);
+    let session_name = get_tmux_session_name(task_id, None);
 
     let expected = format!("{}{}", TMUX_SESSION_PREFIX, task_id);
     assert_eq!(session_name, expected);
@@ -76,8 +80,8 @@ fn test_tmux_session_name_different_tasks_produce_different_names() {
     let task_id_1 = "aaaaaaaa-1111-2222-3333-444444444444";
     let task_id_2 = "bbbbbbbb-5555-6666-7777-888888888888";
 
-    let session_1 = get_tmux_session_name(task_id_1);
-    let session_2 = get_tmux_session_name(task_id_2);
+    let session_1 = get_tmux_session_name(task_id_1, None);
+    let session_2 = get_tmux_session_name(task_id_2, None);
 
     assert_ne!(
         session_1, session_2,
@@ -89,8 +93,8 @@ fn test_tmux_session_name_different_tasks_produce_different_names() {
 fn test_tmux_session_name_same_task_produces_same_name() {
     let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
 
-    let session_1 = get_tmux_session_name(task_id);
-    let session_2 = get_tmux_session_name(task_id);
+    let session_1 = get_tmux_session_name(task_id, None);
+    let session_2 = get_tmux_session_name(task_id, None);
 
     assert_eq!(
         session_1, session_2,
@@ -120,7 +124,7 @@ fn test_build_terminal_prompt_basic() {
     let task = create_test_task("test-id-123", "Fix the bug", "This is a description");
     let task_file_path = "/home/user/.local/share/jubby/tasks/folder/task.json";
 
-    let prompt = build_terminal_prompt(&task, task_file_path);
+    let prompt = build_terminal_prompt(&task, task_file_path, None);
 
     assert!(
         prompt.contains("Fix the bug"),
@@ -141,7 +145,7 @@ fn test_build_terminal_prompt_empty_description() {
     let task = create_test_task("test-id-123", "Fix the bug", "");
     let task_file_path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, task_file_path);
+    let prompt = build_terminal_prompt(&task, task_file_path, None);
 
     // Should not have " - " separator when description is empty
     assert!(
@@ -168,7 +172,7 @@ fn test_build_terminal_prompt_newlines_in_description_replaced() {
     );
     let task_file_path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, task_file_path);
+    let prompt = build_terminal_prompt(&task, task_file_path, None);
 
     // Newlines should be replaced with spaces for shell safety
     assert!(
@@ -194,7 +198,7 @@ fn test_build_terminal_prompt_format_structure() {
     let task = create_test_task("id", "Task Text", "Description");
     let path = "/some/path.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     // Verify the expected format: "Task: {text} - {description}. Task file: {path}"
     assert!(
@@ -218,7 +222,7 @@ fn test_build_terminal_prompt_special_characters_preserved() {
     );
     let path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     assert!(
         prompt.contains("'quotes'"),
@@ -249,7 +253,7 @@ fn test_prompt_escaping_for_tmux_command() {
     let task = create_test_task("id", "Task's name", "Description");
     let path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     // Simulate the escaping done in open_in_gui_terminal
     let escaped_prompt = prompt.replace('\'', "'\\''");
@@ -274,7 +278,7 @@ fn test_multiple_single_quotes_escaping() {
     let task = create_test_task("id", "Don't break it's logic", "More 'quotes' here");
     let path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
     let escaped_prompt = prompt.replace('\'', "'\\''");
 
     // Each single quote should be replaced with '\''
@@ -290,8 +294,66 @@ fn test_multiple_single_quotes_escaping() {
 
 #[test]
 fn test_empty_task_id() {
-    let session_name = get_tmux_session_name("");
+    let session_name = get_tmux_session_name("", None);
     assert_eq!(session_name, TMUX_SESSION_PREFIX);
+}
+
+#[test]
+fn test_tmux_session_name_with_brainstorm_mode() {
+    let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
+    let session_name = get_tmux_session_name(task_id, Some(&OpencodeMode::Brainstorm));
+
+    let expected = format!("{}e4a3e70e-brainstorm", TMUX_SESSION_PREFIX);
+    assert_eq!(session_name, expected);
+}
+
+#[test]
+fn test_tmux_session_name_with_architecture_mode() {
+    let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
+    let session_name = get_tmux_session_name(task_id, Some(&OpencodeMode::Architecture));
+
+    let expected = format!("{}e4a3e70e-arch", TMUX_SESSION_PREFIX);
+    assert_eq!(session_name, expected);
+}
+
+#[test]
+fn test_tmux_session_name_with_review_mode() {
+    let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
+    let session_name = get_tmux_session_name(task_id, Some(&OpencodeMode::Review));
+
+    let expected = format!("{}e4a3e70e-review", TMUX_SESSION_PREFIX);
+    assert_eq!(session_name, expected);
+}
+
+#[test]
+fn test_different_modes_produce_different_sessions() {
+    let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
+
+    let session_none = get_tmux_session_name(task_id, None);
+    let session_brainstorm = get_tmux_session_name(task_id, Some(&OpencodeMode::Brainstorm));
+    let session_arch = get_tmux_session_name(task_id, Some(&OpencodeMode::Architecture));
+    let session_review = get_tmux_session_name(task_id, Some(&OpencodeMode::Review));
+
+    // All four should be different
+    assert_ne!(session_none, session_brainstorm);
+    assert_ne!(session_none, session_arch);
+    assert_ne!(session_none, session_review);
+    assert_ne!(session_brainstorm, session_arch);
+    assert_ne!(session_brainstorm, session_review);
+    assert_ne!(session_arch, session_review);
+}
+
+#[test]
+fn test_same_mode_same_task_produces_same_session() {
+    let task_id = "e4a3e70e-4fe3-4c9c-a226-37c8513f5817";
+
+    let session_1 = get_tmux_session_name(task_id, Some(&OpencodeMode::Brainstorm));
+    let session_2 = get_tmux_session_name(task_id, Some(&OpencodeMode::Brainstorm));
+
+    assert_eq!(
+        session_1, session_2,
+        "Same task ID and mode should produce the same session name"
+    );
 }
 
 #[test]
@@ -299,7 +361,7 @@ fn test_task_file_path_with_spaces() {
     let task = create_test_task("id", "Task", "Description");
     let path = "/home/user/My Documents/jubby/task.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     assert!(
         prompt.contains(path),
@@ -313,7 +375,7 @@ fn test_very_long_description() {
     let task = create_test_task("id", "Task", &long_description);
     let path = "/path/to/task.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     // Should still work without panicking and contain the task text
     assert!(prompt.contains("Task"), "Prompt should contain task text");
@@ -328,7 +390,7 @@ fn test_unicode_in_task() {
     let task = create_test_task("id", "Corrigir bug", "Descricao em portugues");
     let path = "/caminho/para/tarefa.json";
 
-    let prompt = build_terminal_prompt(&task, path);
+    let prompt = build_terminal_prompt(&task, path, None);
 
     assert!(
         prompt.contains("Corrigir bug"),

@@ -57,7 +57,10 @@ interface TaskDetailActions {
 	stopLoop: () => void;
 	navigateBack: () => void;
 	generateSubtasks: (modelId: string) => Promise<GenerateSubtasksResult | null>;
-	openOpencodeTerminal: (mode?: OpencodeMode) => Promise<void>;
+	openOpencodeTerminal: (
+		mode?: OpencodeMode,
+		modelId?: string,
+	) => Promise<void>;
 }
 
 interface TaskDetailProps {
