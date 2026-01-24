@@ -735,7 +735,13 @@ pub async fn tasks_execute_subtask(
     app_handle: AppHandle,
     task_id: String,
     subtask_id: String,
+    model_id: Option<String>,
 ) -> Result<ExecutionResult, String> {
+    // Parse model_id to ModelConfig if provided
+    let model_config: Option<ModelConfig> = match &model_id {
+        Some(id) => Some(parse_model_id(id)?),
+        None => None,
+    };
     let (task, subtask, working_directory, task_file_path) = {
         let data = store.read();
         let mut task = data
@@ -808,9 +814,13 @@ pub async fn tasks_execute_subtask(
         .with("task_id", task_id.clone())
         .with("subtask_id", subtask_id.clone())
         .with("working_directory", working_directory.clone())
-        .with("task_file_path", task_file_path.clone());
+        .with("task_file_path", task_file_path.clone())
+        .with("model_id", model_id.clone().unwrap_or_else(|| "default".to_string()));
 
-    trace.info("Starting subtask execution, ensuring OpenCode server");
+    trace.info(&format!(
+        "Starting subtask execution with model: {}",
+        model_id.as_deref().unwrap_or("default")
+    ));
 
     let port = match opencode_ensure_server_with_dir(server_state, Some(working_directory.clone())).await {
         Ok(p) => p,
@@ -884,9 +894,12 @@ pub async fn tasks_execute_subtask(
         session_id, port, working_directory
     ));
 
-    trace.debug("Sending prompt to OpenCode session");
+    trace.debug(&format!(
+        "Sending prompt to OpenCode session with model: {:?}",
+        model_config
+    ));
 
-    if let Err(e) = opencode_send_prompt(port, session_id.clone(), prompt, None, None).await {
+    if let Err(e) = opencode_send_prompt(port, session_id.clone(), prompt, None, model_config).await {
         trace.error(
             "Failed to send prompt to OpenCode session",
             TraceError::new(e.clone(), "OPENCODE_SEND_PROMPT_FAILED"),
@@ -895,7 +908,11 @@ pub async fn tasks_execute_subtask(
         return Err(e);
     }
 
-    trace.info(&format!("Sent prompt to session: {}", session_id));
+    trace.info(&format!(
+        "Sent prompt to session: {} with model: {}",
+        session_id,
+        model_id.as_deref().unwrap_or("default")
+    ));
 
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(EXECUTION_TIMEOUT_SECS);
