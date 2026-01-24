@@ -2,7 +2,7 @@ use super::helpers::{
     find_folder, find_folder_mut, find_tag, find_task, with_step_mut, with_subtask_mut,
     with_tag_mut, with_task_mut,
 };
-use super::opencode::{opencode_ensure_server_with_dir, OpenCodeServersState};
+use super::opencode::{model_options, ModelOption, opencode_ensure_server_with_dir, OpenCodeServersState};
 use super::storage::{
     delete_folder_dir, delete_task_file, generate_unique_filename, generate_unique_task_filename,
     get_existing_task_filenames, get_folder_filename, get_task_filename, reload_from_disk,
@@ -396,6 +396,20 @@ pub fn tasks_get_by_folder(
     drop(trace);
 
     Ok(response)
+}
+
+#[tauri::command]
+pub fn tasks_get_model_options() -> Result<Vec<ModelOption>, String> {
+    let trace = Trace::new()
+        .with("plugin", "tasks")
+        .with("action", "tasks_get_model_options");
+    trace.info("model options requested");
+
+    let options = model_options();
+    trace.info(&format!("returning {} model options", options.len()));
+    drop(trace);
+
+    Ok(options)
 }
 
 #[tauri::command]

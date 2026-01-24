@@ -115,49 +115,46 @@ function TaskDetailHeader({
 
 				{/* Tags area - inline with title */}
 				{hasTags && (
-					<div className="relative shrink-0">
-						<button
-							type="button"
-							onClick={() => setIsEditingTags(!isEditingTags)}
-							className={cn(
-								"flex cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-1.5 py-1 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
-								isEditingTags
-									? "border-white/15 bg-white/4"
-									: "hover:border-white/10 hover:bg-white/4",
-							)}
-							aria-label="Edit tags"
-						>
-							{taskTags.length > 0 ? (
-								<div className="flex items-center gap-1">
-									{taskTags.slice(0, 3).map((tag) => (
-										<TagBadge
-											key={tag.id}
-											tag={tag}
-											isCompleted={task.status === "completed"}
-										/>
-									))}
-									{taskTags.length > 3 && (
-										<span className="text-[10px] text-white/40">
-											+{taskTags.length - 3}
-										</span>
-									)}
-								</div>
-							) : (
-								<span className="flex items-center gap-1 text-[11px] text-white/25">
-									<Tag className="h-3 w-3" />
-								</span>
-							)}
-						</button>
-
-						{isEditingTags && (
-							<TagEditorPopover
-								tags={tags}
-								selectedTagIds={task.tagIds ?? []}
-								onToggleTag={onToggleTag}
-								onClose={() => setIsEditingTags(false)}
-							/>
-						)}
-					</div>
+					<TagEditorPopover
+						tags={tags}
+						selectedTagIds={task.tagIds ?? []}
+						onToggleTag={onToggleTag}
+						open={isEditingTags}
+						onOpenChange={setIsEditingTags}
+						trigger={
+							<button
+								type="button"
+								className={cn(
+									"flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-1.5 py-1 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+									isEditingTags
+										? "border-white/15 bg-white/4"
+										: "hover:border-white/10 hover:bg-white/4",
+								)}
+								aria-label="Edit tags"
+							>
+								{taskTags.length > 0 ? (
+									<div className="flex items-center gap-1">
+										{taskTags.slice(0, 3).map((tag) => (
+											<TagBadge
+												key={tag.id}
+												tag={tag}
+												isCompleted={task.status === "completed"}
+											/>
+										))}
+										{taskTags.length > 3 && (
+											<span className="text-[10px] text-white/40">
+												+{taskTags.length - 3}
+											</span>
+										)}
+									</div>
+								) : (
+									<span className="flex items-center gap-1 text-[11px] text-white/25">
+										<Tag className="h-3 w-3" />
+									</span>
+								)}
+							</button>
+						}
+					/>
 				)}
 
 				{/* Edit button */}

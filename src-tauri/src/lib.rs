@@ -118,6 +118,7 @@ pub fn run() {
             plugins::tasks::commands::folder_reorder,
             plugins::tasks::commands::folder_update_working_directory,
             plugins::tasks::commands::tasks_get_by_folder,
+            plugins::tasks::commands::tasks_get_model_options,
             plugins::tasks::commands::tasks_create,
             plugins::tasks::commands::tasks_update_status,
             plugins::tasks::commands::tasks_update_text,

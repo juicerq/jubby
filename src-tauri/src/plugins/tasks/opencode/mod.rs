@@ -29,6 +29,13 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_PROVIDER_ID: &str = "anthropic";
 const DEFAULT_MODEL_ID: &str = "claude-opus-4-5";
 
+const MODEL_OPTIONS: [(&str, &str); 4] = [
+    ("openai/gpt-5.2-codex", "GPT-5.2 Codex"),
+    ("anthropic/claude-opus-4-5", "Opus 4.5"),
+    ("anthropic/claude-sonnet-4-5", "Sonnet 4.5"),
+    ("anthropic/claude-haiku-4-5", "Haiku 4.5"),
+];
+
 // Permissions - allow external_directory to avoid permission prompts during subtask execution
 const OPENCODE_PERMISSIONS: &str = r#"{"external_directory":"allow","edit":"allow","bash":"allow","task":"allow"}"#;
 
@@ -97,6 +104,13 @@ pub struct ModelConfig {
     pub model_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOption {
+    pub id: String,
+    pub label: String,
+}
+
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
@@ -104,6 +118,16 @@ impl Default for ModelConfig {
             model_id: DEFAULT_MODEL_ID.to_string(),
         }
     }
+}
+
+pub fn model_options() -> Vec<ModelOption> {
+    MODEL_OPTIONS
+        .iter()
+        .map(|(id, label)| ModelOption {
+            id: (*id).to_string(),
+            label: (*label).to_string(),
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1214,25 +1238,23 @@ This marker signals that you are truly done. Do NOT include this marker if you s
 }
 
 fn parse_model_id(model_id: &str) -> Result<ModelConfig, String> {
-    match model_id {
-        "anthropic/claude-opus-4-5" => Ok(ModelConfig {
-            provider_id: "anthropic".to_string(),
-            model_id: "claude-opus-4-5".to_string(),
-        }),
-        "anthropic/claude-sonnet-4-5" => Ok(ModelConfig {
-            provider_id: "anthropic".to_string(),
-            model_id: "claude-sonnet-4-5".to_string(),
-        }),
-        "anthropic/claude-haiku-4-5" => Ok(ModelConfig {
-            provider_id: "anthropic".to_string(),
-            model_id: "claude-haiku-4-5".to_string(),
-        }),
-        "openai/gpt-5.2-codex" => Ok(ModelConfig {
-            provider_id: "openai".to_string(),
-            model_id: "gpt-5.2-codex".to_string(),
-        }),
-        _ => Err(format!("Invalid model ID: {}", model_id)),
-    }
+	let is_valid = MODEL_OPTIONS.iter().any(|(id, _)| *id == model_id);
+	if !is_valid {
+		return Err(format!("Invalid model ID: {}", model_id));
+	}
+
+	let mut parts = model_id.splitn(2, '/');
+	let provider_id = parts.next().unwrap_or_default();
+	let model_name = parts.next().unwrap_or_default();
+
+	if provider_id.is_empty() || model_name.is_empty() {
+		return Err(format!("Invalid model ID: {}", model_id));
+	}
+
+	Ok(ModelConfig {
+		provider_id: provider_id.to_string(),
+		model_id: model_name.to_string(),
+	})
 }
 
 #[tauri::command]

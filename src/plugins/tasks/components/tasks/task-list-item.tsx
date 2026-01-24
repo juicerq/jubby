@@ -56,11 +56,11 @@ function TaskListItem({
 				}
 			}}
 		>
-			<div className="flex items-start gap-3">
+			<div className="flex items-center gap-3">
 				<button
 					type="button"
 					className={cn(
-						"mt-0.5 flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]",
+						"flex h-[18px] w-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-150 ease-out active:scale-[0.92]",
 						"active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
 						task.status === "completed" &&
 							"border-white/90 bg-white/90 hover:border-white/75 hover:bg-white/75",
@@ -89,78 +89,66 @@ function TaskListItem({
 					)}
 				</button>
 
-				<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-					<div className="flex items-center gap-2">
-						<span
-							className={cn(
-								"flex-1 text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out",
-								task.status === "completed" &&
-									"text-white/35 line-through decoration-white/25",
-								task.status === "in_progress" && "text-amber-200/90",
-								task.status === "pending" && "text-white/90",
-							)}
-						>
-							{task.text}
-						</span>
-
-						{hasSubtasks && (
-							<TaskProgressBadge
-								completed={completedCount}
-								total={totalCount}
-							/>
+				<div className="flex min-w-0 flex-1 items-center gap-2">
+					<span
+						className={cn(
+							"truncate text-[13px] font-normal leading-[1.4] tracking-[-0.01em] transition-all duration-150 ease-out",
+							task.status === "completed" &&
+								"text-white/35 line-through decoration-white/25",
+							task.status === "in_progress" && "text-amber-200/90",
+							task.status === "pending" && "text-white/90",
 						)}
-					</div>
+					>
+						{task.text}
+					</span>
 
 					{hasTags && (
-						<div className="relative">
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									if (isEditingTags) {
-										onCloseTagEditor();
-									} else {
-										onEditTags();
-									}
-								}}
-								className={`flex flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
-									isEditingTags
-										? "border-white/15 bg-white/4"
-										: "hover:border-white/10 hover:bg-white/4"
-								}`}
-								aria-label="Edit tags"
-							>
-								{taskTags.length > 0 ? (
-									taskTags.map((tag) => (
-										<TagBadge
-											key={tag.id}
-											tag={tag}
-											isCompleted={task.status === "completed"}
-										/>
-									))
-								) : (
-									<span className="px-1 text-[11px] text-white/25">
-										+ Add tags
-									</span>
-								)}
-							</button>
-
-							{isEditingTags && (
-								<TagEditorPopover
-									tags={tags}
-									selectedTagIds={task.tagIds ?? []}
-									onToggleTag={onToggleTag}
-									onClose={onCloseTagEditor}
-								/>
-							)}
-						</div>
+						<TagEditorPopover
+							tags={tags}
+							selectedTagIds={task.tagIds ?? []}
+							onToggleTag={onToggleTag}
+							open={isEditingTags}
+							onOpenChange={(open) => (open ? onEditTags() : onCloseTagEditor())}
+							trigger={
+								<button
+									type="button"
+									onClick={(e) => e.stopPropagation()}
+									className={cn(
+										"flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+										isEditingTags
+											? "border-white/15 bg-white/4"
+											: "hover:border-white/10 hover:bg-white/4",
+									)}
+									aria-label="Edit tags"
+								>
+									{taskTags.length > 0 ? (
+										taskTags.map((tag) => (
+											<TagBadge
+												key={tag.id}
+												tag={tag}
+												isCompleted={task.status === "completed"}
+											/>
+										))
+									) : (
+										<span className="text-[11px] text-white/25">+ Add tags</span>
+									)}
+								</button>
+							}
+						/>
 					)}
 				</div>
+
+				{hasSubtasks && (
+					<TaskProgressBadge
+						completed={completedCount}
+						total={totalCount}
+					/>
+				)}
 
 				<button
 					type="button"
 					className={cn(
-						"mt-0.5 group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent transition-all duration-150 ease-out active:scale-90 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+						"group/delete flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent transition-all duration-150 ease-out active:scale-90 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
 						isPendingDelete
 							? "bg-red-500/20 opacity-100 hover:bg-red-500/30"
 							: "opacity-0 hover:bg-red-500/15 group-hover/task:opacity-100",

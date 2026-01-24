@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
 import { LauncherShell } from '@/core/components/LauncherShell'
-import { useDragWindow } from '@/core/hooks/useDragWindow'
 import { PluginGrid } from '@/core/components/PluginGrid'
 import { ViewTransition } from '@/core/components/ViewTransition'
 import { PluginErrorBoundary } from '@/core/components/PluginErrorBoundary'
@@ -18,7 +17,6 @@ type View =
 function App() {
   const [view, setView] = useState<View>({ type: 'grid' })
 
-  useDragWindow()
 
   const goToGrid = useCallback(() => setView({ type: 'grid' }), [])
   const goToPlugin = useCallback((plugin: PluginManifest) => setView({ type: 'plugin', plugin }), [])

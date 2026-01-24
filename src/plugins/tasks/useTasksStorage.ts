@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createLogger } from "@/lib/logger";
 import { createTrace, tracedInvoke } from "@/lib/trace";
+import type { ModelOption } from "./constants";
 import type {
 	ExecutionLog,
 	ExecutionOutcome,
@@ -173,6 +174,7 @@ interface UseTasksStorageReturn {
 	tasks: Task[];
 	tags: Tag[];
 	isLoading: boolean;
+	modelOptions: ModelOption[];
 
 	// Execution state (per-directory)
 	executingByDirectory: Map<string, ExecutingState>;
@@ -422,6 +424,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	const [tasks, setTasks] = useState<Task[]>([]);
 	const [tags, setTags] = useState<Tag[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
+	const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
 
 	// Per-directory execution state
 	const [executingByDirectory, setExecutingByDirectory] = useState<
@@ -517,6 +520,18 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[folderId],
 	);
 
+	const fetchModelOptions = useCallback(async () => {
+		try {
+			const options = await invoke<ModelOption[]>("tasks_get_model_options");
+			setModelOptions(options);
+		} catch (error) {
+			logger.error("Failed to load model options", {
+				error: String(error),
+			});
+			toast.error("Failed to load model options");
+		}
+	}, []);
+
 	const reloadTasks = useCallback(
 		async (options?: ReloadOptions) => {
 			try {
@@ -542,6 +557,10 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 
 		loadData();
 	}, [fetchTasks]);
+
+	useEffect(() => {
+		fetchModelOptions();
+	}, [fetchModelOptions]);
 
 	const createTask = useCallback(
 		async (
@@ -1686,6 +1705,7 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		tasks,
 		tags,
 		isLoading,
+		modelOptions,
 		// Per-directory execution state
 		executingByDirectory,
 		isExecutingInDirectory,

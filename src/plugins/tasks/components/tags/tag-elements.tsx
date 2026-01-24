@@ -1,7 +1,10 @@
 import { Check, Tag, X } from "lucide-react";
-import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { useClickOutside } from "../../hooks/use-click-outside";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import type { Tag as TagType } from "../../types";
 
 interface TagBadgeProps {
@@ -99,68 +102,73 @@ interface TagEditorPopoverProps {
 	tags: TagType[];
 	selectedTagIds: string[];
 	onToggleTag: (tagId: string) => void;
-	onClose: () => void;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	trigger: React.ReactNode;
 }
 
 function TagEditorPopover({
 	tags,
 	selectedTagIds,
 	onToggleTag,
-	onClose,
+	open,
+	onOpenChange,
+	trigger,
 }: TagEditorPopoverProps) {
-	const popoverRef = useRef<HTMLDivElement>(null);
-
-	useClickOutside(popoverRef, onClose);
-
 	return (
-		<div
-			ref={popoverRef}
-			className="absolute left-0 top-full z-10 mt-1 flex w-[280px] flex-col rounded-lg border border-white/10 bg-[#0a0a0a] shadow-lg"
-			onClick={(e) => e.stopPropagation()}
-		>
-			<div className="flex items-center justify-between border-b border-white/10 px-2.5 py-1.5">
-				<span className="text-[11px] font-medium text-white/50">Tags</span>
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						onClose();
-					}}
-					className="flex h-5 w-5 cursor-pointer items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-					aria-label="Close"
-				>
-					<X className="h-3 w-3" />
-				</button>
-			</div>
+		<Popover open={open} onOpenChange={onOpenChange}>
+			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				sideOffset={4}
+				collisionPadding={8}
+				className="w-[280px] p-0"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="flex items-center justify-between border-b border-white/10 px-2.5 py-1.5">
+					<span className="text-[11px] font-medium text-white/50">Tags</span>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onOpenChange(false);
+						}}
+						className="flex h-5 w-5 cursor-pointer items-center justify-center rounded text-white/40 transition-colors hover:bg-white/10 hover:text-white/70 border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+						aria-label="Close"
+					>
+						<X className="h-3 w-3" />
+					</button>
+				</div>
 
-			<div className="grid grid-cols-3 gap-1.5 p-2">
-				{tags.map((tag) => {
-					const isSelected = selectedTagIds.includes(tag.id);
+				<div className="grid grid-cols-3 gap-1.5 p-2">
+					{tags.map((tag) => {
+						const isSelected = selectedTagIds.includes(tag.id);
 
-					return (
-						<button
-							key={tag.id}
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								onToggleTag(tag.id);
-							}}
-							className={`flex cursor-pointer items-center justify-center gap-1 truncate rounded px-2 py-1.5 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
-								isSelected ? "ring-1 ring-white/30" : ""
-							}`}
-							style={{
-								backgroundColor: `${tag.color}${isSelected ? "40" : "20"}`,
-								color: tag.color,
-							}}
-							title={isSelected ? `Remove ${tag.name}` : `Add ${tag.name}`}
-						>
-							{isSelected && <Check className="h-3 w-3 shrink-0" />}
-							<span className="truncate">{tag.name}</span>
-						</button>
-					);
-				})}
-			</div>
-		</div>
+						return (
+							<button
+								key={tag.id}
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									onToggleTag(tag.id);
+								}}
+								className={`flex cursor-pointer items-center justify-center gap-1 truncate rounded px-2 py-1.5 text-[11px] font-medium tracking-[-0.01em] transition-all duration-150 ease-out hover:opacity-80 active:scale-[0.96] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)] ${
+									isSelected ? "ring-1 ring-white/30" : ""
+								}`}
+								style={{
+									backgroundColor: `${tag.color}${isSelected ? "40" : "20"}`,
+									color: tag.color,
+								}}
+								title={isSelected ? `Remove ${tag.name}` : `Add ${tag.name}`}
+							>
+								{isSelected && <Check className="h-3 w-3 shrink-0" />}
+								<span className="truncate">{tag.name}</span>
+							</button>
+						);
+					})}
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }
 

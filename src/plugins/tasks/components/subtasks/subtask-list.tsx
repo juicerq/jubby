@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ModelOption } from "../../constants";
 import type { Subtask, SubtaskCategory, SubtaskStatus } from "../../types";
 import { usePendingDelete } from "../../useTasksStorage";
 import { SubtaskGhost } from "./subtask-ghost";
@@ -8,6 +9,7 @@ import { SubtaskItem } from "./subtask-item";
 interface SubtaskListProps {
 	subtasks: Subtask[];
 	workingDirectory: string;
+	modelOptions: ModelOption[];
 	onUpdateSubtaskStatus: (subtaskId: string, status: SubtaskStatus) => void;
 	onDeleteSubtask: (subtaskId: string) => void;
 	onReorderSubtasks: (subtaskIds: string[]) => void;
@@ -35,6 +37,7 @@ interface SubtaskListProps {
 function SubtaskList({
 	subtasks,
 	workingDirectory,
+	modelOptions,
 	onUpdateSubtaskStatus,
 	onDeleteSubtask,
 	onReorderSubtasks,
@@ -295,6 +298,7 @@ function SubtaskList({
 							<SubtaskItem
 								subtask={item.subtask}
 								workingDirectory={workingDirectory}
+								modelOptions={modelOptions}
 								onUpdateStatus={(status) =>
 									onUpdateSubtaskStatus(item.subtask.id, status)
 								}

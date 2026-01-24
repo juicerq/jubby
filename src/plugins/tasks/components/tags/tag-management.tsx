@@ -7,55 +7,72 @@ import {
 	useState,
 } from "react";
 import { cn } from "@/lib/utils";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { TAG_COLORS } from "../../constants";
-import { useClickOutside } from "../../hooks/use-click-outside";
 import type { Tag as TagType } from "../../types";
 import { usePendingDelete } from "../../useTasksStorage";
 
-interface TagColorPickerDropdownProps {
+interface TagColorPickerProps {
 	selectedColor: string;
 	onSelectColor: (color: string) => void;
-	onClose: () => void;
+	trigger: React.ReactNode;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }
 
-function TagColorPickerDropdown({
+function TagColorPicker({
 	selectedColor,
 	onSelectColor,
-	onClose,
-}: TagColorPickerDropdownProps) {
-	const dropdownRef = useRef<HTMLDivElement>(null);
+	trigger,
+	open: controlledOpen,
+	onOpenChange,
+}: TagColorPickerProps) {
+	const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
 
-	useClickOutside(dropdownRef, onClose);
+	const isOpen = controlledOpen ?? uncontrolledOpen;
+	const setIsOpen = onOpenChange ?? setUncontrolledOpen;
 
 	return (
-		<div
-			ref={dropdownRef}
-			className="absolute left-0 top-full z-50 mt-1 w-max rounded-lg border border-white/10 bg-[#0a0a0a] p-2 shadow-lg"
-			onClick={(e) => e.stopPropagation()}
-		>
-			<div className="grid grid-cols-4 gap-1">
-				{TAG_COLORS.map((color) => (
-					<button
-						key={color.hex}
-						type="button"
-						onClick={() => onSelectColor(color.hex)}
-						className={cn(
-							"flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border transition-all duration-150 ease-out hover:scale-110",
-							selectedColor === color.hex
-								? "border-white/40"
-								: "border-transparent hover:border-white/20",
-						)}
-						aria-label={color.name}
-						title={color.name}
-					>
-						<span
-							className="h-3.5 w-3.5 rounded-full"
-							style={{ backgroundColor: color.hex }}
-						/>
-					</button>
-				))}
-			</div>
-		</div>
+		<Popover open={isOpen} onOpenChange={setIsOpen}>
+			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				sideOffset={4}
+				collisionPadding={8}
+				className="w-max p-2"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="grid grid-cols-4 gap-1">
+					{TAG_COLORS.map((color) => (
+						<button
+							key={color.hex}
+							type="button"
+							onClick={() => {
+								onSelectColor(color.hex);
+								setIsOpen(false);
+							}}
+							className={cn(
+								"flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border transition-all duration-150 ease-out hover:scale-110",
+								selectedColor === color.hex
+									? "border-white/40"
+									: "border-transparent hover:border-white/20",
+							)}
+							aria-label={color.name}
+							title={color.name}
+						>
+							<span
+								className="h-3.5 w-3.5 rounded-full"
+								style={{ backgroundColor: color.hex }}
+							/>
+						</button>
+					))}
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }
 
@@ -66,7 +83,6 @@ interface TagCreateRowProps {
 function TagCreateRow({ onCreateTag }: TagCreateRowProps) {
 	const [name, setName] = useState("");
 	const [selectedColor, setSelectedColor] = useState<string>(TAG_COLORS[0].hex);
-	const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
 
 	const handleSubmit = async () => {
 		if (!name.trim()) return;
@@ -86,30 +102,22 @@ function TagCreateRow({ onCreateTag }: TagCreateRowProps) {
 
 	return (
 		<div className="flex items-center gap-2">
-			<div className="relative">
-				<button
-					type="button"
-					onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
-					className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-transparent bg-white/4 transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
-					aria-label="Select color"
-				>
-					<span
-						className="h-4 w-4 rounded-full"
-						style={{ backgroundColor: selectedColor }}
-					/>
-				</button>
-
-				{isColorPickerOpen && (
-					<TagColorPickerDropdown
-						selectedColor={selectedColor}
-						onSelectColor={(color) => {
-							setSelectedColor(color);
-							setIsColorPickerOpen(false);
-						}}
-						onClose={() => setIsColorPickerOpen(false)}
-					/>
-				)}
-			</div>
+			<TagColorPicker
+				selectedColor={selectedColor}
+				onSelectColor={setSelectedColor}
+				trigger={
+					<button
+						type="button"
+						className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-transparent bg-white/4 transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]"
+						aria-label="Select color"
+					>
+						<span
+							className="h-4 w-4 rounded-full"
+							style={{ backgroundColor: selectedColor }}
+						/>
+					</button>
+				}
+			/>
 
 			<input
 				type="text"
@@ -150,7 +158,6 @@ function TagManageRow({
 }: TagManageRowProps) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [editName, setEditName] = useState(tag.name);
-	const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
 	const { pendingId, handleDeleteClick, cancelDelete } =
 		usePendingDelete(onDeleteTag);
 	const isPendingDelete = pendingId === tag.id;
@@ -214,7 +221,6 @@ function TagManageRow({
 	}, [isEditing, saveEdit]);
 
 	const handleColorSelect = async (color: string) => {
-		setIsColorPickerOpen(false);
 		await onUpdateTag(tag.id, tag.name, color);
 	};
 
@@ -223,27 +229,22 @@ function TagManageRow({
 			ref={rowRef}
 			className="group flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/4"
 		>
-			<div className="relative">
-				<button
-					type="button"
-					onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
-					className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-transparent transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15"
-					aria-label="Change color"
-				>
-					<span
-						className="h-3 w-3 rounded-full"
-						style={{ backgroundColor: tag.color }}
-					/>
-				</button>
-
-				{isColorPickerOpen && (
-					<TagColorPickerDropdown
-						selectedColor={tag.color}
-						onSelectColor={handleColorSelect}
-						onClose={() => setIsColorPickerOpen(false)}
-					/>
-				)}
-			</div>
+			<TagColorPicker
+				selectedColor={tag.color}
+				onSelectColor={handleColorSelect}
+				trigger={
+					<button
+						type="button"
+						className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-transparent transition-all duration-150 ease-out hover:bg-white/8 active:border-white/15"
+						aria-label="Change color"
+					>
+						<span
+							className="h-3 w-3 rounded-full"
+							style={{ backgroundColor: tag.color }}
+						/>
+					</button>
+				}
+			/>
 
 			{isEditing ? (
 				<>
@@ -322,9 +323,9 @@ function TagManageRow({
 	);
 }
 
-export { TagColorPickerDropdown, TagCreateRow, TagManageRow };
+export { TagColorPicker, TagCreateRow, TagManageRow };
 export type {
-	TagColorPickerDropdownProps,
+	TagColorPickerProps,
 	TagCreateRowProps,
 	TagManageRowProps,
 };

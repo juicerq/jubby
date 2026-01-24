@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
+import type { ModelOption } from "../../constants";
 import type {
 	OpencodeMode,
 	SubtaskCategory,
@@ -62,6 +63,7 @@ interface TaskDetailActions {
 interface TaskDetailProps {
 	task: Task;
 	tags: TagType[];
+	modelOptions: ModelOption[];
 	actions: TaskDetailActions;
 	isExecutingInDirectory: (directory: string) => boolean;
 	executingSubtaskId: string | null;
@@ -72,6 +74,7 @@ interface TaskDetailProps {
 function TaskDetail({
 	task,
 	tags,
+	modelOptions,
 	actions,
 	isExecutingInDirectory,
 	executingSubtaskId,
@@ -151,6 +154,7 @@ function TaskDetail({
 					right={
 						<SubtaskHeaderActions
 							task={task}
+							modelOptions={modelOptions}
 							isLooping={isLooping}
 							isExecuting={isExecuting}
 							isGenerating={isTaskGenerating(task.id)}
@@ -170,6 +174,7 @@ function TaskDetail({
 					<SubtaskList
 						subtasks={task.subtasks}
 						workingDirectory={task.workingDirectory ?? ""}
+						modelOptions={modelOptions}
 						onUpdateSubtaskStatus={actions.updateSubtaskStatus}
 						onDeleteSubtask={actions.deleteSubtask}
 						onReorderSubtasks={actions.reorderSubtasks}

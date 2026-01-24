@@ -1,9 +1,8 @@
-import { Plus, Settings } from "lucide-react";
+import { Plus } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useState } from "react";
 import { Breadcrumb } from "@/core/components/Breadcrumb";
 import { useNavigationLevels } from "@/core/hooks";
 import type { PluginProps } from "@/core/types";
-import { cn } from "@/lib/utils";
 import { FolderEmptyState } from "./components/folders/folder-empty-state";
 import { FolderInput } from "./components/folders/folder-input";
 import { FolderList } from "./components/folders/folder-list";
@@ -57,6 +56,7 @@ function TasksPlugin(_props: PluginProps) {
 		tasks,
 		tags,
 		isLoading: tasksLoading,
+		modelOptions,
 		isExecutingInDirectory,
 		executingSubtaskId,
 		reloadTasks,
@@ -193,12 +193,10 @@ function TasksPlugin(_props: PluginProps) {
 	const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
 
-	const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
 	const [isRenamingFolder, setIsRenamingFolder] = useState(false);
 	const [renameFolderValue, setRenameFolderValue] = useState("");
 	const [isDeletingFolder, setIsDeletingFolder] = useState(false);
 
-	const [isTaskSettingsMenuOpen, setIsTaskSettingsMenuOpen] = useState(false);
 	const [isManageTagsOpen, setIsManageTagsOpen] = useState(false);
 
 	const handleNavigateToFolder = (folderId: string) => {
@@ -242,7 +240,6 @@ function TasksPlugin(_props: PluginProps) {
 	const handleStartRenameFolder = () => {
 		setRenameFolderValue(currentFolder?.name ?? "");
 		setIsRenamingFolder(true);
-		setIsSettingsMenuOpen(false);
 	};
 
 	const handleRenameFolder = async () => {
@@ -263,7 +260,6 @@ function TasksPlugin(_props: PluginProps) {
 
 	const handleStartDeleteFolder = () => {
 		setIsDeletingFolder(true);
-		setIsSettingsMenuOpen(false);
 	};
 
 	const handleConfirmDeleteFolder = async () => {
@@ -348,33 +344,17 @@ function TasksPlugin(_props: PluginProps) {
 		) : undefined;
 
 	const folderSettingsButton =
-		view === "list" ? (
-			<div className="relative">
-				<button
-					type="button"
-					onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
-					className={cn(
-						"flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
-						isSettingsMenuOpen && "bg-white/6 text-white/90",
-					)}
-					aria-label="Folder settings"
-				>
-					<Settings size={16} />
-				</button>
-				{isSettingsMenuOpen && currentFolder && (
-					<FolderSettingsMenu
-						onRename={handleStartRenameFolder}
-						onDelete={handleStartDeleteFolder}
-						onClose={() => setIsSettingsMenuOpen(false)}
-						taskCount={currentFolder.taskCount}
-						tagCount={tags.length}
-						workingDirectory={currentFolder.workingDirectory}
-						onUpdateWorkingDirectory={(path) =>
-							updateFolderWorkingDirectory(currentFolder.id, path)
-						}
-					/>
-				)}
-			</div>
+		view === "list" && currentFolder ? (
+			<FolderSettingsMenu
+				onRename={handleStartRenameFolder}
+				onDelete={handleStartDeleteFolder}
+				taskCount={currentFolder.taskCount}
+				tagCount={tags.length}
+				workingDirectory={currentFolder.workingDirectory}
+				onUpdateWorkingDirectory={(path) =>
+					updateFolderWorkingDirectory(currentFolder.id, path)
+				}
+			/>
 		) : undefined;
 
 	if (view === "folders") {
@@ -410,28 +390,12 @@ function TasksPlugin(_props: PluginProps) {
 
 	const taskSettingsButton = currentTask ? (
 		<div className="flex items-center gap-2">
-			<div className="relative">
-				<button
-					type="button"
-					onClick={() => setIsTaskSettingsMenuOpen(!isTaskSettingsMenuOpen)}
-					className={cn(
-						"flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/50 transition-all duration-150 ease-out hover:bg-white/6 hover:text-white/90 active:scale-[0.92] border border-transparent active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
-						isTaskSettingsMenuOpen && "bg-white/6 text-white/90",
-					)}
-					aria-label="Task settings"
-				>
-					<Settings size={16} />
-				</button>
-				{isTaskSettingsMenuOpen && (
-					<TaskSettingsMenu
-						workingDirectory={currentTask.workingDirectory ?? ""}
-						onUpdateWorkingDirectory={(path) =>
-							updateTaskWorkingDirectory(currentTask.id, path)
-						}
-						onClose={() => setIsTaskSettingsMenuOpen(false)}
-					/>
-				)}
-			</div>
+			<TaskSettingsMenu
+				workingDirectory={currentTask.workingDirectory ?? ""}
+				onUpdateWorkingDirectory={(path) =>
+					updateTaskWorkingDirectory(currentTask.id, path)
+				}
+			/>
 		</div>
 	) : null;
 
@@ -485,6 +449,7 @@ function TasksPlugin(_props: PluginProps) {
 				<TaskDetail
 					task={currentTask}
 					tags={tags}
+					modelOptions={modelOptions}
 					actions={taskActions}
 					isExecutingInDirectory={isExecutingInDirectory}
 					executingSubtaskId={executingSubtaskId}
@@ -503,7 +468,6 @@ function TasksPlugin(_props: PluginProps) {
 				onClick={() => {
 					handleCancelDelete();
 					setEditingTagsTaskId(null);
-					setIsSettingsMenuOpen(false);
 				}}
 			>
 				<TaskInputArea

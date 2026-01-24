@@ -105,39 +105,38 @@ function TaskInfoCard({
 			</div>
 
 			{hasTags && (
-				<div className="relative ml-[30px]">
-					<button
-						type="button"
-						onClick={() => setIsEditingTags(!isEditingTags)}
-						className={cn(
-							"flex cursor-pointer flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
-							isEditingTags
-								? "border-white/15 bg-white/4"
-								: "hover:border-white/10 hover:bg-white/4",
-						)}
-						aria-label="Edit tags"
-					>
-						{taskTags.length > 0 ? (
-							taskTags.map((tag) => (
-								<TagBadge
-									key={tag.id}
-									tag={tag}
-									isCompleted={task.status === "completed"}
-								/>
-							))
-						) : (
-							<span className="px-1 text-[11px] text-white/25">+ Add tags</span>
-						)}
-					</button>
-
-					{isEditingTags && (
-						<TagEditorPopover
-							tags={tags}
-							selectedTagIds={task.tagIds ?? []}
-							onToggleTag={onToggleTag}
-							onClose={() => setIsEditingTags(false)}
-						/>
-					)}
+				<div className="ml-[30px]">
+					<TagEditorPopover
+						tags={tags}
+						selectedTagIds={task.tagIds ?? []}
+						onToggleTag={onToggleTag}
+						open={isEditingTags}
+						onOpenChange={setIsEditingTags}
+						trigger={
+							<button
+								type="button"
+								className={cn(
+									"flex max-w-fit cursor-pointer flex-wrap items-center gap-1 rounded-md border border-transparent p-0.5 -m-0.5 transition-all duration-150 ease-out active:border-white/15 active:shadow-[0_0_0_3px_rgba(255,255,255,0.04)]",
+									isEditingTags
+										? "border-white/15 bg-white/4"
+										: "hover:border-white/10 hover:bg-white/4",
+								)}
+								aria-label="Edit tags"
+							>
+								{taskTags.length > 0 ? (
+									taskTags.map((tag) => (
+										<TagBadge
+											key={tag.id}
+											tag={tag}
+											isCompleted={task.status === "completed"}
+										/>
+									))
+								) : (
+									<span className="px-1 text-[11px] text-white/25">+ Add tags</span>
+								)}
+							</button>
+						}
+					/>
 				</div>
 			)}
 		</div>

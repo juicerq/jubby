@@ -2,6 +2,7 @@ import { Check, GripVertical, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import type { ModelOption } from "../../constants";
 import type {
 	Step,
 	Subtask,
@@ -17,6 +18,7 @@ import { SubtaskSteps } from "./subtask-steps";
 interface SubtaskItemProps {
 	subtask: Subtask;
 	workingDirectory: string;
+	modelOptions: ModelOption[];
 	onUpdateStatus: (status: SubtaskStatus) => void;
 	onDeleteClick: () => void;
 	isPendingDelete: boolean;
@@ -42,6 +44,7 @@ interface SubtaskItemProps {
 function SubtaskItem({
 	subtask,
 	workingDirectory,
+	modelOptions,
 	onUpdateStatus,
 	onDeleteClick,
 	isPendingDelete,
@@ -257,6 +260,7 @@ function SubtaskItem({
 
 				<SubtaskActionsMenu
 					workingDirectory={workingDirectory}
+					modelOptions={modelOptions}
 					isThisExecuting={isThisExecuting}
 					isExecuting={isExecuting}
 					isPendingDelete={isPendingDelete}
