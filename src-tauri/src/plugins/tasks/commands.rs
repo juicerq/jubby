@@ -968,6 +968,8 @@ pub fn subtasks_reorder(
                 subtask.order = index as u32;
             }
         }
+        // Sort subtasks by order field to ensure JSON persistence order matches logical order
+        task.subtasks.sort_by_key(|s| s.order);
         Ok(())
     });
 
