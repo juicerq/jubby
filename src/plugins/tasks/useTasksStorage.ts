@@ -22,6 +22,19 @@ import type {
 const PENDING_DELETE_TIMEOUT_MS = 1500;
 const logger = createLogger("tasks");
 
+/**
+ * Represents the execution state for a specific working directory.
+ * Used to track concurrent task executions across different directories.
+ */
+export interface ExecutingState {
+	/** Whether a subtask is currently executing in this directory */
+	isExecuting: boolean;
+	/** ID of the currently executing subtask, null if not executing */
+	subtaskId: string | null;
+	/** Session ID for the current OpenCode session, null if not executing */
+	sessionId: string | null;
+}
+
 interface ReloadOptions {
 	forceReload?: boolean;
 }
@@ -161,7 +174,13 @@ interface UseTasksStorageReturn {
 	tags: Tag[];
 	isLoading: boolean;
 
-	// Execution state
+	// Execution state (per-directory)
+	executingByDirectory: Map<string, ExecutingState>;
+	isExecutingInDirectory: (directory: string) => boolean;
+	setExecutingInDirectory: (directory: string, state: ExecutingState) => void;
+	clearExecutingInDirectory: (directory: string) => void;
+
+	// Legacy execution state (TODO: remove after subtask 9)
 	isExecuting: boolean;
 	executingSubtaskId: string | null;
 	currentSessionId: string | null;
@@ -400,6 +419,13 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 	const [tags, setTags] = useState<Tag[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 
+	// Per-directory execution state
+	const [executingByDirectory, setExecutingByDirectory] = useState<
+		Map<string, ExecutingState>
+	>(new Map());
+
+	// Legacy single-value state for backward compatibility during migration
+	// TODO: Remove after subtask 9 (Update executeSubtask function)
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [executingSubtaskId, setExecutingSubtaskId] = useState<string | null>(
 		null,
@@ -408,6 +434,34 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 
 	const [isLooping, setIsLooping] = useState(false);
 	const loopAbortedRef = useRef(false);
+
+	// Helper functions for per-directory execution state management
+	const isExecutingInDirectory = useCallback(
+		(directory: string): boolean => {
+			const state = executingByDirectory.get(directory);
+			return state?.isExecuting ?? false;
+		},
+		[executingByDirectory],
+	);
+
+	const setExecutingInDirectory = useCallback(
+		(directory: string, state: ExecutingState): void => {
+			setExecutingByDirectory((prev) => {
+				const next = new Map(prev);
+				next.set(directory, state);
+				return next;
+			});
+		},
+		[],
+	);
+
+	const clearExecutingInDirectory = useCallback((directory: string): void => {
+		setExecutingByDirectory((prev) => {
+			const next = new Map(prev);
+			next.delete(directory);
+			return next;
+		});
+	}, []);
 	const [generatingTaskIds, setGeneratingTaskIds] = useState<Set<string>>(
 		new Set(),
 	);
@@ -1484,6 +1538,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		tasks,
 		tags,
 		isLoading,
+		// Per-directory execution state
+		executingByDirectory,
+		isExecutingInDirectory,
+		setExecutingInDirectory,
+		clearExecutingInDirectory,
+		// Legacy execution state
 		isExecuting,
 		executingSubtaskId,
 		currentSessionId: currentSessionIdRef.current,
