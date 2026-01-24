@@ -7,6 +7,7 @@ import { SubtaskItem } from "./subtask-item";
 
 interface SubtaskListProps {
 	subtasks: Subtask[];
+	workingDirectory: string;
 	onUpdateSubtaskStatus: (subtaskId: string, status: SubtaskStatus) => void;
 	onDeleteSubtask: (subtaskId: string) => void;
 	onReorderSubtasks: (subtaskIds: string[]) => void;
@@ -33,6 +34,7 @@ interface SubtaskListProps {
 
 function SubtaskList({
 	subtasks,
+	workingDirectory,
 	onUpdateSubtaskStatus,
 	onDeleteSubtask,
 	onReorderSubtasks,
@@ -292,6 +294,7 @@ function SubtaskList({
 						>
 							<SubtaskItem
 								subtask={item.subtask}
+								workingDirectory={workingDirectory}
 								onUpdateStatus={(status) =>
 									onUpdateSubtaskStatus(item.subtask.id, status)
 								}

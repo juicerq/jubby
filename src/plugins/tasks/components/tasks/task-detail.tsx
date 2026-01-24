@@ -164,6 +164,7 @@ function TaskDetail({
 					<SubtaskInput onCreateSubtask={actions.createSubtask} />
 					<SubtaskList
 						subtasks={task.subtasks}
+						workingDirectory={task.workingDirectory ?? ""}
 						onUpdateSubtaskStatus={actions.updateSubtaskStatus}
 						onDeleteSubtask={actions.deleteSubtask}
 						onReorderSubtasks={actions.reorderSubtasks}

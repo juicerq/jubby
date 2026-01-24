@@ -16,6 +16,7 @@ import { SubtaskSteps } from "./subtask-steps";
 
 interface SubtaskItemProps {
 	subtask: Subtask;
+	workingDirectory: string;
 	onUpdateStatus: (status: SubtaskStatus) => void;
 	onDeleteClick: () => void;
 	isPendingDelete: boolean;
@@ -40,6 +41,7 @@ interface SubtaskItemProps {
 
 function SubtaskItem({
 	subtask,
+	workingDirectory,
 	onUpdateStatus,
 	onDeleteClick,
 	isPendingDelete,
@@ -254,6 +256,7 @@ function SubtaskItem({
 				<SubtaskStatusBadge status={subtask.status} />
 
 				<SubtaskActionsMenu
+					workingDirectory={workingDirectory}
 					isThisExecuting={isThisExecuting}
 					isExecuting={isExecuting}
 					isPendingDelete={isPendingDelete}

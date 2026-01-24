@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useClickOutside } from "../../hooks/use-click-outside";
 
 interface SubtaskActionsMenuProps {
+	workingDirectory: string;
 	isThisExecuting: boolean;
 	isExecuting: boolean;
 	isPendingDelete: boolean;
@@ -25,6 +26,7 @@ interface SubtaskActionsMenuProps {
 }
 
 function SubtaskActionsMenu({
+	workingDirectory: _workingDirectory,
 	isThisExecuting,
 	isExecuting,
 	isPendingDelete,
