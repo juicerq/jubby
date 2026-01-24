@@ -54,7 +54,7 @@ interface SubtaskHeaderActionsProps {
 	isGenerating: boolean;
 	hasAnyHistory: boolean;
 	hasWorkingDirectory: boolean;
-	onStartLoop: () => void;
+	onStartLoop: (modelId?: string) => void;
 	onStopLoop: () => void;
 	onOpenHistory: () => void;
 	onGenerateSubtasks: (
@@ -232,7 +232,7 @@ function SubtaskHeaderActions({
 			) : (
 				<button
 					type="button"
-					onClick={onStartLoop}
+					onClick={() => onStartLoop()}
 					disabled={!canRunAll}
 					className={cn(
 						"flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all duration-150 ease-out active:scale-[0.96]",
