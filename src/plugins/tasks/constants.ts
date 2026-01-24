@@ -32,3 +32,12 @@ export const TAG_COLORS = [
 ] as const;
 
 export const FOLDER_NAME_MAX_LENGTH = 25;
+
+export const MODEL_OPTIONS = [
+	{ id: "openai/gpt-5.2-codex", label: "GPT-5.2 Codex" },
+	{ id: "anthropic/claude-opus-4-5", label: "Opus 4.5" },
+	{ id: "anthropic/claude-sonnet-4-5", label: "Sonnet 4.5" },
+	{ id: "anthropic/claude-haiku-4-5", label: "Haiku 4.5" },
+] as const;
+
+export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];

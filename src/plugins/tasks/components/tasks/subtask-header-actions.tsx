@@ -12,18 +12,10 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MODEL_OPTIONS, type ModelId } from "../../constants";
 import { useClickOutside } from "../../hooks/use-click-outside";
 import type { OpencodeMode, Task } from "../../types";
 import type { GenerateSubtasksResult } from "../../useTasksStorage";
-
-const MODEL_OPTIONS = [
-	{ id: "openai/gpt-5.2-codex", label: "GPT-5.2 Codex" },
-	{ id: "anthropic/claude-opus-4-5", label: "Opus 4.5" },
-	{ id: "anthropic/claude-sonnet-4-5", label: "Sonnet 4.5" },
-	{ id: "anthropic/claude-haiku-4-5", label: "Haiku 4.5" },
-] as const;
-
-type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
 
 const OPENCODE_MODE_OPTIONS: {
 	id: OpencodeMode;
