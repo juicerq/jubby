@@ -478,7 +478,7 @@ function TasksPlugin(_props: PluginProps) {
 				executeSubtask(currentTask.id, subtaskId),
 			abortExecution: () => abortExecution(currentTask.workingDirectory || ""),
 			startLoop: () => startLoop(currentTask.id),
-			stopLoop,
+			stopLoop: () => stopLoop(currentTask.workingDirectory || ""),
 			navigateBack: handleNavigateToList,
 			generateSubtasks: (modelId: string) =>
 				generateSubtasks(currentTask.id, modelId),

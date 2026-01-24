@@ -271,9 +271,13 @@ interface UseTasksStorageReturn {
 	) => Promise<ExecutionResultFromBackend | null>;
 	abortExecution: (workingDirectory: string) => Promise<void>;
 
+	// Per-directory loop state
+	loopingByDirectory: Map<string, boolean>;
+	isLoopingInDirectory: (directory: string) => boolean;
+
 	// Loop functions
 	startLoop: (taskId: string) => Promise<void>;
-	stopLoop: () => void;
+	stopLoop: (workingDirectory: string) => void;
 
 	// Generate subtasks
 	generateSubtasks: (
@@ -434,6 +438,36 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 
 	const [isLooping, setIsLooping] = useState(false);
 	const loopAbortedRef = useRef(false);
+
+	// Per-directory loop state - tracks which directories have active loops
+	const [loopingByDirectory, setLoopingByDirectory] = useState<
+		Map<string, boolean>
+	>(new Map());
+	// Ref for per-directory loop abort flags
+	const loopAbortedByDirectoryRef = useRef<Map<string, boolean>>(new Map());
+
+	// Helper functions for per-directory loop state management
+	const isLoopingInDirectory = useCallback(
+		(directory: string): boolean => {
+			return loopingByDirectory.get(directory) ?? false;
+		},
+		[loopingByDirectory],
+	);
+
+	const setLoopingInDirectory = useCallback(
+		(directory: string, value: boolean): void => {
+			setLoopingByDirectory((prev) => {
+				const next = new Map(prev);
+				if (value) {
+					next.set(directory, true);
+				} else {
+					next.delete(directory);
+				}
+				return next;
+			});
+		},
+		[],
+	);
 
 	// Helper functions for per-directory execution state management
 	const isExecutingInDirectory = useCallback(
@@ -1386,20 +1420,40 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		[executingByDirectory, clearExecutingInDirectory],
 	);
 
-	const stopLoop = useCallback(() => {
-		loopAbortedRef.current = true;
-		setIsLooping(false);
-	}, []);
+	const stopLoop = useCallback(
+		(workingDirectory: string) => {
+			// Set per-directory abort flag
+			loopAbortedByDirectoryRef.current.set(workingDirectory, true);
+			setLoopingInDirectory(workingDirectory, false);
+			// Keep legacy state for backward compatibility during migration
+			loopAbortedRef.current = true;
+			setIsLooping(false);
+		},
+		[setLoopingInDirectory],
+	);
 
 	const startLoop = useCallback(
 		async (taskId: string): Promise<void> => {
-			if (isExecuting || isLooping) {
-				return;
-			}
-
 			const task = tasks.find((t) => t.id === taskId);
 			if (!task) {
 				toast.error("Task not found");
+				return;
+			}
+
+			// Get working directory from task
+			const workingDirectory = task.workingDirectory || "";
+
+			// Check if we're already executing or looping in this directory
+			if (
+				isExecutingInDirectory(workingDirectory) ||
+				isLoopingInDirectory(workingDirectory)
+			) {
+				toast.error("Already executing or looping in this directory");
+				return;
+			}
+
+			// Keep legacy guards for backward compatibility during migration
+			if (isExecuting || isLooping) {
 				return;
 			}
 
@@ -1407,8 +1461,13 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 				plugin: "tasks",
 				action: "start_loop",
 				taskId,
+				workingDirectory,
 			});
 
+			// Set per-directory loop state
+			setLoopingInDirectory(workingDirectory, true);
+			loopAbortedByDirectoryRef.current.set(workingDirectory, false);
+			// Keep legacy state for backward compatibility during migration
 			setIsLooping(true);
 			loopAbortedRef.current = false;
 
@@ -1427,12 +1486,25 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			let failedCount = 0;
 
 			for (const subtask of sortedSubtasks) {
-				if (loopAbortedRef.current) {
+				// Check per-directory abort flag
+				if (loopAbortedByDirectoryRef.current.get(workingDirectory)) {
 					trace.info("Loop aborted by user");
+					break;
+				}
+				// Legacy abort flag check for backward compatibility
+				if (loopAbortedRef.current) {
+					trace.info("Loop aborted by user (legacy)");
 					break;
 				}
 
 				if (subtask.status === "waiting" || subtask.status === "failed") {
+					// Set per-directory execution state
+					setExecutingInDirectory(workingDirectory, {
+						isExecuting: true,
+						subtaskId: subtask.id,
+						sessionId: null,
+					});
+					// Keep legacy state for backward compatibility during migration
 					setIsExecuting(true);
 					setExecutingSubtaskId(subtask.id);
 
@@ -1445,6 +1517,12 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 							trace,
 						);
 						currentSessionIdRef.current = result.sessionId;
+						// Update per-directory state with session ID
+						setExecutingInDirectory(workingDirectory, {
+							isExecuting: true,
+							subtaskId: subtask.id,
+							sessionId: result.sessionId,
+						});
 
 						if (result.outcome === "success") {
 							completedCount++;
@@ -1464,6 +1542,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 						failedCount++;
 						break;
 					} finally {
+						// Clear per-directory execution state
+						clearExecutingInDirectory(workingDirectory);
+						// Keep legacy state for backward compatibility during migration
 						setIsExecuting(false);
 						setExecutingSubtaskId(null);
 						currentSessionIdRef.current = null;
@@ -1476,10 +1557,23 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 			);
 			trace.end();
 
+			// Clear per-directory loop state
+			setLoopingInDirectory(workingDirectory, false);
+			loopAbortedByDirectoryRef.current.delete(workingDirectory);
+			// Keep legacy state for backward compatibility during migration
 			setIsLooping(false);
 			loopAbortedRef.current = false;
 		},
-		[isExecuting, isLooping, tasks],
+		[
+			tasks,
+			isExecutingInDirectory,
+			isLoopingInDirectory,
+			setLoopingInDirectory,
+			setExecutingInDirectory,
+			clearExecutingInDirectory,
+			isExecuting,
+			isLooping,
+		],
 	);
 
 	const generateSubtasks = useCallback(
@@ -1601,6 +1695,9 @@ export function useTasksStorage(folderId: string): UseTasksStorageReturn {
 		isExecutingInDirectory,
 		setExecutingInDirectory,
 		clearExecutingInDirectory,
+		// Per-directory loop state
+		loopingByDirectory,
+		isLoopingInDirectory,
 		// Legacy execution state
 		isExecuting,
 		executingSubtaskId,
