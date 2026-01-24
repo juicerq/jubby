@@ -24,7 +24,7 @@ interface SubtaskListProps {
 	onToggleStep: (subtaskId: string, stepId: string) => void;
 	onDeleteStep: (subtaskId: string, stepId: string) => void;
 	onUpdateStepText: (subtaskId: string, stepId: string, text: string) => void;
-	onExecuteSubtask: (subtaskId: string) => void;
+	onExecuteSubtask: (subtaskId: string, modelId?: string) => void;
 	onAbortExecution: () => void;
 	onViewSubtaskHistory: (subtaskId: string, subtaskText: string) => void;
 	isExecuting: boolean;
@@ -315,7 +315,9 @@ function SubtaskList({
 								onUpdateStepText={(stepId, text) =>
 									onUpdateStepText(item.subtask.id, stepId, text)
 								}
-								onExecute={() => onExecuteSubtask(item.subtask.id)}
+								onExecute={(modelId) =>
+									onExecuteSubtask(item.subtask.id, modelId)
+								}
 								onAbort={onAbortExecution}
 								onViewHistory={() =>
 									onViewSubtaskHistory(item.subtask.id, item.subtask.text)
