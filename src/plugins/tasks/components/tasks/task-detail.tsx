@@ -50,9 +50,9 @@ interface TaskDetailActions {
 		stepId: string,
 		text: string,
 	) => Promise<void>;
-	executeSubtask: (subtaskId: string) => void;
+	executeSubtask: (subtaskId: string, modelId?: string) => void;
 	abortExecution: () => void;
-	startLoop: () => void;
+	startLoop: (modelId?: string) => void;
 	stopLoop: () => void;
 	navigateBack: () => void;
 	generateSubtasks: (modelId: string) => Promise<GenerateSubtasksResult | null>;
@@ -63,9 +63,9 @@ interface TaskDetailProps {
 	task: Task;
 	tags: TagType[];
 	actions: TaskDetailActions;
-	isExecuting: boolean;
+	isExecutingInDirectory: (directory: string) => boolean;
 	executingSubtaskId: string | null;
-	isLooping: boolean;
+	isLoopingInDirectory: (directory: string) => boolean;
 	isTaskGenerating: (taskId: string) => boolean;
 }
 
@@ -73,9 +73,9 @@ function TaskDetail({
 	task,
 	tags,
 	actions,
-	isExecuting,
+	isExecutingInDirectory,
 	executingSubtaskId,
-	isLooping,
+	isLoopingInDirectory,
 	isTaskGenerating,
 }: TaskDetailProps) {
 	const { historyModal, openAllHistory, openSubtaskHistory, closeHistory } =
@@ -88,6 +88,11 @@ function TaskDetail({
 
 	const hasAnyHistory = task.subtasks.some((s) => s.executionLogs.length > 0);
 	const hasWorkingDirectory = (task.workingDirectory ?? "").trim().length > 0;
+
+	// Derive per-directory execution state for this task's working directory
+	const workingDirectory = task.workingDirectory ?? "";
+	const isExecuting = isExecutingInDirectory(workingDirectory);
+	const isLooping = isLoopingInDirectory(workingDirectory);
 
 	const handleToggleTag = useCallback(
 		(tagId: string) => {

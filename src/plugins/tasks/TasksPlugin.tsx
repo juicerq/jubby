@@ -57,7 +57,7 @@ function TasksPlugin(_props: PluginProps) {
 		tasks,
 		tags,
 		isLoading: tasksLoading,
-		isExecuting,
+		isExecutingInDirectory,
 		executingSubtaskId,
 		reloadTasks,
 		createTask,
@@ -84,7 +84,7 @@ function TasksPlugin(_props: PluginProps) {
 		updateStepText,
 		executeSubtask,
 		abortExecution,
-		isLooping,
+		isLoopingInDirectory,
 		startLoop,
 		stopLoop,
 		generateSubtasks,
@@ -467,10 +467,10 @@ function TasksPlugin(_props: PluginProps) {
 				deleteStep(currentTask.id, subtaskId, stepId),
 			updateStepText: (subtaskId: string, stepId: string, text: string) =>
 				updateStepText(currentTask.id, subtaskId, stepId, text),
-			executeSubtask: (subtaskId: string) =>
-				executeSubtask(currentTask.id, subtaskId),
+			executeSubtask: (subtaskId: string, modelId?: string) =>
+				executeSubtask(currentTask.id, subtaskId, modelId),
 			abortExecution: () => abortExecution(currentTask.workingDirectory || ""),
-			startLoop: () => startLoop(currentTask.id),
+			startLoop: (modelId?: string) => startLoop(currentTask.id, modelId),
 			stopLoop: () => stopLoop(currentTask.workingDirectory || ""),
 			navigateBack: handleNavigateToList,
 			generateSubtasks: (modelId: string) =>
@@ -486,9 +486,9 @@ function TasksPlugin(_props: PluginProps) {
 					task={currentTask}
 					tags={tags}
 					actions={taskActions}
-					isExecuting={isExecuting}
+					isExecutingInDirectory={isExecutingInDirectory}
 					executingSubtaskId={executingSubtaskId}
-					isLooping={isLooping}
+					isLoopingInDirectory={isLoopingInDirectory}
 					isTaskGenerating={isTaskGenerating}
 				/>
 			</div>
