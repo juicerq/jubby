@@ -1,15 +1,8 @@
-import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/message-port";
 import { ipcMain } from "electron";
 import { router } from "@main/router";
 
-const handler = new RPCHandler(router, {
-	interceptors: [
-		onError((error) => {
-			console.error("[orpc]", error);
-		}),
-	],
-});
+const handler = new RPCHandler(router);
 
 export function startOrpcServer() {
 	ipcMain.on("start-orpc-server", (event) => {
