@@ -19,7 +19,7 @@ export const settingsUpdateSchema = type({
 	"lastFolderId?": "string",
 });
 
-type SettingsValue = typeof settingsContract.infer;
+export type SettingsValue = typeof settingsContract.infer;
 type SettingsUpdate = typeof settingsUpdateSchema.infer;
 
 const store = new Store({

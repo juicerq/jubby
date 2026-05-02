@@ -1,8 +1,8 @@
 {
 	"name": "jubby",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"private": true,
-	"description": "PLACEHOLDER — descrição do app",
+	"description": "Task manager with retro terminal aesthetic",
 	"author": {
 		"name": "lobomfz",
 		"email": "lobomfz@protonmail.com"

@@ -3,7 +3,8 @@ import { app, BrowserWindow } from "electron";
 import { setupAutoUpdate } from "@main/auto-update";
 import { startOrpcServer } from "@main/ipc";
 import { Logger } from "@main/logger";
-import { Settings } from "@main/store/settings";
+import { type SettingsValue, Settings } from "@main/store/settings";
+import { setMainWindow } from "@main/window";
 
 const here = import.meta.dirname;
 
@@ -29,10 +30,12 @@ function debounce<A extends unknown[]>(
 }
 
 async function createWindow() {
-	const settings = await Settings.get().catch((err) => {
-		Logger.error("settings:read-failed", { err: String(err) });
-		return {};
-	});
+	const settings = await Settings.get().catch(
+		(err): SettingsValue => {
+			Logger.error("settings:read-failed", { err: String(err) });
+			return {};
+		},
+	);
 	const saved = settings.windowBounds;
 
 	const win = new BrowserWindow({
@@ -48,6 +51,9 @@ async function createWindow() {
 			nodeIntegration: false,
 		},
 	});
+
+	win.setIcon(join(here, "../../build/icon.png"));
+	setMainWindow(win);
 
 	if (saved?.maximized) {
 		win.maximize();

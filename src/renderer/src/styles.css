@@ -118,6 +118,15 @@ select {
 	background: var(--color-accent);
 }
 
+/* Frameless window: titlebar drag + interactive exclusion */
+.titlebar {
+	-webkit-app-region: drag;
+}
+
+.no-drag {
+	-webkit-app-region: no-drag;
+}
+
 /* Blinking cursor for placeholders / terminal-style affordances */
 @keyframes jubby-blink {
 	0%, 49% { opacity: 1; }

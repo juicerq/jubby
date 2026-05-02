@@ -3,6 +3,7 @@ import { loggerRouter } from "@main/router/logger";
 import { settingsRouter } from "@main/router/settings";
 import { systemRouter } from "@main/router/system";
 import { tasksRouter } from "@main/router/tasks";
+import { windowRouter } from "@main/router/window";
 
 export const router = {
 	logger: loggerRouter,
@@ -10,6 +11,7 @@ export const router = {
 	system: systemRouter,
 	folders: foldersRouter,
 	tasks: tasksRouter,
+	window: windowRouter,
 };
 
 export type Router = typeof router;
