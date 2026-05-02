@@ -1,3 +1,5 @@
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 import { setupAutoUpdate } from "@main/auto-update";
@@ -7,6 +9,44 @@ import { type SettingsValue, Settings } from "@main/store/settings";
 import { setMainWindow } from "@main/window";
 
 const here = import.meta.dirname;
+
+function getIconPath() {
+	if (app.isPackaged) {
+		return join(process.resourcesPath, "icon.png");
+	}
+	return join(here, "../../build/icon.png");
+}
+
+async function installDesktopEntry() {
+	if (process.platform !== "linux" || !app.isPackaged) {
+		return;
+	}
+
+	const appImagePath = process.env.APPIMAGE;
+	if (!appImagePath) {
+		return;
+	}
+
+	const home = homedir();
+	const iconDir = join(home, ".local/share/icons/hicolor/256x256/apps");
+	const desktopDir = join(home, ".local/share/applications");
+
+	await mkdir(iconDir, { recursive: true });
+	await copyFile(getIconPath(), join(iconDir, "jubby.png"));
+
+	await mkdir(desktopDir, { recursive: true });
+	const entry = [
+		"[Desktop Entry]",
+		"Name=Jubby",
+		"Comment=Task manager with retro terminal aesthetic",
+		`Exec=${appImagePath} --no-sandbox`,
+		"Icon=jubby",
+		"Type=Application",
+		"Categories=Utility;",
+		"StartupWMClass=Jubby",
+	].join("\n");
+	await writeFile(join(desktopDir, "jubby.desktop"), `${entry}\n`);
+}
 
 process.on("uncaughtException", (err) => {
 	Logger.error("uncaughtException", { err: String(err), stack: err.stack });
@@ -52,7 +92,7 @@ async function createWindow() {
 		},
 	});
 
-	win.setIcon(join(here, "../../build/icon.png"));
+	win.setIcon(getIconPath());
 	setMainWindow(win);
 
 	if (saved?.maximized) {
@@ -87,6 +127,9 @@ async function createWindow() {
 app.whenReady().then(() => {
 	startOrpcServer();
 	setupAutoUpdate();
+	installDesktopEntry().catch((err) => {
+		Logger.error("desktop-entry:failed", { err: String(err) });
+	});
 
 	createWindow().catch((err) => {
 		Logger.error("createWindow:failed", { err: String(err) });
