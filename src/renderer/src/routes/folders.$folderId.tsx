@@ -106,7 +106,7 @@ function DoneSection({
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
-				className="type-ui-label flex w-full items-center gap-2 px-4 py-2 text-fg-muted transition-colors hover:text-accent cursor-pointer"
+				className="type-ui-label flex w-full items-center gap-2 px-6 py-2 text-fg-muted transition-colors hover:text-accent cursor-pointer"
 			>
 				{open && <ChevronDown size={14} />}
 				{!open && <ChevronRight size={14} />}

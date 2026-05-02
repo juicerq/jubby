@@ -87,11 +87,11 @@ export function TaskRow({
 		<>
 			<div
 				className={cn(
-					"group flex items-center gap-3 border-b border-border px-4 py-3 transition-all duration-300",
+					"group flex items-center gap-3 border-b border-border px-6 py-3 transition-all duration-300",
 					visualDone ? "opacity-50" : "hover:bg-surface-2",
 				)}
 			>
-				<span className={cn(completing && "task-checkbox-pop")}>
+				<span className={cn("inline-flex", completing && "task-checkbox-pop")}>
 					<ConfirmAction
 						mode="two-step"
 						checked={visualDone}
