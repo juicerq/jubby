@@ -170,6 +170,66 @@ body::after {
 	animation: jubby-crt-flicker 30s steps(1, end) infinite;
 }
 
+/* CRT power-on: hot line ignites, glowing edges fly outward, black bars retract behind them */
+@keyframes jubby-crt-bar-top {
+	to { transform: scaleY(0); }
+}
+
+@keyframes jubby-crt-bar-bottom {
+	to { transform: scaleY(0); }
+}
+
+@keyframes jubby-crt-edge-top {
+	0% { top: calc(50% - 1px); opacity: 1; }
+	70% { opacity: 1; }
+	100% { top: -2px; opacity: 0; }
+}
+
+@keyframes jubby-crt-edge-bottom {
+	0% { bottom: calc(50% - 1px); opacity: 1; }
+	70% { opacity: 1; }
+	100% { bottom: -2px; opacity: 0; }
+}
+
+@keyframes jubby-crt-line {
+	0% { opacity: 0; transform: translateY(-50%) scaleX(0); }
+	50% { opacity: 1; transform: translateY(-50%) scaleX(1); }
+	100% { opacity: 0; transform: translateY(-50%) scaleX(0.7); }
+}
+
+.crt-bar {
+	will-change: transform;
+}
+
+.crt-bar-top {
+	transform-origin: top;
+	animation: jubby-crt-bar-top 200ms cubic-bezier(0.65, 0, 0.85, 0) 50ms forwards;
+}
+
+.crt-bar-bottom {
+	transform-origin: bottom;
+	animation: jubby-crt-bar-bottom 200ms cubic-bezier(0.65, 0, 0.85, 0) 50ms forwards;
+}
+
+.crt-edge {
+	box-shadow: 0 0 8px var(--color-accent), 0 0 16px var(--color-accent);
+}
+
+.crt-edge-top {
+	top: calc(50% - 1px);
+	animation: jubby-crt-edge-top 200ms cubic-bezier(0.65, 0, 0.85, 0) 50ms forwards;
+}
+
+.crt-edge-bottom {
+	bottom: calc(50% - 1px);
+	animation: jubby-crt-edge-bottom 200ms cubic-bezier(0.65, 0, 0.85, 0) 50ms forwards;
+}
+
+.crt-line {
+	box-shadow: 0 0 6px var(--color-accent), 0 0 14px var(--color-accent);
+	animation: jubby-crt-line 100ms ease-out forwards;
+}
+
 /* Task completion: title flashes accent then settles to muted */
 @keyframes jubby-task-complete {
 	0% { color: var(--color-accent); }

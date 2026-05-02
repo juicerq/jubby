@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { BootSequence } from "@renderer/components/BootSequence";
+import { CrtPowerOn } from "@renderer/components/CrtPowerOn";
 import { Sidebar } from "@renderer/components/Sidebar";
 import { StatusBar } from "@renderer/components/StatusBar";
 import { Titlebar } from "@renderer/components/Titlebar";
@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 				</main>
 			</div>
 			<StatusBar />
-			{!booted && <BootSequence onComplete={setBooted} />}
+			{!booted && <CrtPowerOn onComplete={() => setBooted(true)} />}
 		</div>
 	);
 }
