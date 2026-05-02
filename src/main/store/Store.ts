@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicWrite } from "@main/store/atomic";
 import { envelopeSchema } from "@main/store/envelope";
@@ -12,13 +12,33 @@ type StoreOptions<T> = {
 	seed: () => T;
 };
 
+type StoreStats = {
+	name: string;
+	sizeBytes: number;
+	lastFlushAt: number | null;
+};
+
 export class Store<T> {
 	private queue: Promise<unknown> = Promise.resolve();
+	private lastFlushAt: number | null = null;
 
 	constructor(private opts: StoreOptions<T>) {}
 
 	private path(): string {
 		return join(resolveDataDir(), `${this.opts.name}.json`);
+	}
+
+	async stats(): Promise<StoreStats> {
+		const sizeBytes = await stat(this.path())
+			.then((s) => s.size)
+			.catch((err) => {
+				if (isNotFound(err)) {
+					return 0;
+				}
+				throw err;
+			});
+
+		return { name: this.opts.name, sizeBytes, lastFlushAt: this.lastFlushAt };
 	}
 
 	read(): Promise<T> {
@@ -78,9 +98,10 @@ export class Store<T> {
 		return this.opts.contract.assert(migrated);
 	}
 
-	private writeNow(value: T): Promise<void> {
+	private async writeNow(value: T): Promise<void> {
 		const envelope = { version: this.opts.version, data: value };
-		return atomicWrite(this.path(), JSON.stringify(envelope, null, 2));
+		await atomicWrite(this.path(), JSON.stringify(envelope, null, 2));
+		this.lastFlushAt = Date.now();
 	}
 }
 

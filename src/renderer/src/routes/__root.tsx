@@ -1,16 +1,17 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
-import { useTheme } from "@renderer/lib/theme";
+import { AppShell } from "@renderer/components/AppShell";
+import { ToastProvider } from "@renderer/components/Toast";
 
 export const Route = createRootRoute({
 	component: RootComponent,
 });
 
 function RootComponent() {
-	useTheme();
-
 	return (
-		<div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-			<Outlet />
-		</div>
+		<ToastProvider>
+			<AppShell>
+				<Outlet />
+			</AppShell>
+		</ToastProvider>
 	);
 }

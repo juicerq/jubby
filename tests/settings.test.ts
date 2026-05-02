@@ -10,26 +10,24 @@ function settingsPath(): string {
 }
 
 describe("settings", () => {
-	it("seeds with theme system when the file is missing", async () => {
+	it("seeds with empty object when the file is missing", async () => {
 		const settings = await Settings.get();
-		expect(settings).toEqual({ theme: "system" });
+		expect(settings).toEqual({});
 	});
 
-	it("returns the merged value from update", async () => {
-		const updated = await Settings.update({ theme: "dark" });
-		expect(updated.theme).toBe("dark");
-
+	it("persists lastFolderId and reads it back", async () => {
+		await Settings.update({ lastFolderId: "abc-123" });
 		const read = await Settings.get();
-		expect(read.theme).toBe("dark");
+		expect(read.lastFolderId).toBe("abc-123");
 	});
 
 	it("preserves untouched fields when patching one", async () => {
 		await Settings.update({
 			windowBounds: { x: 0, y: 0, width: 800, height: 600, maximized: false },
 		});
-		const after = await Settings.update({ theme: "light" });
+		const after = await Settings.update({ lastFolderId: "f-1" });
 
-		expect(after.theme).toBe("light");
+		expect(after.lastFolderId).toBe("f-1");
 		expect(after.windowBounds?.width).toBe(800);
 	});
 
@@ -46,7 +44,7 @@ describe("settings", () => {
 	it("rejects when the stored value violates the contract", async () => {
 		writeFileSync(
 			settingsPath(),
-			JSON.stringify({ version: 1, data: { theme: "neon" } }),
+			JSON.stringify({ version: 1, data: { windowBounds: "not-an-object" } }),
 		);
 		await expect(Settings.get()).rejects.toThrow();
 	});

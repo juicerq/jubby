@@ -31,16 +31,16 @@ function debounce<A extends unknown[]>(
 async function createWindow() {
 	const settings = await Settings.get().catch((err) => {
 		Logger.error("settings:read-failed", { err: String(err) });
-		return { theme: "system" as const };
+		return {};
 	});
 	const saved = settings.windowBounds;
 
 	const win = new BrowserWindow({
-		width: saved?.width ?? 1024,
-		height: saved?.height ?? 768,
+		width: saved?.width ?? 960,
+		height: saved?.height ?? 640,
 		x: saved?.x,
 		y: saved?.y,
-		frame: true,
+		frame: false,
 		webPreferences: {
 			preload: join(here, "../preload/index.cjs"),
 			sandbox: true,
@@ -77,14 +77,14 @@ async function createWindow() {
 	}
 }
 
-await app.whenReady();
-startOrpcServer();
-setupAutoUpdate();
+// eslint-disable-next-line unicorn/prefer-top-level-await
+app.whenReady().then(() => {
+	startOrpcServer();
+	setupAutoUpdate();
 
-try {
-	await createWindow();
-} catch (err) {
-	Logger.error("createWindow:failed", { err: String(err) });
-}
+	createWindow().catch((err) => {
+		Logger.error("createWindow:failed", { err: String(err) });
+	});
+});
 
 app.on("window-all-closed", () => app.quit());

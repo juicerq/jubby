@@ -36,6 +36,7 @@
 		"pre-commit": "bun run check"
 	},
 	"dependencies": {
+		"@fontsource/pixelify-sans": "^5.2.7",
 		"@orpc/client": "^1.14.0",
 		"@orpc/server": "^1.14.0",
 		"@orpc/tanstack-query": "^1.14.0",
@@ -43,6 +44,7 @@
 		"@tanstack/react-router": "^1.168.23",
 		"arktype": "^2.2.0",
 		"electron-updater": "^6.8.3",
+		"lucide-react": "^1.14.0",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5"
 	},
