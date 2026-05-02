@@ -1,4 +1,3 @@
-import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { IconButton } from "@renderer/components/IconButton";
@@ -56,8 +55,17 @@ export function DropdownMenu({
 				aria-haspopup="menu"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
+				className="type-mono-data"
 			>
-				<MoreHorizontal size={15} />
+				<span aria-hidden className="inline-flex items-center gap-[1px]">
+					<span>[</span>
+					<span className="inline-flex items-center gap-[2px]">
+						<span className="size-[2px] bg-current" />
+						<span className="size-[2px] bg-current" />
+						<span className="size-[2px] bg-current" />
+					</span>
+					<span>]</span>
+				</span>
 			</IconButton>
 			{open && (
 				<div

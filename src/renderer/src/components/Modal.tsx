@@ -1,4 +1,3 @@
-import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -69,8 +68,12 @@ export function Modal({
 			>
 				<header className="flex items-center justify-between border-b border-border px-4 py-2">
 					<h2 className="type-h2 text-accent">{title}</h2>
-					<IconButton aria-label="Close" onClick={onClose}>
-						<X size={16} />
+					<IconButton
+						aria-label="Close"
+						onClick={onClose}
+						className="type-mono-data"
+					>
+						[x]
 					</IconButton>
 				</header>
 				<div className="flex flex-col gap-3 px-4 py-4">{children}</div>

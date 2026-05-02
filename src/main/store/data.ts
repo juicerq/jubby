@@ -103,6 +103,37 @@ export const Tasks = {
 			.sort((a, b) => b.createdAt - a.createdAt);
 	},
 
+	listPending: async (): Promise<Task[]> => {
+		const data = await store.read();
+		return data.tasks
+			.filter((t) => !t.done)
+			.sort((a, b) => a.createdAt - b.createdAt);
+	},
+
+	heatmap: async (): Promise<{ date: string; count: number }[]> => {
+		const data = await store.read();
+		const counts = new Map<string, number>();
+
+		for (const t of data.tasks) {
+			if (!t.done || typeof t.completedAt !== "number") {
+				continue;
+			}
+			const date = new Date(t.completedAt * 1000).toLocaleDateString("en-CA");
+			counts.set(date, (counts.get(date) ?? 0) + 1);
+		}
+
+		const today = new Date();
+		const buckets: { date: string; count: number }[] = [];
+		for (let i = 29; i >= 0; i--) {
+			const d = new Date(today);
+			d.setDate(today.getDate() - i);
+			const key = d.toLocaleDateString("en-CA");
+			buckets.push({ date: key, count: counts.get(key) ?? 0 });
+		}
+
+		return buckets;
+	},
+
 	create: async ({
 		folderId,
 		title,

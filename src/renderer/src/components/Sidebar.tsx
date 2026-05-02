@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import { Cpu, Folder, Plus } from "lucide-react";
+import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
+import { Heatmap } from "@renderer/components/Heatmap";
 import { IconButton } from "@renderer/components/IconButton";
 import { CreateFolderModal } from "@renderer/components/modals/CreateFolderModal";
 import { CreateTaskModal } from "@renderer/components/modals/CreateTaskModal";
@@ -21,7 +22,9 @@ type ModalState =
 export function Sidebar() {
 	const folders = useQuery(orpc.folders.list.queryOptions());
 	const params = useParams({ strict: false });
+	const location = useLocation();
 	const activeId = params.folderId;
+	const queueActive = location.pathname === "/";
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const close = () => setModal({ kind: "none" });
 
@@ -30,20 +33,24 @@ export function Sidebar() {
 			<aside className="flex h-full w-[200px] flex-col border-r border-border bg-surface-1">
 				<header className="flex flex-col gap-1 border-b border-border px-3 py-3">
 					<div className="flex items-center gap-2">
-						<Cpu size={14} className="text-accent" />
+						<span aria-hidden className="type-h2 text-accent">
+							▣
+						</span>
 						<span className="type-h2 text-accent">JUBBY_OS</span>
 					</div>
 					<span className="type-ui-label text-fg-muted">SYSTEM ACTIVE</span>
 				</header>
+
+				<QueueRow active={queueActive} />
 
 				<div className="group flex items-center justify-between border-b border-border px-3 py-2">
 					<span className="type-ui-label text-fg-muted">DIRECTORIES</span>
 					<IconButton
 						aria-label="Init directory"
 						onClick={() => setModal({ kind: "create-folder" })}
-						className="opacity-0 group-hover:opacity-100 transition-opacity"
+						className="type-mono-data opacity-0 group-hover:opacity-100 transition-opacity"
 					>
-						<Plus size={13} />
+						[+]
 					</IconButton>
 				</div>
 
@@ -74,6 +81,8 @@ export function Sidebar() {
 						/>
 					))}
 				</nav>
+
+				<Heatmap />
 			</aside>
 
 			{modal.kind === "create-folder" && <CreateFolderModal onClose={close} />}
@@ -98,6 +107,69 @@ export function Sidebar() {
 	);
 }
 
+type SidebarRowProps = {
+	active: boolean;
+	link: ReactNode;
+	icon?: ReactNode;
+	label: string;
+	actions?: ReactNode;
+};
+
+function SidebarRow({ active, link, icon, label, actions }: SidebarRowProps) {
+	return (
+		<div
+			className={cn(
+				"group relative flex items-center px-3 py-2 transition-colors",
+				active ? "bg-accent-dim/30" : "hover:bg-surface-2",
+			)}
+		>
+			{link}
+			<div className="flex flex-1 items-center gap-2 truncate">
+				<span
+					aria-hidden
+					className={cn(
+						"type-ui-label text-accent",
+						active ? "visible" : "invisible",
+					)}
+				>
+					{">"}
+				</span>
+				{icon}
+				<span
+					className={cn(
+						"type-ui-label truncate",
+						active ? "text-accent" : "text-fg",
+					)}
+				>
+					{label}
+				</span>
+			</div>
+			{actions}
+		</div>
+	);
+}
+
+function QueueRow({ active }: { active: boolean }) {
+	return (
+		<SidebarRow
+			active={active}
+			link={<Link to="/" aria-label="QUEUE" className="absolute inset-0" />}
+			icon={
+				<span
+					aria-hidden
+					className={cn(
+						"type-ui-label",
+						active ? "text-accent" : "text-fg-muted",
+					)}
+				>
+					≡
+				</span>
+			}
+			label="QUEUE"
+		/>
+	);
+}
+
 type FolderRowProps = {
 	id: string;
 	name: string;
@@ -116,58 +188,40 @@ function FolderRow({
 	onPurge,
 }: FolderRowProps) {
 	return (
-		<div
-			className={cn(
-				"group relative flex items-center border-l-2 px-3 py-2 transition-colors",
-				active
-					? "border-accent bg-accent-dim/30"
-					: "border-transparent hover:bg-surface-2",
-			)}
-		>
-			<Link
-				to="/folders/$folderId"
-				params={{ folderId: id }}
-				aria-label={name}
-				className="absolute inset-0"
-			/>
-			<div className="flex flex-1 items-center gap-2 truncate">
-				<Folder
-					size={14}
-					className={active ? "text-accent" : "text-fg-muted"}
+		<SidebarRow
+			active={active}
+			link={
+				<Link
+					to="/folders/$folderId"
+					params={{ folderId: id }}
+					aria-label={name}
+					className="absolute inset-0"
 				/>
-				<span
-					className={cn(
-						"type-ui-label truncate",
-						active ? "text-accent" : "text-fg",
-					)}
-				>
-					{name}
-				</span>
-			</div>
+			}
+			label={`/${name}`}
+			actions={
+				<div className="relative z-10 flex items-center transition-opacity pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100">
 
-			<div
-				className={cn(
-					"relative z-10 flex items-center transition-opacity",
-					active
-						? "opacity-100"
-						: "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
-				)}
-			>
-				<IconButton aria-label="Append task" onClick={onCreateTask}>
-					<Plus size={11} />
-				</IconButton>
-				<DropdownMenu
-					aria-label="Folder actions"
-					items={[
-						{ label: "Rename", onSelect: onRename },
-						{
-							label: "Purge",
-							onSelect: onPurge,
-							danger: true,
-						},
-					]}
-				/>
-			</div>
-		</div>
+					<IconButton
+						aria-label="Append task"
+						onClick={onCreateTask}
+						className="type-mono-data"
+					>
+						[+]
+					</IconButton>
+					<DropdownMenu
+						aria-label="Folder actions"
+						items={[
+							{ label: "Rename", onSelect: onRename },
+							{
+								label: "Purge",
+								onSelect: onPurge,
+								danger: true,
+							},
+						]}
+					/>
+				</div>
+			}
+		/>
 	);
 }

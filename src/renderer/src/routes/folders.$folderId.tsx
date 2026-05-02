@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Scramble } from "@renderer/components/Scramble";
 import { TaskRow } from "@renderer/components/TaskRow";
-import { client, orpc } from "@renderer/lib/api";
+import { orpc } from "@renderer/lib/api";
 import { queryClient } from "@renderer/lib/query-client";
 
 export const Route = createFileRoute("/folders/$folderId")({
@@ -17,10 +17,6 @@ export const Route = createFileRoute("/folders/$folderId")({
 			// eslint-disable-next-line typescript-eslint/only-throw-error
 			throw redirect({ to: "/" });
 		}
-
-		void client.settings.update({ lastFolderId: params.folderId }).then(() => {
-			queryClient.invalidateQueries({ queryKey: orpc.settings.get.key() });
-		});
 	},
 	component: FolderPage,
 });
@@ -71,16 +67,13 @@ function FolderPage() {
 					<TaskRow
 						key={task.id}
 						id={task.id}
-						folderId={folderId}
 						title={task.title}
 						description={task.description}
 						done={false}
 					/>
 				))}
 
-				{completed.length > 0 && (
-					<DoneSection folderId={folderId} tasks={completed} />
-				)}
+				{completed.length > 0 && <DoneSection tasks={completed} />}
 			</div>
 		</section>
 	);
@@ -92,13 +85,7 @@ type DoneTask = {
 	description?: string;
 };
 
-function DoneSection({
-	folderId,
-	tasks,
-}: {
-	folderId: string;
-	tasks: DoneTask[];
-}) {
+function DoneSection({ tasks }: { tasks: DoneTask[] }) {
 	const [open, setOpen] = useState(false);
 
 	return (
@@ -117,7 +104,6 @@ function DoneSection({
 					<TaskRow
 						key={task.id}
 						id={task.id}
-						folderId={folderId}
 						title={task.title}
 						description={task.description}
 						done

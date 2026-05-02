@@ -11,12 +11,10 @@ const windowBoundsSchema = type({
 
 const settingsContract = type({
 	"windowBounds?": windowBoundsSchema,
-	"lastFolderId?": "string",
 });
 
 export const settingsUpdateSchema = type({
 	"windowBounds?": windowBoundsSchema,
-	"lastFolderId?": "string",
 });
 
 export type SettingsValue = typeof settingsContract.infer;
@@ -24,9 +22,17 @@ type SettingsUpdate = typeof settingsUpdateSchema.infer;
 
 const store = new Store({
 	name: "settings",
-	version: 1,
+	version: 2,
 	contract: settingsContract,
-	migrators: {},
+	migrators: {
+		1: (raw) => {
+			const { lastFolderId: _lastFolderId, ...rest } = raw as Record<
+				string,
+				unknown
+			>;
+			return rest;
+		},
+	},
 	seed: (): SettingsValue => ({}),
 });
 

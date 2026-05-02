@@ -55,3 +55,23 @@ export function formatBytes(n: number): string {
 export function shortHash(id: string, len: number = 4): string {
 	return id.replaceAll("-", "").slice(0, len);
 }
+
+export function formatAge(createdAt: number, now: number = Date.now()): string {
+	const seconds = Math.max(0, Math.floor(now / 1000) - createdAt);
+	const days = Math.floor(seconds / 86400);
+
+	if (days < 1) {
+		const hours = Math.floor(seconds / 3600);
+		return hours === 0 ? "<1h" : `${hours}h`;
+	}
+
+	if (days < 14) {
+		return `${days}d`;
+	}
+
+	if (days < 30) {
+		return `${Math.floor(days / 7)}w`;
+	}
+
+	return `30d+`;
+}

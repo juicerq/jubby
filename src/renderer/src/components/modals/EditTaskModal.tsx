@@ -1,13 +1,15 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+/* jscpd:ignore-start */
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { FormModal } from "@renderer/components/FormModal";
 import { Input, TextArea } from "@renderer/components/Input";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
+import { useTaskInvalidation } from "@renderer/lib/queries";
+/* jscpd:ignore-end */
 
 type Props = {
 	id: string;
-	folderId: string;
 	currentTitle: string;
 	currentDescription?: string;
 	onClose: () => void;
@@ -15,22 +17,19 @@ type Props = {
 
 export function EditTaskModal({
 	id,
-	folderId,
 	currentTitle,
 	currentDescription,
 	onClose,
 }: Props) {
 	const [title, setTitle] = useState(currentTitle);
 	const [description, setDescription] = useState(currentDescription ?? "");
-	const queryClient = useQueryClient();
+	const invalidate = useTaskInvalidation();
 	const toast = useToast();
 
 	const update = useMutation(
 		orpc.tasks.update.mutationOptions({
 			onSuccess: (task) => {
-				queryClient.invalidateQueries({
-					queryKey: orpc.tasks.listByFolder.key({ input: { folderId } }),
-				});
+				invalidate();
 				toast.push("ok", `PATCHED // ${task.title}`);
 				onClose();
 			},

@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Minus, Square, X } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
 import { orpc } from "@renderer/lib/api";
@@ -32,14 +31,15 @@ export function Titlebar() {
 					aria-label="Minimize"
 					onClick={() => minimize.mutate()}
 				>
-					<Minus size={12} />
+					—
 				</ControlButton>
 
 				<ControlButton
 					aria-label={maximized ? "Restore" : "Maximize"}
 					onClick={() => toggleMaximize.mutate()}
 				>
-					<Square size={11} />
+					{maximized && "+"}
+					{!maximized && "□"}
 				</ControlButton>
 
 				<ControlButton
@@ -47,7 +47,7 @@ export function Titlebar() {
 					onClick={() => close.mutate()}
 					danger
 				>
-					<X size={14} />
+					×
 				</ControlButton>
 			</div>
 		</header>
@@ -70,7 +70,7 @@ function ControlButton({
 		<button
 			type="button"
 			className={cn(
-				"inline-flex h-full w-11 items-center justify-center text-fg-muted transition-colors cursor-pointer",
+				"type-mono-data inline-flex h-full w-11 items-center justify-center text-fg-muted transition-colors cursor-pointer",
 				danger
 					? "hover:bg-error-bg hover:text-error"
 					: "hover:bg-surface-2 hover:text-fg",

@@ -9,16 +9,17 @@ import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/cn";
 import { shortHash } from "@renderer/lib/now";
-import { useFolderTaskInvalidation } from "@renderer/lib/queries";
+import { useTaskInvalidation } from "@renderer/lib/queries";
 
 const COMPLETE_ANIM_MS = 500;
 
 type TaskRowProps = {
 	id: string;
-	folderId: string;
 	title: string;
 	description?: string;
 	done: boolean;
+	folderBadge?: string;
+	ageLabel?: string;
 };
 
 type ModalState =
@@ -28,15 +29,16 @@ type ModalState =
 
 export function TaskRow({
 	id,
-	folderId,
 	title,
 	description,
 	done,
+	folderBadge,
+	ageLabel,
 }: TaskRowProps) {
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const [completing, setCompleting] = useState(false);
 	const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const invalidate = useFolderTaskInvalidation(folderId);
+	const invalidate = useTaskInvalidation();
 	const toast = useToast();
 
 	const toggle = useMutation(
@@ -117,6 +119,14 @@ export function TaskRow({
 						</span>
 					)}
 				</div>
+				{!!folderBadge && (
+					<span className="type-mono-data text-fg-dim">
+						[ {folderBadge} ]
+					</span>
+				)}
+				{!!ageLabel && (
+					<span className="type-mono-data text-accent-dim">{ageLabel}</span>
+				)}
 				<DropdownMenu
 					aria-label="Task actions"
 					items={[
@@ -138,19 +148,13 @@ export function TaskRow({
 			{modal.kind === "edit" && (
 				<EditTaskModal
 					id={id}
-					folderId={folderId}
 					currentTitle={title}
 					currentDescription={description}
 					onClose={close}
 				/>
 			)}
 			{modal.kind === "delete" && (
-				<DeleteTaskModal
-					id={id}
-					folderId={folderId}
-					title={title}
-					onClose={close}
-				/>
+				<DeleteTaskModal id={id} title={title} onClose={close} />
 			)}
 		</>
 	);

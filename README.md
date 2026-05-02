@@ -1,79 +1,36 @@
 # jubby
 
-PLACEHOLDER — descrição do app.
+Gerenciador de tarefas desktop com estética CRT. Local — dados em `userData/store/` do Electron, sem servidor, sem login.
 
-Decisões consolidadas em [`grill/decisions.md`](./grill/decisions.md).
-
-## Stack
-
-- Electron 33 (frame nativo, contextIsolation + sandbox)
-- electron-vite (main + preload + renderer)
-- Drizzle ORM + better-sqlite3 (NAPI, sem rebuild)
-- ORPC via `MessagePort` (renderer ↔ main, type-safe via `import type`)
-- React 19 + TanStack Router (memory history) + TanStack Query
-- Tailwind v4 (dark mode class-based via `<html class="dark">`)
-- Arktype pra validação de boundary
-- Vitest (in-process ORPC client, DB `:memory:`)
-- electron-builder + electron-updater
+Stack: Electron 33 + electron-vite, ORPC sobre MessagePort, React 19 com TanStack Router/Query, Tailwind v4, Arktype, JSON store (sem native modules).
 
 ## Comandos
 
 ```sh
 bun install
-bun run dev          # electron-vite dev (HMR + DevTools detached)
-bun run test         # vitest run
-bun run test:watch   # vitest
-bun run dist         # build + AppImage/exe pra plataforma atual
-bun run db:generate  # drizzle-kit migration nova
-bun run db:studio    # drizzle-kit studio
+bun run dev          # electron-vite (HMR)
+bun run test         # vitest
+bun run check        # lint + format
+bun run dist         # build + AppImage/exe da plataforma atual
+bun run dist:linux   # AppImage
+bun run dist:win     # NSIS
 ```
-
-## Forkando
-
-Trocar manualmente:
-
-| Arquivo | Campo | O quê |
-|---|---|---|
-| `package.json` | `name` | nome do pacote |
-| `package.json` | `description`, `author`, `homepage`, `repository` | metadados |
-| `package.json` | `productName` | nome do app exibido |
-| `package.json` | `appId` | ex.: `com.juicerq.meuapp` |
-| `electron-builder.yml` | `publish.owner`, `publish.repo` | dono/repo do GitHub Releases |
-| `build/icon.png` | (binário) | substitui placeholder por ícone real 1024×1024 |
 
 ## Release
 
-SemVer manual:
-
 ```sh
-npm version patch    # ou minor / major
+npm version patch
 git push --follow-tags
 ```
 
-A tag dispara `.github/workflows/release.yml` que builda em paralelo no Linux (AppImage) e Windows (NSIS) e publica no GitHub Releases. Apps já instalados detectam via `electron-updater` e baixam silenciosamente — instalação na próxima saída.
+A tag dispara `.github/workflows/release.yml`, que builda em paralelo no Linux (AppImage) e Windows (NSIS) e publica no GitHub Releases. Apps instalados detectam via `electron-updater`, baixam em background e aplicam na próxima saída. Sem code signing — a única integridade da update é o SHA512 que `electron-builder` grava no `latest.yml`.
 
-## Estrutura
+## Por quê
 
-```
-src/
-  main/          # processo Electron (Node)
-    db/          # drizzle + DbX domain objects + settingsContract
-    ipc/         # bootstrap MessagePort
-    router/      # ORPC procedures
-    auto-update.ts
-    index.ts
-  preload/       # forwarda port pro main
-  renderer/src/  # React + TanStack
-tests/           # vitest + utils + todos.test.ts
-build/           # icon.png placeholder
-grill/           # PRD + decisions.md (registro do design)
-```
+- **JSON em vez de SQLite.** Tentei e reverti. Os custos (ABI dance por versão de Electron, postinstall hook, prebuilds toda vez que troca dev↔test, `bun test` impedido, drizzle-kit + migrations duplicando o truth do schema) pagavam capacidade que app pessoal não usa: joins, FTS, índices em milhares de registros, concorrência multi-processo. Hoje cada domínio é um arquivo (`folders.json`, `tasks.json`, `settings.json`) com envelope `{ version, data }` validado por arktype, write atômico (`writeFile + rename`) e fila serial por arquivo. Migrações em TS, não SQL.
+- **Sem code signing.** Windows mostra SmartScreen warning na primeira instalação. Aceito — app pessoal, sem orçamento pra cert.
+- **Sem macOS.** Sem hardware nem Developer ID. Entregar sem signar no macOS é pior que não entregar.
 
-## Não está incluído (decisão consciente)
+## Não suportado
 
-- macOS (decisão: não suporta)
-- Code signing (Windows mostra SmartScreen warning na primeira instalação)
-- Component testing / E2E (cada fork escolhe)
-- Component library (cada fork escolhe)
-- Dark mode toggle UI elaborado (botão de demo na rota `/`, troque/remova)
-- Observabilidade (`@juicerq/trail` aguarda subpath `better-sqlite3`)
+macOS, .deb, .rpm, MSI, arm64, code signing.

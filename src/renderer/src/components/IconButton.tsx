@@ -17,7 +17,7 @@ export function IconButton({
 			// eslint-disable-next-line react/button-has-type
 			type={type}
 			className={cn(
-				"inline-flex size-[25px] items-center justify-center text-fg-muted hover:text-accent hover:bg-surface-2 transition-colors cursor-pointer disabled:opacity-40",
+				"inline-flex h-[25px] min-w-[25px] items-center justify-center px-[3px] text-fg-muted hover:text-accent transition-colors cursor-pointer disabled:opacity-40",
 				className,
 			)}
 			{...rest}

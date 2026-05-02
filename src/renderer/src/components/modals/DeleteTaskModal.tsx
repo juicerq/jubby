@@ -3,17 +3,16 @@ import { Button } from "@renderer/components/Button";
 import { Modal } from "@renderer/components/Modal";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
-import { useFolderTaskInvalidation } from "@renderer/lib/queries";
+import { useTaskInvalidation } from "@renderer/lib/queries";
 
 type Props = {
 	id: string;
 	title: string;
-	folderId: string;
 	onClose: () => void;
 };
 
-export function DeleteTaskModal({ id, title, folderId, onClose }: Props) {
-	const invalidate = useFolderTaskInvalidation(folderId);
+export function DeleteTaskModal({ id, title, onClose }: Props) {
+	const invalidate = useTaskInvalidation();
 	const toast = useToast();
 
 	const remove = useMutation(

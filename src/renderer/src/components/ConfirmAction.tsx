@@ -1,4 +1,3 @@
-import { Square, SquareCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@renderer/components/Button";
 import { cn } from "@renderer/lib/cn";
@@ -29,9 +28,12 @@ export function ConfirmAction(props: ConfirmActionProps) {
 	return <TimedButton {...props} />;
 }
 
-function previewIcon(checked: boolean, armed: boolean) {
-	const willBeChecked = armed ? !checked : checked;
-	return willBeChecked ? SquareCheck : Square;
+function checkboxGlyph(checked: boolean, armed: boolean): string {
+	if (armed) {
+		return "[~]";
+	}
+
+	return checked ? "[x]" : "[ ]";
 }
 
 function checkboxColor(checked: boolean, armed: boolean): string {
@@ -82,7 +84,6 @@ function TwoStepCheckbox({
 		}, durationMs);
 	};
 
-	const Icon = previewIcon(checked, armed);
 	const labelFallback = checked ? "Mark not done" : "Mark done";
 
 	return (
@@ -92,11 +93,11 @@ function TwoStepCheckbox({
 			aria-pressed={checked}
 			onClick={handleClick}
 			className={cn(
-				"inline-flex h-5 w-5 items-center justify-center transition-colors cursor-pointer",
+				"type-mono-data inline-flex h-5 min-w-[28px] items-center justify-center transition-colors cursor-pointer",
 				checkboxColor(checked, armed),
 			)}
 		>
-			<Icon size={18} strokeWidth={2} />
+			{checkboxGlyph(checked, armed)}
 		</button>
 	);
 }

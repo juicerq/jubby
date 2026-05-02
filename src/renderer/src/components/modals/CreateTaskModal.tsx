@@ -4,7 +4,7 @@ import { FormModal } from "@renderer/components/FormModal";
 import { Input, TextArea } from "@renderer/components/Input";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
-import { useFolderTaskInvalidation } from "@renderer/lib/queries";
+import { useTaskInvalidation } from "@renderer/lib/queries";
 
 type Props = {
 	folderId: string;
@@ -14,7 +14,7 @@ type Props = {
 export function CreateTaskModal({ folderId, onClose }: Props) {
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
-	const invalidate = useFolderTaskInvalidation(folderId);
+	const invalidate = useTaskInvalidation();
 	const toast = useToast();
 
 	const create = useMutation(
