@@ -34,7 +34,11 @@ export function FormModal({
 					<Button variant="ghost" onClick={onClose}>
 						ABORT
 					</Button>
-					<Button onClick={onSubmit} disabled={!canSubmit || isPending}>
+					<Button
+						onClick={onSubmit}
+						disabled={!canSubmit}
+						loading={isPending}
+					>
 						{submitLabel}
 					</Button>
 				</>

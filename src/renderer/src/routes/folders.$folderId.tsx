@@ -43,7 +43,9 @@ function FolderPage() {
 		<section className="flex h-full flex-col overflow-hidden">
 			<header className="flex items-center justify-between border-b border-border px-6 py-4">
 				<div className="flex flex-col gap-1">
-					<span className="type-ui-label text-fg-muted">DIRECTORY</span>
+					<span className="type-mono-data text-fg-dim">
+						$ ls /{folder.name}
+					</span>
 					<h1 className="type-h1 text-fg">
 						<Scramble key={folderId}>{folder.name}</Scramble>
 					</h1>

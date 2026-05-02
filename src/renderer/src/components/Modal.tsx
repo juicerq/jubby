@@ -59,15 +59,31 @@ export function Modal({
 		>
 			<div
 				className={cn(
-					"flex flex-col bg-surface-1 border border-border-strong shadow-2xl",
+					"relative flex flex-col bg-surface-1 border border-border-strong shadow-2xl",
 					widthClasses[width],
 				)}
 				role="dialog"
 				aria-modal="true"
 				aria-label={title}
 			>
+				<span
+					aria-hidden
+					className="absolute -top-px -left-px size-3 border-t-2 border-l-2 border-accent"
+				/>
+				<span
+					aria-hidden
+					className="absolute -top-px -right-px size-3 border-t-2 border-r-2 border-accent"
+				/>
+				<span
+					aria-hidden
+					className="absolute -bottom-px -left-px size-3 border-b-2 border-l-2 border-accent"
+				/>
+				<span
+					aria-hidden
+					className="absolute -bottom-px -right-px size-3 border-b-2 border-r-2 border-accent"
+				/>
 				<header className="flex items-center justify-between border-b border-border px-4 py-2">
-					<h2 className="type-h2 text-accent">{title}</h2>
+					<h2 className="type-h2 text-accent">[ {title} ]</h2>
 					<IconButton
 						aria-label="Close"
 						onClick={onClose}

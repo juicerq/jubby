@@ -54,7 +54,7 @@ function IndexPage() {
 		<section className="flex h-full flex-col overflow-hidden">
 			<header className="flex items-center justify-between border-b border-border px-6 py-4">
 				<div className="flex flex-col gap-1">
-					<span className="type-ui-label text-fg-muted">SYSTEM</span>
+					<span className="type-mono-data text-fg-dim">$ ls queue</span>
 					<h1 className="type-h1 text-fg">QUEUE // {tasks.length} PENDING</h1>
 				</div>
 			</header>

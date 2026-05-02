@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@renderer/lib/cn";
+import { formatSysTime } from "@renderer/lib/now";
 
 type ToastSeverity = "ok" | "err";
 
@@ -9,6 +10,7 @@ type Toast = {
 	id: number;
 	severity: ToastSeverity;
 	message: string;
+	timestamp: string;
 };
 
 type ToastContextValue = {
@@ -26,7 +28,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 	const push = useCallback((severity: ToastSeverity, message: string) => {
 		const id = nextId++;
-		setToasts((prev) => [...prev, { id, severity, message }]);
+		const timestamp = formatSysTime(new Date());
+		setToasts((prev) => [...prev, { id, severity, message, timestamp }]);
 		setTimeout(() => {
 			setToasts((prev) => prev.filter((t) => t.id !== id));
 		}, TOAST_DURATION_MS);
@@ -53,6 +56,7 @@ function ToastViewport({ toasts }: { toasts: Toast[] }) {
 							: "border-error text-error",
 					)}
 				>
+					<span className="text-fg-dim">{toast.timestamp}</span>{" "}
 					[{toast.severity.toUpperCase()}] {toast.message}
 				</div>
 			))}

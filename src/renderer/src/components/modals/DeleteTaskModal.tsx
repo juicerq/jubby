@@ -40,7 +40,7 @@ export function DeleteTaskModal({ id, title, onClose }: Props) {
 					<Button
 						variant="danger"
 						onClick={() => remove.mutate({ id })}
-						disabled={remove.isPending}
+						loading={remove.isPending}
 					>
 						EXECUTE
 					</Button>
