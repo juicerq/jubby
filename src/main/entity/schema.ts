@@ -1,74 +1,53 @@
+import {
+	type EntityExpression,
+	entityEventTypes,
+	entityExpressions,
+	entityMoods,
+} from "@shared/entity-constants";
 import { type } from "arktype";
 
-const moods = [
-	"neutro",
-	"irritado",
-	"eufórico",
-	"filosófico",
-	"preguiçoso",
-	"sarcástico",
-	"carinhoso",
-] as const;
+export type { EntityMood as Mood } from "@shared/entity-constants";
 
-export type Mood = (typeof moods)[number];
-
-export const expressions = [
-	"neutral",
-	"happy",
-	"excited",
-	"sleepy",
-	"grumpy",
-	"curious",
-	"shocked",
-	"glitched",
-] as const;
-
-const entityContextSchema = type({
-	events: type({
-		type: "'boot' | 'task:created' | 'task:completed' | 'idle' | 'window:return'",
-		"data?": "unknown",
-		timestamp: "number",
-	}).array(),
-	state: {
-		pendingTasks: "number",
-		completedToday: "number",
-		totalFolders: "number",
-		"currentFolder?": "string",
-	},
-	"content?": {
-		"taskTitle?": "string",
-		"folderName?": "string",
-	},
-	session: {
-		mood: type.enumerated(...moods),
-		bootTime: "number",
-		"awayDuration?": "number",
-	},
+const eventDataSchema = type({
+	"taskTitle?": "string",
+	"folderName?": "string",
 });
 
-export type EntityContext = typeof entityContextSchema.infer;
+const eventSchema = type({
+	type: type.enumerated(...entityEventTypes),
+	"data?": eventDataSchema,
+	timestamp: "number",
+});
+
+const sessionSchema = type({
+	mood: type.enumerated(...entityMoods),
+	bootTime: "number",
+	"awayDuration?": "number",
+});
 
 export const entityReactInput = type({
-	events: type({
-		type: "'boot' | 'task:created' | 'task:completed' | 'idle' | 'window:return'",
-		"data?": "unknown",
-		timestamp: "number",
-	}).array(),
-	"content?": {
-		"taskTitle?": "string",
-		"folderName?": "string",
-	},
-	session: {
-		mood: type.enumerated(...moods),
-		bootTime: "number",
-		"awayDuration?": "number",
-	},
+	"+": "reject",
+	events: eventSchema.array(),
+	session: sessionSchema,
 });
 
-export const entityResponseSchema = type({
+export type EntityContext = typeof entityReactInput.infer & {
+	state: {
+		pendingTasks: number;
+		completedToday: number;
+		totalFolders: number;
+	};
+};
+
+// Forma achatada exigida pelo Groq Structured Output (sem anyOf/oneOf no top level).
+// Normalizada para uma união discriminada em `react.ts`.
+export const entityRawResponseSchema = type({
+	"+": "reject",
 	react: "boolean",
-	expression: type.enumerated(...expressions),
+	expression: type.enumerated(...entityExpressions),
 	message: "string",
 });
 
-export type EntityResponse = typeof entityResponseSchema.infer;
+export type EntityResponse =
+	| { react: false }
+	| { react: true; expression: EntityExpression; message: string };

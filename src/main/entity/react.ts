@@ -5,8 +5,7 @@ import { buildSystemPrompt } from "@main/entity/prompt";
 import {
 	type EntityContext,
 	type EntityResponse,
-	entityResponseSchema,
-	expressions,
+	entityRawResponseSchema,
 } from "@main/entity/schema";
 import { Logger } from "@main/logger";
 import { EntityKey } from "@main/store/entity-key";
@@ -18,26 +17,36 @@ const GLITCHED_RESPONSE: EntityResponse = {
 };
 
 const groqSchema = aiJsonSchema<EntityResponse>(
-	{
-		type: "object",
-		properties: {
-			react: { type: "boolean" },
-			expression: { type: "string", enum: [...expressions] },
-			message: { type: "string" },
-		},
-		required: ["react", "expression", "message"],
-		additionalProperties: false,
-	},
+	entityRawResponseSchema.toJsonSchema(),
 	{
 		validate: (value) => {
-			const out = entityResponseSchema(value);
+			const out = entityRawResponseSchema(value);
 			if (out instanceof type.errors) {
 				return { success: false as const, error: new Error(out.summary) };
 			}
-			return { success: true as const, value: out };
+			const normalized: EntityResponse = out.react
+				? {
+						react: true,
+						expression: out.expression,
+						message: out.message,
+					}
+				: { react: false };
+			return { success: true as const, value: normalized };
 		},
 	},
 );
+
+let cachedGroq: {
+	apiKey: string;
+	client: ReturnType<typeof createGroq>;
+} | null = null;
+
+function getGroq(apiKey: string) {
+	if (cachedGroq?.apiKey !== apiKey) {
+		cachedGroq = { apiKey, client: createGroq({ apiKey }) };
+	}
+	return cachedGroq.client;
+}
 
 export async function reactToContext(
 	context: EntityContext,
@@ -47,11 +56,9 @@ export async function reactToContext(
 		return GLITCHED_RESPONSE;
 	}
 
-	const groq = createGroq({ apiKey });
-
 	try {
 		const { output } = await generateText({
-			model: groq("openai/gpt-oss-20b"),
+			model: getGroq(apiKey)("openai/gpt-oss-20b"),
 			output: Output.object({ schema: groqSchema }),
 			system: buildSystemPrompt(context.session.mood),
 			prompt: JSON.stringify(context),

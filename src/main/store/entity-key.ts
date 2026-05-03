@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { safeStorage } from "electron";
 import { resolveDataDir } from "@main/store/paths";
@@ -8,22 +8,31 @@ function keyPath(): string {
 	return join(resolveDataDir(), "entity-key.json");
 }
 
+function readEncrypted(): string | null {
+	try {
+		return readFileSync(keyPath(), "utf8");
+	} catch (err: any) {
+		if (err?.code === "ENOENT") {
+			return null;
+		}
+		throw err;
+	}
+}
+
 export const EntityKey = {
 	has(): boolean {
-		return existsSync(keyPath());
+		return readEncrypted() !== null;
 	},
 
 	get(): string | null {
-		if (!this.has()) {
+		const raw = readEncrypted();
+		if (raw === null) {
 			return null;
 		}
 
 		try {
-			const raw = JSON.parse(readFileSync(keyPath(), "utf8")) as {
-				ciphertext: string;
-			};
-			const buffer = Buffer.from(raw.ciphertext, "base64");
-			return safeStorage.decryptString(buffer);
+			const { ciphertext } = JSON.parse(raw) as { ciphertext: string };
+			return safeStorage.decryptString(Buffer.from(ciphertext, "base64"));
 		} catch (err: any) {
 			Logger.error("entity-key:decrypt", { err: String(err) });
 			return null;
@@ -37,10 +46,9 @@ export const EntityKey = {
 			);
 		}
 
-		const encrypted = safeStorage.encryptString(key);
-		const data = { ciphertext: encrypted.toString("base64") };
+		const ciphertext = safeStorage.encryptString(key).toString("base64");
 		const path = keyPath();
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, JSON.stringify(data));
+		writeFileSync(path, JSON.stringify({ ciphertext }));
 	},
 };

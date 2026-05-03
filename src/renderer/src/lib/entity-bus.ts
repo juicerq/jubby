@@ -1,8 +1,4 @@
-type EntityEventType =
-	| "task:created"
-	| "task:completed"
-	| "idle"
-	| "window:return";
+import type { EntityEventType } from "@shared/entity-constants";
 
 type EntityEventData = {
 	taskTitle?: string;

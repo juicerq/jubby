@@ -1,3 +1,8 @@
+import {
+	type EntityExpression,
+	type EntityMood,
+	entityMoods,
+} from "@shared/entity-constants";
 import { Scramble } from "@renderer/components/Scramble";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
@@ -5,25 +10,13 @@ import { cn } from "@renderer/lib/cn";
 import type { EntityEvent } from "@renderer/lib/entity-bus";
 import { entityBus } from "@renderer/lib/entity-bus";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-const moods = [
-	"neutro",
-	"irritado",
-	"eufórico",
-	"filosófico",
-	"preguiçoso",
-	"sarcástico",
-	"carinhoso",
-] as const;
-
-type Mood = (typeof moods)[number];
-
-function pickMood(): Mood {
-	return moods[Math.floor(Math.random() * moods.length)];
+function pickMood(): EntityMood {
+	return entityMoods[Math.floor(Math.random() * entityMoods.length)];
 }
 
-const sprites: Record<string, string> = {
+const sprites: Record<EntityExpression, string> = {
 	neutral: "(• ᴗ •)",
 	happy: "(^ ᴗ ^)",
 	excited: "(✧ ᴗ ✧)",
@@ -41,9 +34,10 @@ const MIN_AWAY_MS = 60_000;
 
 const sessionMood = pickMood();
 const sessionBootTime = Date.now();
+let bootEmitted = false;
 
 type Reaction = {
-	expression: string;
+	expression: EntityExpression;
 	message: string;
 };
 
@@ -65,111 +59,72 @@ export function Entity() {
 }
 
 function EntityAlive() {
-	const [liveReaction, setLiveReaction] = useState<Reaction | null>(null);
-	const bufferRef = useRef<EntityEvent[]>([]);
-	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const idleFiredRef = useRef(false);
-	const awayRef = useRef<number | undefined>();
+	const [reaction, setReaction] = useState<Reaction | null>(null);
 
 	const reactMutation = useMutation(
 		orpc.entity.react.mutationOptions({
 			onSuccess: (data) => {
 				if (data.react) {
-					setLiveReaction({
-						expression: data.expression,
-						message: data.message,
-					});
+					setReaction({ expression: data.expression, message: data.message });
 				}
-			},
-			onError: () => {
-				setLiveReaction({ expression: "glitched", message: "[SIGNAL LOST]" });
 			},
 		}),
 	);
 
-	const mutateRef = useRef(reactMutation.mutate);
-	mutateRef.current = reactMutation.mutate;
-
-	const flush = useCallback(() => {
-		const events = bufferRef.current;
-		bufferRef.current = [];
-		timerRef.current = null;
-
-		if (events.length === 0) return;
-
-		const content: { taskTitle?: string; folderName?: string } = {};
-		for (const e of events) {
-			if (e.data?.taskTitle) content.taskTitle = e.data.taskTitle;
-			if (e.data?.folderName) content.folderName = e.data.folderName;
-		}
-
-		mutateRef.current({
-			events: events.map((e) => ({
-				type: e.type as
-					| "boot"
-					| "task:created"
-					| "task:completed"
-					| "idle"
-					| "window:return",
-				...(e.data ? { data: e.data } : {}),
-				timestamp: e.timestamp,
-			})),
-			session: {
-				mood: sessionMood,
-				bootTime: sessionBootTime,
-				...(awayRef.current ? { awayDuration: awayRef.current } : {}),
-			},
-			...(Object.keys(content).length > 0 ? { content } : {}),
-		});
-
-		awayRef.current = undefined;
-	}, []);
-
-	const bootReaction = useQuery({
-		...orpc.entity.react.queryOptions({
-			input: {
-				events: [{ type: "boot" as const, timestamp: sessionBootTime }],
-				session: { mood: sessionMood, bootTime: sessionBootTime },
-			},
-		}),
-		staleTime: Number.POSITIVE_INFINITY,
-	});
-
-	// Bus subscription (imperative: external event emitter)
+	// Imperative integrations: external event bus + DOM focus/idle listeners.
 	useEffect(() => {
-		const unsub = entityBus.on((event) => {
-			bufferRef.current.push(event);
+		const buffer: EntityEvent[] = [];
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		let away: number | undefined;
 
-			if (!timerRef.current) {
-				timerRef.current = setTimeout(flush, BUFFER_MS);
+		const flush = () => {
+			if (timer) {
+				clearTimeout(timer);
+				timer = null;
+			}
+			if (buffer.length === 0) return;
+
+			const events = buffer.splice(0);
+			reactMutation.mutate({
+				events,
+				session: {
+					mood: sessionMood,
+					bootTime: sessionBootTime,
+					...(away ? { awayDuration: away } : {}),
+				},
+			});
+			away = undefined;
+		};
+
+		const unsub = entityBus.on((event) => {
+			buffer.push(event);
+			if (event.type === "boot") {
+				flush();
+				return;
+			}
+			if (!timer) {
+				timer = setTimeout(flush, BUFFER_MS);
 			}
 		});
 
-		return () => {
-			unsub();
-			if (timerRef.current) clearTimeout(timerRef.current);
-		};
-	}, [flush]);
-
-	// Idle detection + window:return (imperative: DOM event listeners)
-	useEffect(() => {
 		let focused = document.hasFocus();
 		let blurTime: number | null = null;
 		let lastReset = 0;
+		let idleTimer: ReturnType<typeof setTimeout> | null = null;
+		let idleFired = false;
 
 		const resetIdle = () => {
 			const now = Date.now();
 			if (now - lastReset < IDLE_THROTTLE_MS) return;
 			lastReset = now;
 
-			idleFiredRef.current = false;
-			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+			idleFired = false;
+			if (idleTimer) clearTimeout(idleTimer);
 			if (!focused) return;
 
-			idleTimerRef.current = setTimeout(() => {
-				if (!idleFiredRef.current && focused) {
-					idleFiredRef.current = true;
+			idleTimer = setTimeout(() => {
+				if (!idleFired && focused) {
+					idleFired = true;
 					entityBus.emit("idle");
 				}
 			}, IDLE_MS);
@@ -178,15 +133,15 @@ function EntityAlive() {
 		const handleBlur = () => {
 			focused = false;
 			blurTime = Date.now();
-			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+			if (idleTimer) clearTimeout(idleTimer);
 		};
 
 		const handleFocus = () => {
 			focused = true;
 			if (blurTime) {
-				const away = Date.now() - blurTime;
-				if (away > MIN_AWAY_MS) {
-					awayRef.current = away;
+				const elapsed = Date.now() - blurTime;
+				if (elapsed > MIN_AWAY_MS) {
+					away = elapsed;
 					entityBus.emit("window:return");
 				}
 				blurTime = null;
@@ -201,25 +156,24 @@ function EntityAlive() {
 		window.addEventListener("focus", handleFocus);
 		resetIdle();
 
+		if (!bootEmitted) {
+			bootEmitted = true;
+			entityBus.emit("boot");
+		}
+
 		return () => {
+			unsub();
+			if (timer) clearTimeout(timer);
 			document.removeEventListener("mousemove", resetIdle);
 			document.removeEventListener("keydown", resetIdle);
 			document.removeEventListener("click", resetIdle);
 			window.removeEventListener("blur", handleBlur);
 			window.removeEventListener("focus", handleFocus);
-			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+			if (idleTimer) clearTimeout(idleTimer);
 		};
-	}, []);
+	}, [reactMutation.mutate]);
 
-	const bootData = bootReaction.data?.react
-		? {
-				expression: bootReaction.data.expression,
-				message: bootReaction.data.message,
-			}
-		: null;
-	const reaction = liveReaction ?? bootData;
-
-	if (bootReaction.isLoading && !reaction) {
+	if (reactMutation.isPending && !reaction) {
 		return <EntityShell sprite={sprites.neutral} message="inicializando..." />;
 	}
 
@@ -229,7 +183,7 @@ function EntityAlive() {
 
 	return (
 		<EntityShell
-			sprite={sprites[reaction.expression] ?? sprites.neutral}
+			sprite={sprites[reaction.expression]}
 			message={reaction.message}
 			glitched={reaction.expression === "glitched"}
 		/>
