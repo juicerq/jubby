@@ -1,17 +1,17 @@
-import { base } from "@main/router/_base";
+import { noInput } from "@main/router/_base";
 import { getMainWindow } from "@main/window";
 
 export const windowRouter = {
-	state: base.handler(() => {
+	state: noInput.handler(() => {
 		const win = getMainWindow();
 		return { maximized: win?.isMaximized() ?? false };
 	}),
 
-	minimize: base.handler(() => {
+	minimize: noInput.handler(() => {
 		getMainWindow()?.minimize();
 	}),
 
-	toggleMaximize: base.handler(() => {
+	toggleMaximize: noInput.handler(() => {
 		const win = getMainWindow();
 
 		if (win?.isMaximized()) {
@@ -23,7 +23,7 @@ export const windowRouter = {
 		return { maximized: win?.isMaximized() ?? false };
 	}),
 
-	close: base.handler(() => {
+	close: noInput.handler(() => {
 		getMainWindow()?.close();
 	}),
 };

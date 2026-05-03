@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { PageHeader } from "@renderer/components/PageHeader";
 import { Scramble } from "@renderer/components/Scramble";
 import { TaskRow } from "@renderer/components/TaskRow";
 import { orpc } from "@renderer/lib/api";
@@ -41,19 +42,10 @@ function FolderPage() {
 
 	return (
 		<section className="flex h-full flex-col overflow-hidden">
-			<header className="flex items-center justify-between border-b border-border px-6 py-4">
-				<div className="flex flex-col gap-1">
-					<span className="type-mono-data text-fg-dim">
-						$ ls /{folder.name}
-					</span>
-					<h1 className="type-h1 text-fg">
-						<Scramble key={folderId}>{folder.name}</Scramble>
-					</h1>
-				</div>
-				<span className="type-mono-data text-fg-dim">
-					{open.length} PENDING / {completed.length} DONE
-				</span>
-			</header>
+			<PageHeader
+				title={<Scramble key={folderId}>{folder.name}</Scramble>}
+				stats={`${open.length} PENDING / ${completed.length} DONE`}
+			/>
 
 			<div className="flex flex-1 flex-col overflow-y-auto">
 				{taskList.length === 0 && (

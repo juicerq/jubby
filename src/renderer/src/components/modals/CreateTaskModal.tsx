@@ -1,10 +1,11 @@
-import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
 import { FormModal } from "@renderer/components/FormModal";
 import { Input, TextArea } from "@renderer/components/Input";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
+import { entityBus } from "@renderer/lib/entity-bus";
 import { useTaskInvalidation } from "@renderer/lib/queries";
+import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 
 type Props = {
 	folderId: string;
@@ -22,6 +23,7 @@ export function CreateTaskModal({ folderId, onClose }: Props) {
 			onSuccess: (task) => {
 				invalidate();
 				toast.push("ok", `APPENDED // ${task.title}`);
+				entityBus.emit("task:created", { taskTitle: task.title });
 				onClose();
 			},
 			onError: () => toast.push("err", "APPEND FAILED"),

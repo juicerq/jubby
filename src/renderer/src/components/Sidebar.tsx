@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
+import { Entity } from "@renderer/components/Entity";
 import { Heatmap } from "@renderer/components/Heatmap";
 import { IconButton } from "@renderer/components/IconButton";
 import { CreateFolderModal } from "@renderer/components/modals/CreateFolderModal";
@@ -31,15 +32,7 @@ export function Sidebar() {
 	return (
 		<>
 			<aside className="flex h-full w-[200px] flex-col border-r border-border bg-surface-1">
-				<header className="flex flex-col gap-1 border-b border-border px-3 py-3">
-					<div className="flex items-center gap-2">
-						<span aria-hidden className="type-h2 text-accent">
-							▣
-						</span>
-						<span className="type-h2 text-accent">JUBBY_OS</span>
-					</div>
-					<span className="type-ui-label text-fg-muted">SYSTEM ACTIVE</span>
-				</header>
+				<Entity />
 
 				<QueueRow active={queueActive} />
 

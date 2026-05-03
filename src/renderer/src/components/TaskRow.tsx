@@ -1,6 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import { ConfirmAction } from "@renderer/components/ConfirmAction";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
 import { DeleteTaskModal } from "@renderer/components/modals/DeleteTaskModal";
@@ -8,8 +5,12 @@ import { EditTaskModal } from "@renderer/components/modals/EditTaskModal";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/cn";
+import { entityBus } from "@renderer/lib/entity-bus";
 import { shortHash } from "@renderer/lib/now";
 import { useTaskInvalidation } from "@renderer/lib/queries";
+import { useMutation } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const COMPLETE_ANIM_MS = 500;
 
@@ -22,10 +23,7 @@ type TaskRowProps = {
 	ageLabel?: string;
 };
 
-type ModalState =
-	| { kind: "none" }
-	| { kind: "edit" }
-	| { kind: "delete" };
+type ModalState = { kind: "none" } | { kind: "edit" } | { kind: "delete" };
 
 export function TaskRow({
 	id,
@@ -47,10 +45,13 @@ export function TaskRow({
 				invalidate();
 				toast.push(
 					"ok",
-					task.done
-						? `DONE // ${task.title}`
-						: `REOPEN // ${task.title}`,
+					task.done ? `DONE // ${task.title}` : `REOPEN // ${task.title}`,
 				);
+				if (task.done) {
+					entityBus.emit("task:completed", {
+						taskTitle: task.title,
+					});
+				}
 			},
 			onError: () => {
 				setCompleting(false);
@@ -120,9 +121,7 @@ export function TaskRow({
 					)}
 				</div>
 				{!!folderBadge && (
-					<span className="type-mono-data text-fg-dim">
-						[ {folderBadge} ]
-					</span>
+					<span className="type-mono-data text-fg-dim">[ {folderBadge} ]</span>
 				)}
 				{!!ageLabel && (
 					<span className="type-mono-data text-accent-dim">{ageLabel}</span>

@@ -1,5 +1,6 @@
-import { os } from "@orpc/server";
 import { Logger } from "@main/logger";
+import { os } from "@orpc/server";
+import { type } from "arktype";
 
 export const base = os.use(async ({ next, path }) => {
 	try {
@@ -9,3 +10,5 @@ export const base = os.use(async ({ next, path }) => {
 		throw err;
 	}
 });
+
+export const noInput = base.input(type("undefined"));

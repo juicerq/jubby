@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { type } from "arktype";
 import { Store } from "@main/store/Store";
+import { type } from "arktype";
 
 const folderSchema = type({
 	id: "string",
@@ -41,6 +41,25 @@ function now(): number {
 	return Math.floor(Date.now() / 1000);
 }
 
+export const EntityStats = {
+	get: async () => {
+		const data = await store.read();
+		const todayKey = new Date().toLocaleDateString("en-CA");
+
+		return {
+			pendingTasks: data.tasks.filter((t) => !t.done).length,
+			completedToday: data.tasks.filter(
+				(t) =>
+					t.done &&
+					typeof t.completedAt === "number" &&
+					new Date(t.completedAt * 1000).toLocaleDateString("en-CA") ===
+						todayKey,
+			).length,
+			totalFolders: data.folders.length,
+		};
+	},
+};
+
 export const Folders = {
 	list: async (): Promise<Folder[]> => {
 		const data = await store.read();
@@ -57,7 +76,13 @@ export const Folders = {
 		return folder;
 	},
 
-	rename: async ({ id, name }: { id: string; name: string }): Promise<Folder> => {
+	rename: async ({
+		id,
+		name,
+	}: {
+		id: string;
+		name: string;
+	}): Promise<Folder> => {
 		const next = await store.mutate((d) => ({
 			...d,
 			folders: d.folders.map((f) => (f.id === id ? { ...f, name } : f)),
@@ -92,11 +117,7 @@ export const Folders = {
 };
 
 export const Tasks = {
-	listByFolder: async ({
-		folderId,
-	}: {
-		folderId: string;
-	}): Promise<Task[]> => {
+	listByFolder: async ({ folderId }: { folderId: string }): Promise<Task[]> => {
 		const data = await store.read();
 		return data.tasks
 			.filter((t) => t.folderId === folderId)

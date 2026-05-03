@@ -24,7 +24,7 @@ export function Titlebar() {
 
 	return (
 		<header className="titlebar flex h-8 items-center justify-between border-b border-border bg-bg">
-			<span className="type-ui-label px-3 text-fg-dim">JUBBY_OS</span>
+			<span className="type-ui-label flex items-center gap-1.5 px-3 text-fg-dim"><span className="text-base leading-none">▣</span> JUBBY_OS</span>
 
 			<div className="no-drag flex h-full items-center">
 				<ControlButton
