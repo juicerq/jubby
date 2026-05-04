@@ -21,7 +21,6 @@ const eventSchema = type({
 
 const sessionSchema = type({
 	mood: type.enumerated(...entityMoods),
-	bootTime: "number",
 	"awayDuration?": "number",
 });
 

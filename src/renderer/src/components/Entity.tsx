@@ -28,13 +28,12 @@ const sprites: Record<EntityExpression, string> = {
 };
 
 const BUFFER_MS = 10_000;
+const REACTION_TTL_MS = 10_000;
 const IDLE_MS = 3 * 60 * 1000;
 const IDLE_THROTTLE_MS = 1_000;
 const MIN_AWAY_MS = 60_000;
 
 const sessionMood = pickMood();
-const sessionBootTime = Date.now();
-let bootEmitted = false;
 
 type Reaction = {
 	expression: EntityExpression;
@@ -71,6 +70,13 @@ function EntityAlive() {
 		}),
 	);
 
+	// setTimeout é API imperativa: derruba a reação atual em sleep depois de REACTION_TTL_MS.
+	useEffect(() => {
+		if (!reaction) return;
+		const t = setTimeout(() => setReaction(null), REACTION_TTL_MS);
+		return () => clearTimeout(t);
+	}, [reaction]);
+
 	// Imperative integrations: external event bus + DOM focus/idle listeners.
 	useEffect(() => {
 		const buffer: EntityEvent[] = [];
@@ -89,7 +95,6 @@ function EntityAlive() {
 				events,
 				session: {
 					mood: sessionMood,
-					bootTime: sessionBootTime,
 					...(away ? { awayDuration: away } : {}),
 				},
 			});
@@ -98,10 +103,6 @@ function EntityAlive() {
 
 		const unsub = entityBus.on((event) => {
 			buffer.push(event);
-			if (event.type === "boot") {
-				flush();
-				return;
-			}
 			if (!timer) {
 				timer = setTimeout(flush, BUFFER_MS);
 			}
@@ -156,11 +157,6 @@ function EntityAlive() {
 		window.addEventListener("focus", handleFocus);
 		resetIdle();
 
-		if (!bootEmitted) {
-			bootEmitted = true;
-			entityBus.emit("boot");
-		}
-
 		return () => {
 			unsub();
 			if (timer) clearTimeout(timer);
@@ -174,11 +170,11 @@ function EntityAlive() {
 	}, [reactMutation.mutate]);
 
 	if (reactMutation.isPending && !reaction) {
-		return <EntityShell sprite={sprites.neutral} message="inicializando..." />;
+		return <EntityShell sprite={sprites.neutral} message="processando..." />;
 	}
 
 	if (!reaction) {
-		return <EntityShell sprite={sprites.neutral} />;
+		return <EntityShell sprite="(︶ω︶) zZz" sleeping />;
 	}
 
 	return (
@@ -207,13 +203,10 @@ function EntityDead() {
 	);
 
 	return (
-		<header className="flex flex-col gap-2 border-b border-border px-3 py-3">
-			<div className="flex items-center gap-2">
-				<span className="font-pixel text-fg-dim text-lg">
-					{sprites.glitched}
-				</span>
-				<span className="type-h2 text-fg-dim">JUBBY</span>
-			</div>
+		<header className="flex flex-col items-center gap-2 border-b border-border px-3 py-3">
+			<span className="font-pixel text-fg-dim text-lg">
+				{sprites.glitched}
+			</span>
 			<span className="type-ui-label text-fg-dim">[OFFLINE]</span>
 			<form
 				className="flex flex-col gap-1.5"
@@ -254,29 +247,30 @@ function EntityShell({
 	sprite,
 	message,
 	glitched,
+	sleeping,
 }: {
 	sprite: string;
 	message?: string | null;
 	glitched?: boolean;
+	sleeping?: boolean;
 }) {
 	return (
-		<header className="flex flex-col gap-1 border-b border-border px-3 py-3">
-			<div className="flex items-center gap-2">
-				<span
-					className={cn(
-						"font-pixel text-lg",
-						glitched ? "text-error animate-pulse" : "text-accent",
-					)}
-				>
-					{sprite}
-				</span>
-				<span className="type-h2 text-accent">JUBBY</span>
-			</div>
+		<header className="flex flex-col items-center gap-1 border-b border-border px-3 py-3">
+			<span
+				className={cn(
+					"font-pixel text-lg",
+					glitched && "text-error animate-pulse",
+					sleeping && "text-fg-dim",
+					!glitched && !sleeping && "text-accent",
+				)}
+			>
+				{sprite}
+			</span>
 			{!!message && (
 				<Scramble
 					key={message}
 					className={cn(
-						"type-ui-label",
+						"type-ui-label text-center",
 						glitched ? "text-error" : "text-fg-muted",
 					)}
 				>

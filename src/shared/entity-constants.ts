@@ -24,7 +24,6 @@ export const entityExpressions = [
 export type EntityExpression = (typeof entityExpressions)[number];
 
 export const entityEventTypes = [
-	"boot",
 	"task:created",
 	"task:completed",
 	"idle",
