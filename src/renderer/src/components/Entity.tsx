@@ -3,6 +3,7 @@ import {
 	type EntityMood,
 	entityMoods,
 } from "@shared/entity-constants";
+import { EntityCanvas } from "@renderer/components/EntityCanvas";
 import { Scramble } from "@renderer/components/Scramble";
 import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
@@ -10,28 +11,20 @@ import { cn } from "@renderer/lib/cn";
 import type { EntityEvent } from "@renderer/lib/entity-bus";
 import { entityBus } from "@renderer/lib/entity-bus";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 function pickMood(): EntityMood {
 	return entityMoods[Math.floor(Math.random() * entityMoods.length)];
 }
 
-const sprites: Record<EntityExpression, string> = {
-	neutral: "(• ᴗ •)",
-	happy: "(^ ᴗ ^)",
-	excited: "(✧ ᴗ ✧)",
-	sleepy: "(- ᴗ -)",
-	grumpy: "(• ︿ •)",
-	curious: "(◉ ᴗ ◉)",
-	shocked: "(⊙ ᴗ ⊙)",
-	glitched: "(╳ _ ╳)",
-};
-
 const BUFFER_MS = 10_000;
 const REACTION_TTL_MS = 10_000;
 const IDLE_MS = 3 * 60 * 1000;
 const IDLE_THROTTLE_MS = 1_000;
-const MIN_AWAY_MS = 60_000;
+const MOVE_POLL_MS = 100;
+const MOVE_START_MS = 750;
+const MOVE_STOP_MS = 200;
 
 const sessionMood = pickMood();
 
@@ -47,7 +40,11 @@ export function Entity() {
 	});
 
 	if (hasKey.isLoading) {
-		return <EntityShell sprite={sprites.neutral} />;
+		return (
+			<EntityShell>
+				<EntityCanvas mode="idle" />
+			</EntityShell>
+		);
 	}
 
 	if (!hasKey.data) {
@@ -59,6 +56,7 @@ export function Entity() {
 
 function EntityAlive() {
 	const [reaction, setReaction] = useState<Reaction | null>(null);
+	const [isMoving, setIsMoving] = useState(false);
 
 	const reactMutation = useMutation(
 		orpc.entity.react.mutationOptions({
@@ -77,11 +75,52 @@ function EntityAlive() {
 		return () => clearTimeout(t);
 	}, [reaction]);
 
+	// Drag da janela: poll de screenX/Y (frame: false engole pointer events na .titlebar).
+	useEffect(() => {
+		let lastX = window.screenX;
+		let lastY = window.screenY;
+		let startTimer: ReturnType<typeof setTimeout> | null = null;
+		let stopTimer: ReturnType<typeof setTimeout> | null = null;
+		let started = false;
+
+		const stop = () => {
+			if (startTimer) {
+				clearTimeout(startTimer);
+				startTimer = null;
+			}
+			if (started) {
+				started = false;
+				setIsMoving(false);
+			}
+			stopTimer = null;
+		};
+
+		const interval = setInterval(() => {
+			if (window.screenX === lastX && window.screenY === lastY) return;
+			lastX = window.screenX;
+			lastY = window.screenY;
+			if (!started && !startTimer) {
+				startTimer = setTimeout(() => {
+					started = true;
+					startTimer = null;
+					setIsMoving(true);
+				}, MOVE_START_MS);
+			}
+			if (stopTimer) clearTimeout(stopTimer);
+			stopTimer = setTimeout(stop, MOVE_STOP_MS);
+		}, MOVE_POLL_MS);
+
+		return () => {
+			clearInterval(interval);
+			if (startTimer) clearTimeout(startTimer);
+			if (stopTimer) clearTimeout(stopTimer);
+		};
+	}, []);
+
 	// Imperative integrations: external event bus + DOM focus/idle listeners.
 	useEffect(() => {
 		const buffer: EntityEvent[] = [];
 		let timer: ReturnType<typeof setTimeout> | null = null;
-		let away: number | undefined;
 
 		const flush = () => {
 			if (timer) {
@@ -93,12 +132,8 @@ function EntityAlive() {
 			const events = buffer.splice(0);
 			reactMutation.mutate({
 				events,
-				session: {
-					mood: sessionMood,
-					...(away ? { awayDuration: away } : {}),
-				},
+				session: { mood: sessionMood },
 			});
-			away = undefined;
 		};
 
 		const unsub = entityBus.on((event) => {
@@ -109,7 +144,6 @@ function EntityAlive() {
 		});
 
 		let focused = document.hasFocus();
-		let blurTime: number | null = null;
 		let lastReset = 0;
 		let idleTimer: ReturnType<typeof setTimeout> | null = null;
 		let idleFired = false;
@@ -133,20 +167,11 @@ function EntityAlive() {
 
 		const handleBlur = () => {
 			focused = false;
-			blurTime = Date.now();
 			if (idleTimer) clearTimeout(idleTimer);
 		};
 
 		const handleFocus = () => {
 			focused = true;
-			if (blurTime) {
-				const elapsed = Date.now() - blurTime;
-				if (elapsed > MIN_AWAY_MS) {
-					away = elapsed;
-					entityBus.emit("window:return");
-				}
-				blurTime = null;
-			}
 			resetIdle();
 		};
 
@@ -169,20 +194,40 @@ function EntityAlive() {
 		};
 	}, [reactMutation.mutate]);
 
+	if (isMoving) {
+		return (
+			<EntityShell>
+				<EntityCanvas mode="moving" />
+			</EntityShell>
+		);
+	}
+
 	if (reactMutation.isPending && !reaction) {
-		return <EntityShell sprite={sprites.neutral} message="processando..." />;
+		return (
+			<EntityShell message="processando...">
+				<EntityCanvas mode="looking_around" />
+			</EntityShell>
+		);
 	}
 
 	if (!reaction) {
-		return <EntityShell sprite="(︶ω︶) zZz" sleeping />;
+		return (
+			<EntityShell>
+				<EntityCanvas mode="sleeping" />
+			</EntityShell>
+		);
 	}
 
 	return (
 		<EntityShell
-			sprite={sprites[reaction.expression]}
 			message={reaction.message}
-			glitched={reaction.expression === "glitched"}
-		/>
+			messageError={reaction.expression === "glitched"}
+		>
+			<EntityCanvas
+				mode={reaction.expression}
+				className={cn(reaction.expression === "glitched" && "animate-pulse")}
+			/>
+		</EntityShell>
 	);
 }
 
@@ -204,9 +249,7 @@ function EntityDead() {
 
 	return (
 		<header className="flex flex-col items-center gap-2 border-b border-border px-3 py-3">
-			<span className="font-pixel text-fg-dim text-lg">
-				{sprites.glitched}
-			</span>
+			<EntityCanvas mode="glitched" className="animate-pulse" />
 			<span className="type-ui-label text-fg-dim">[OFFLINE]</span>
 			<form
 				className="flex flex-col gap-1.5"
@@ -243,35 +286,22 @@ function EntityDead() {
 	);
 }
 
-function EntityShell({
-	sprite,
-	message,
-	glitched,
-	sleeping,
-}: {
-	sprite: string;
+type EntityShellProps = {
+	children: ReactNode;
 	message?: string | null;
-	glitched?: boolean;
-	sleeping?: boolean;
-}) {
+	messageError?: boolean;
+};
+
+function EntityShell({ children, message, messageError }: EntityShellProps) {
 	return (
-		<header className="flex flex-col items-center gap-1 border-b border-border px-3 py-3">
-			<span
-				className={cn(
-					"font-pixel text-lg",
-					glitched && "text-error animate-pulse",
-					sleeping && "text-fg-dim",
-					!glitched && !sleeping && "text-accent",
-				)}
-			>
-				{sprite}
-			</span>
+		<header className="flex flex-col items-center gap-2 border-b border-border px-3 py-3">
+			{children}
 			{!!message && (
 				<Scramble
 					key={message}
 					className={cn(
 						"type-ui-label text-center",
-						glitched ? "text-error" : "text-fg-muted",
+						messageError ? "text-error" : "text-fg-muted",
 					)}
 				>
 					{message}

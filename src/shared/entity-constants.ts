@@ -27,7 +27,6 @@ export const entityEventTypes = [
 	"task:created",
 	"task:completed",
 	"idle",
-	"window:return",
 ] as const;
 
 export type EntityEventType = (typeof entityEventTypes)[number];
