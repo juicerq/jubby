@@ -8,6 +8,7 @@ import { Heatmap } from "@renderer/components/Heatmap";
 import { IconButton } from "@renderer/components/IconButton";
 import { CreateFolderModal } from "@renderer/components/modals/CreateFolderModal";
 import { CreateTaskModal } from "@renderer/components/modals/CreateTaskModal";
+import { ManageTagsModal } from "@renderer/components/modals/ManageTagsModal";
 import { PurgeFolderModal } from "@renderer/components/modals/PurgeFolderModal";
 import { RenameFolderModal } from "@renderer/components/modals/RenameFolderModal";
 import { orpc } from "@renderer/lib/api";
@@ -18,7 +19,8 @@ type ModalState =
 	| { kind: "create-folder" }
 	| { kind: "rename-folder"; id: string; current: string }
 	| { kind: "create-task"; folderId: string }
-	| { kind: "purge-folder"; id: string; name: string };
+	| { kind: "purge-folder"; id: string; name: string }
+	| { kind: "manage-tags" };
 
 export function Sidebar() {
 	const folders = useQuery(orpc.folders.list.queryOptions());
@@ -75,6 +77,17 @@ export function Sidebar() {
 					))}
 				</nav>
 
+				<div className="flex items-center justify-between border-t border-border px-3 py-1">
+					<span className="type-ui-label text-fg-muted">TAGS</span>
+					<IconButton
+						aria-label="Manage tags"
+						onClick={() => setModal({ kind: "manage-tags" })}
+						className="type-mono-data"
+					>
+						[manage]
+					</IconButton>
+				</div>
+
 				<Heatmap />
 			</aside>
 
@@ -96,6 +109,7 @@ export function Sidebar() {
 			{modal.kind === "create-task" && (
 				<CreateTaskModal folderId={modal.folderId} onClose={close} />
 			)}
+			{modal.kind === "manage-tags" && <ManageTagsModal onClose={close} />}
 		</>
 	);
 }

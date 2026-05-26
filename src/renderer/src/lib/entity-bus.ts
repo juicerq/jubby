@@ -3,6 +3,7 @@ import type { EntityEventType } from "@shared/entity-constants";
 type EntityEventData = {
 	taskTitle?: string;
 	folderName?: string;
+	taskTags?: string[];
 };
 
 type EntityEvent = {

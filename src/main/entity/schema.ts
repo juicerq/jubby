@@ -11,6 +11,7 @@ export type { EntityMood as Mood } from "@shared/entity-constants";
 const eventDataSchema = type({
 	"taskTitle?": "string",
 	"folderName?": "string",
+	"taskTags?": "string[]",
 });
 
 const eventSchema = type({

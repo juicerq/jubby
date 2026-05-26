@@ -4,10 +4,12 @@ import { Tasks } from "@main/store/data";
 
 export const tasksRouter = {
 	listByFolder: base
-		.input(type({ folderId: "string" }))
+		.input(type({ folderId: "string", "tagIds?": "string[]" }))
 		.handler(({ input }) => Tasks.listByFolder(input)),
 
-	listPending: base.handler(() => Tasks.listPending()),
+	listPending: base
+		.input(type({ "tagIds?": "string[]" }))
+		.handler(({ input }) => Tasks.listPending(input)),
 
 	heatmap: base.handler(() => Tasks.heatmap()),
 
@@ -17,6 +19,7 @@ export const tasksRouter = {
 				folderId: "string",
 				title: "string > 0",
 				"description?": "string",
+				"tagIds?": "string[]",
 			}),
 		)
 		.handler(({ input }) => Tasks.create(input)),
@@ -27,6 +30,7 @@ export const tasksRouter = {
 				id: "string",
 				"title?": "string > 0",
 				"description?": "string",
+				"tagIds?": "string[]",
 			}),
 		)
 		.handler(({ input }) => Tasks.update(input)),

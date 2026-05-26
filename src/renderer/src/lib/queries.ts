@@ -17,3 +17,11 @@ export function useFolderInvalidation() {
 		queryClient.invalidateQueries({ queryKey: orpc.system.stats.key() });
 	};
 }
+
+export function useTagInvalidation() {
+	const queryClient = useQueryClient();
+	return () => {
+		queryClient.invalidateQueries({ queryKey: orpc.tags.key() });
+		queryClient.invalidateQueries({ queryKey: orpc.tasks.key() });
+	};
+}

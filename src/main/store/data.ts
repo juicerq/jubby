@@ -8,6 +8,17 @@ const folderSchema = type({
 	createdAt: "number",
 });
 
+export const tagColorSchema = type(
+	"'green' | 'amber' | 'red' | 'cyan' | 'magenta'",
+);
+
+const tagSchema = type({
+	id: "string",
+	name: "string > 0",
+	color: tagColorSchema,
+	createdAt: "number",
+});
+
 const taskSchema = type({
 	id: "string",
 	folderId: "string",
@@ -16,23 +27,39 @@ const taskSchema = type({
 	done: "boolean",
 	createdAt: "number",
 	"completedAt?": "number",
+	tagIds: "string[]",
 });
 
 const dataContract = type({
 	folders: folderSchema.array(),
 	tasks: taskSchema.array(),
+	tags: tagSchema.array(),
 });
 
 type Folder = typeof folderSchema.infer;
+type Tag = typeof tagSchema.infer;
+type TagColor = typeof tagColorSchema.infer;
 type Task = typeof taskSchema.infer;
 type Data = typeof dataContract.infer;
 
 const store = new Store({
 	name: "data",
-	version: 1,
+	version: 2,
 	contract: dataContract,
-	migrators: {},
-	seed: (): Data => ({ folders: [], tasks: [] }),
+	migrators: {
+		1: (raw) => {
+			const prev = raw as {
+				folders: unknown[];
+				tasks: { tagIds?: string[]; [k: string]: unknown }[];
+			};
+			return {
+				folders: prev.folders,
+				tasks: prev.tasks.map((t) => ({ ...t, tagIds: t.tagIds ?? [] })),
+				tags: [],
+			};
+		},
+	},
+	seed: (): Data => ({ folders: [], tasks: [], tags: [] }),
 });
 
 export const dataStore = store;
@@ -107,6 +134,7 @@ export const Folders = {
 			const remainingTasks = d.tasks.filter((t) => t.folderId !== id);
 			deletedTaskCount = d.tasks.length - remainingTasks.length;
 			return {
+				...d,
 				folders: d.folders.filter((f) => f.id !== id),
 				tasks: remainingTasks,
 			};
@@ -116,18 +144,67 @@ export const Folders = {
 	},
 };
 
+const MAX_TAGS_PER_TASK = 5;
+const MAX_TAG_NAME_LEN = 30;
+
+function normalizeTagName(raw: string): string {
+	const trimmed = raw.trim();
+
+	if (trimmed.length === 0) {
+		return trimmed;
+	}
+
+	return trimmed.charAt(0).toLocaleUpperCase("pt-BR") + trimmed.slice(1);
+}
+
+function tagNameKey(name: string): string {
+	return name.trim().toLocaleLowerCase("pt-BR");
+}
+
+function validateTagName(raw: string): { normalized: string; key: string } {
+	const normalized = normalizeTagName(raw);
+
+	if (normalized.length === 0) {
+		throw new Error("nome da tag obrigatório");
+	}
+
+	if (normalized.length > MAX_TAG_NAME_LEN) {
+		throw new Error(
+			`nome da tag deve ter no máximo ${MAX_TAG_NAME_LEN} caracteres`,
+		);
+	}
+
+	return { normalized, key: tagNameKey(normalized) };
+}
+
+function matchesTagFilter(taskTagIds: string[], filter?: string[]): boolean {
+	if (!filter || filter.length === 0) {
+		return true;
+	}
+
+	return taskTagIds.some((id) => filter.includes(id));
+}
+
 export const Tasks = {
-	listByFolder: async ({ folderId }: { folderId: string }): Promise<Task[]> => {
+	listByFolder: async ({
+		folderId,
+		tagIds,
+	}: {
+		folderId: string;
+		tagIds?: string[];
+	}): Promise<Task[]> => {
 		const data = await store.read();
 		return data.tasks
-			.filter((t) => t.folderId === folderId)
+			.filter(
+				(t) => t.folderId === folderId && matchesTagFilter(t.tagIds, tagIds),
+			)
 			.sort((a, b) => b.createdAt - a.createdAt);
 	},
 
-	listPending: async (): Promise<Task[]> => {
+	listPending: async (input?: { tagIds?: string[] }): Promise<Task[]> => {
 		const data = await store.read();
 		return data.tasks
-			.filter((t) => !t.done)
+			.filter((t) => !t.done && matchesTagFilter(t.tagIds, input?.tagIds))
 			.sort((a, b) => a.createdAt - b.createdAt);
 	},
 
@@ -159,11 +236,19 @@ export const Tasks = {
 		folderId,
 		title,
 		description,
+		tagIds,
 	}: {
 		folderId: string;
 		title: string;
 		description?: string;
+		tagIds?: string[];
 	}): Promise<Task> => {
+		const selectedTagIds = tagIds ?? [];
+
+		if (selectedTagIds.length > MAX_TAGS_PER_TASK) {
+			throw new Error(`máximo ${MAX_TAGS_PER_TASK} tags por task`);
+		}
+
 		const task: Task = {
 			id: randomUUID(),
 			folderId,
@@ -171,11 +256,20 @@ export const Tasks = {
 			...(description ? { description } : {}),
 			done: false,
 			createdAt: now(),
+			tagIds: selectedTagIds,
 		};
+
 		await store.mutate((d) => {
 			if (!d.folders.some((f) => f.id === folderId)) {
 				throw new Error(`folder not found: ${folderId}`);
 			}
+
+			for (const id of selectedTagIds) {
+				if (!d.tags.some((t) => t.id === id)) {
+					throw new Error(`tag not found: ${id}`);
+				}
+			}
+
 			return { ...d, tasks: [...d.tasks, task] };
 		});
 		return task;
@@ -185,11 +279,28 @@ export const Tasks = {
 		id: string;
 		title?: string;
 		description?: string;
+		tagIds?: string[];
 	}): Promise<Task> => {
-		const next = await store.mutate((d) => ({
-			...d,
-			tasks: d.tasks.map((t) => (t.id === patch.id ? { ...t, ...patch } : t)),
-		}));
+		if (patch.tagIds && patch.tagIds.length > MAX_TAGS_PER_TASK) {
+			throw new Error(`máximo ${MAX_TAGS_PER_TASK} tags por task`);
+		}
+
+		const next = await store.mutate((d) => {
+			if (patch.tagIds) {
+				for (const id of patch.tagIds) {
+					if (!d.tags.some((t) => t.id === id)) {
+						throw new Error(`tag not found: ${id}`);
+					}
+				}
+			}
+
+			return {
+				...d,
+				tasks: d.tasks.map((t) =>
+					t.id === patch.id ? { ...t, ...patch } : t,
+				),
+			};
+		});
 		const updated = next.tasks.find((t) => t.id === patch.id);
 
 		if (!updated) {
@@ -225,6 +336,115 @@ export const Tasks = {
 		await store.mutate((d) => ({
 			...d,
 			tasks: d.tasks.filter((t) => t.id !== id),
+		}));
+	},
+};
+
+export interface TagWithCount extends Tag {
+	taskCount: number;
+}
+
+export const Tags = {
+	list: async (): Promise<TagWithCount[]> => {
+		const data = await store.read();
+		const counts = new Map<string, number>();
+
+		for (const task of data.tasks) {
+			for (const id of task.tagIds) {
+				counts.set(id, (counts.get(id) ?? 0) + 1);
+			}
+		}
+
+		return data.tags
+			.map((t) => ({ ...t, taskCount: counts.get(t.id) ?? 0 }))
+			.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+	},
+
+	create: async ({
+		name,
+		color,
+	}: {
+		name: string;
+		color?: TagColor;
+	}): Promise<Tag> => {
+		const { normalized, key } = validateTagName(name);
+		let result!: Tag;
+
+		await store.mutate((d) => {
+			const existing = d.tags.find((t) => tagNameKey(t.name) === key);
+
+			if (existing) {
+				result = existing;
+				return d;
+			}
+
+			const tag: Tag = {
+				id: randomUUID(),
+				name: normalized,
+				color: color ?? "green",
+				createdAt: now(),
+			};
+			result = tag;
+			return { ...d, tags: [...d.tags, tag] };
+		});
+
+		return result;
+	},
+
+	rename: async ({ id, name }: { id: string; name: string }): Promise<Tag> => {
+		const { normalized, key } = validateTagName(name);
+		const next = await store.mutate((d) => {
+			const collision = d.tags.find(
+				(t) => t.id !== id && tagNameKey(t.name) === key,
+			);
+
+			if (collision) {
+				throw new Error(`tag já existe: ${collision.name}`);
+			}
+
+			return {
+				...d,
+				tags: d.tags.map((t) => (t.id === id ? { ...t, name: normalized } : t)),
+			};
+		});
+		const updated = next.tags.find((t) => t.id === id);
+
+		if (!updated) {
+			throw new Error(`tag not found: ${id}`);
+		}
+
+		return updated;
+	},
+
+	recolor: async ({
+		id,
+		color,
+	}: {
+		id: string;
+		color: TagColor;
+	}): Promise<Tag> => {
+		const next = await store.mutate((d) => ({
+			...d,
+			tags: d.tags.map((t) => (t.id === id ? { ...t, color } : t)),
+		}));
+		const updated = next.tags.find((t) => t.id === id);
+
+		if (!updated) {
+			throw new Error(`tag not found: ${id}`);
+		}
+
+		return updated;
+	},
+
+	delete: async ({ id }: { id: string }): Promise<void> => {
+		await store.mutate((d) => ({
+			...d,
+			tags: d.tags.filter((t) => t.id !== id),
+			tasks: d.tasks.map((t) =>
+				t.tagIds.includes(id)
+					? { ...t, tagIds: t.tagIds.filter((tid) => tid !== id) }
+					: t,
+			),
 		}));
 	},
 };

@@ -3,6 +3,7 @@ import { foldersRouter } from "@main/router/folders";
 import { loggerRouter } from "@main/router/logger";
 import { settingsRouter } from "@main/router/settings";
 import { systemRouter } from "@main/router/system";
+import { tagsRouter } from "@main/router/tags";
 import { tasksRouter } from "@main/router/tasks";
 import { windowRouter } from "@main/router/window";
 
@@ -12,6 +13,7 @@ export const router = {
 	settings: settingsRouter,
 	system: systemRouter,
 	folders: foldersRouter,
+	tags: tagsRouter,
 	tasks: tasksRouter,
 	window: windowRouter,
 };

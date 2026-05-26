@@ -2,13 +2,15 @@ import { ConfirmAction } from "@renderer/components/ConfirmAction";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
 import { DeleteTaskModal } from "@renderer/components/modals/DeleteTaskModal";
 import { EditTaskModal } from "@renderer/components/modals/EditTaskModal";
+import { TagChip } from "@renderer/components/TagChip";
 import { useToast } from "@renderer/components/Toast";
+import type { TagColor } from "@renderer/constants/tag-colors";
 import { orpc } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/cn";
 import { entityBus } from "@renderer/lib/entity-bus";
 import { shortHash } from "@renderer/lib/now";
 import { useTaskInvalidation } from "@renderer/lib/queries";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -19,17 +21,21 @@ type TaskRowProps = {
 	title: string;
 	description?: string;
 	done: boolean;
+	tagIds: string[];
 	folderBadge?: string;
 	ageLabel?: string;
 };
 
 type ModalState = { kind: "none" } | { kind: "edit" } | { kind: "delete" };
 
+type TagSummary = { id: string; name: string; color: TagColor };
+
 export function TaskRow({
 	id,
 	title,
 	description,
 	done,
+	tagIds,
 	folderBadge,
 	ageLabel,
 }: TaskRowProps) {
@@ -38,6 +44,13 @@ export function TaskRow({
 	const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const invalidate = useTaskInvalidation();
 	const toast = useToast();
+	const tags = useQuery(orpc.tags.list.queryOptions());
+	const tagById = new Map(
+		((tags.data ?? []) as TagSummary[]).map((t) => [t.id, t]),
+	);
+	const resolvedTags = tagIds
+		.map((tid) => tagById.get(tid))
+		.filter((t): t is TagSummary => !!t);
 
 	const toggle = useMutation(
 		orpc.tasks.toggleDone.mutationOptions({
@@ -48,8 +61,12 @@ export function TaskRow({
 					task.done ? `DONE // ${task.title}` : `REOPEN // ${task.title}`,
 				);
 				if (task.done) {
+					const taskTags = task.tagIds
+						.map((tid) => tagById.get(tid)?.name)
+						.filter((n): n is string => !!n);
 					entityBus.emit("task:completed", {
 						taskTitle: task.title,
+						...(taskTags.length > 0 ? { taskTags } : {}),
 					});
 				}
 			},
@@ -86,25 +103,33 @@ export function TaskRow({
 
 	const visualDone = done || completing;
 
+	const hasMeta =
+		resolvedTags.length > 0 || !!folderBadge || !!ageLabel;
+
 	return (
 		<>
 			<div
 				className={cn(
-					"group flex items-center gap-3 border-b border-border px-6 py-3 transition-all duration-300",
+					"group flex items-start gap-3 border-b border-border px-6 py-3 transition-all duration-300",
 					visualDone ? "opacity-50" : "hover:bg-surface-2",
 				)}
 			>
-				<span className={cn("inline-flex", completing && "task-checkbox-pop")}>
+				<span
+					className={cn(
+						"inline-flex pt-0.5",
+						completing && "task-checkbox-pop",
+					)}
+				>
 					<ConfirmAction
 						mode="two-step"
 						checked={visualDone}
 						onConfirm={handleConfirm}
 					/>
 				</span>
-				<span className="type-mono-data w-12 shrink-0 text-fg-dim">
+				<span className="type-mono-data w-12 shrink-0 pt-0.5 text-fg-dim">
 					#{shortHash(id)}
 				</span>
-				<div className="flex flex-1 flex-col gap-0.5 truncate">
+				<div className="flex flex-1 flex-col gap-1 truncate">
 					<span
 						className={cn(
 							"type-task-title text-fg",
@@ -119,13 +144,25 @@ export function TaskRow({
 							{description}
 						</span>
 					)}
+					{hasMeta && (
+						<div className="flex flex-wrap items-center gap-2">
+							{resolvedTags.map((tag) => (
+								<TagChip key={tag.id} name={tag.name} color={tag.color} />
+							))}
+							<span className="flex-1" />
+							{!!folderBadge && (
+								<span className="type-mono-data text-fg-dim">
+									[ {folderBadge} ]
+								</span>
+							)}
+							{!!ageLabel && (
+								<span className="type-mono-data text-accent-dim">
+									{ageLabel}
+								</span>
+							)}
+						</div>
+					)}
 				</div>
-				{!!folderBadge && (
-					<span className="type-mono-data text-fg-dim">[ {folderBadge} ]</span>
-				)}
-				{!!ageLabel && (
-					<span className="type-mono-data text-accent-dim">{ageLabel}</span>
-				)}
 				<DropdownMenu
 					aria-label="Task actions"
 					items={[
@@ -149,6 +186,7 @@ export function TaskRow({
 					id={id}
 					currentTitle={title}
 					currentDescription={description}
+					currentTagIds={tagIds}
 					onClose={close}
 				/>
 			)}

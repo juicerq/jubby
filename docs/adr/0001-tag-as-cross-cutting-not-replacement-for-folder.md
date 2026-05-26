@@ -1,0 +1,3 @@
+# Tag is a cross-cutting layer over Folder, not a replacement
+
+Folder permanece o container primário e exclusivo de Tasks (`folderId` continua obrigatório); Tag é uma camada de classificação adicional que cruza Folders. Consideramos substituir Folders por Tags (modelo só-tag) e dar peso igual aos dois (folder opcional + tags). Rejeitamos ambos porque Folder já é o eixo estabelecido da UX (QUEUE agrupa por folder, badge na TaskRow, heatmap, navegação na sidebar) e tornar `folderId` opcional ou removê-lo criaria dois modelos de organização competindo na mesma tela, sem ganho real. Tag entra como metadado secundário ("como a Task é"), preservando Folder como autoridade de "onde a Task mora".
