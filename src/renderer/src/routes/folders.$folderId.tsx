@@ -2,13 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { GrillList } from "@renderer/components/GrillList";
 import { PageHeader } from "@renderer/components/PageHeader";
 import { Scramble } from "@renderer/components/Scramble";
+import { TabButton } from "@renderer/components/TabButton";
 import { TagFilterBar } from "@renderer/components/TagFilterBar";
 import { TaskRow } from "@renderer/components/TaskRow";
 import { orpc } from "@renderer/lib/api";
 import { queryClient } from "@renderer/lib/query-client";
 import { useTagFilter, validateTagSearch } from "@renderer/lib/tag-filter";
+
+type FolderTab = "tasks" | "grill";
 
 export const Route = createFileRoute("/folders/$folderId")({
 	validateSearch: validateTagSearch,
@@ -27,17 +31,73 @@ export const Route = createFileRoute("/folders/$folderId")({
 
 function FolderPage() {
 	const { folderId } = Route.useParams();
-	const filter = useTagFilter();
 	const folders = useQuery(orpc.folders.list.queryOptions());
 	const tasks = useQuery(
 		orpc.tasks.listByFolder.queryOptions({ input: { folderId } }),
 	);
+	const [tab, setTab] = useState<FolderTab>("tasks");
 
 	const folder = folders.data?.find((f) => f.id === folderId);
 
 	if (!folder) {
 		return null;
 	}
+
+	const taskList = tasks.data ?? [];
+	const pending = taskList.filter((t) => !t.done).length;
+	const done = taskList.length - pending;
+	const hasProject = !!folder.projectPath;
+	const activeTab = hasProject ? tab : "tasks";
+
+	return (
+		<section className="flex h-full flex-col overflow-hidden">
+			<PageHeader
+				title={<Scramble key={folderId}>{folder.name}</Scramble>}
+				stats={`${pending} PENDING / ${done} DONE`}
+			/>
+
+			{hasProject && <FolderTabs active={activeTab} onSelect={setTab} />}
+
+			{activeTab === "tasks" && <FolderTasksTab folderId={folderId} />}
+			{activeTab === "grill" && folder.projectPath && (
+				<GrillList
+					folderId={folderId}
+					folderName={folder.name}
+					projectPath={folder.projectPath}
+				/>
+			)}
+		</section>
+	);
+}
+
+function FolderTabs({
+	active,
+	onSelect,
+}: {
+	active: FolderTab;
+	onSelect: (tab: FolderTab) => void;
+}) {
+	return (
+		<div className="flex border-b border-border">
+			<TabButton
+				label="[TASKS]"
+				active={active === "tasks"}
+				onClick={() => onSelect("tasks")}
+			/>
+			<TabButton
+				label="[GRILL]"
+				active={active === "grill"}
+				onClick={() => onSelect("grill")}
+			/>
+		</div>
+	);
+}
+
+function FolderTasksTab({ folderId }: { folderId: string }) {
+	const filter = useTagFilter();
+	const tasks = useQuery(
+		orpc.tasks.listByFolder.queryOptions({ input: { folderId } }),
+	);
 
 	const taskList = tasks.data ?? [];
 	const matchesFilter = (tagIds: string[]) =>
@@ -50,12 +110,7 @@ function FolderPage() {
 	const completed = allCompleted.filter((t) => matchesFilter(t.tagIds));
 
 	return (
-		<section className="flex h-full flex-col overflow-hidden">
-			<PageHeader
-				title={<Scramble key={folderId}>{folder.name}</Scramble>}
-				stats={`${open.length} PENDING / ${completed.length} DONE`}
-			/>
-
+		<>
 			{/* jscpd:ignore-start */}
 			<TagFilterBar
 				selectedIds={filter.selectedTagIds}
@@ -82,6 +137,7 @@ function FolderPage() {
 					</div>
 				)}
 
+				{/* jscpd:ignore-start */}
 				{open.map((task) => (
 					<TaskRow
 						key={task.id}
@@ -92,6 +148,7 @@ function FolderPage() {
 						tagIds={task.tagIds}
 					/>
 				))}
+				{/* jscpd:ignore-end */}
 
 				{allCompleted.length > 0 && (
 					<DoneSection
@@ -101,7 +158,7 @@ function FolderPage() {
 					/>
 				)}
 			</div>
-		</section>
+		</>
 	);
 }
 

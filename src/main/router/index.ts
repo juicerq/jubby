@@ -1,5 +1,6 @@
 import { entityRouter } from "@main/router/entity";
 import { foldersRouter } from "@main/router/folders";
+import { grillsRouter } from "@main/router/grills";
 import { loggerRouter } from "@main/router/logger";
 import { settingsRouter } from "@main/router/settings";
 import { systemRouter } from "@main/router/system";
@@ -13,6 +14,7 @@ export const router = {
 	settings: settingsRouter,
 	system: systemRouter,
 	folders: foldersRouter,
+	grills: grillsRouter,
 	tags: tagsRouter,
 	tasks: tasksRouter,
 	window: windowRouter,

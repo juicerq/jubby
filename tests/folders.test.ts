@@ -74,4 +74,52 @@ describe("folders", () => {
 		const aTasks = await testClient.tasks.listByFolder({ folderId: a.id });
 		expect(aTasks.length).toBe(1);
 	});
+
+	it("binds a project path to a folder", async () => {
+		const folder = await testClient.folders.create({ name: "Proj" });
+		const bound = await testClient.folders.bindProject({
+			id: folder.id,
+			projectPath: "/abs/path/proj",
+		});
+		expect(bound.projectPath).toBe("/abs/path/proj");
+	});
+
+	it("unbinds a project path from a folder", async () => {
+		const folder = await testClient.folders.create({ name: "Proj" });
+		await testClient.folders.bindProject({
+			id: folder.id,
+			projectPath: "/abs/path/proj",
+		});
+		const unbound = await testClient.folders.unbindProject({ id: folder.id });
+		expect(unbound.projectPath).toBeUndefined();
+	});
+
+	it("rebinding the same folder to its own path is allowed", async () => {
+		const folder = await testClient.folders.create({ name: "Proj" });
+		await testClient.folders.bindProject({
+			id: folder.id,
+			projectPath: "/abs/path/proj",
+		});
+		const rebound = await testClient.folders.bindProject({
+			id: folder.id,
+			projectPath: "/abs/path/proj",
+		});
+		expect(rebound.projectPath).toBe("/abs/path/proj");
+	});
+
+	it("rejects binding a path already owned by another folder, naming the owner", async () => {
+		const owner = await testClient.folders.create({ name: "Dona" });
+		const other = await testClient.folders.create({ name: "Outra" });
+		await testClient.folders.bindProject({
+			id: owner.id,
+			projectPath: "/abs/path/shared",
+		});
+
+		await expect(
+			testClient.folders.bindProject({
+				id: other.id,
+				projectPath: "/abs/path/shared",
+			}),
+		).rejects.toThrow(/Dona/);
+	});
 });

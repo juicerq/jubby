@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -6,11 +6,13 @@ import { DropdownMenu } from "@renderer/components/DropdownMenu";
 import { Entity } from "@renderer/components/Entity";
 import { Heatmap } from "@renderer/components/Heatmap";
 import { IconButton } from "@renderer/components/IconButton";
+import { BindProjectModal } from "@renderer/components/modals/BindProjectModal";
 import { CreateFolderModal } from "@renderer/components/modals/CreateFolderModal";
 import { CreateTaskModal } from "@renderer/components/modals/CreateTaskModal";
 import { ManageTagsModal } from "@renderer/components/modals/ManageTagsModal";
 import { PurgeFolderModal } from "@renderer/components/modals/PurgeFolderModal";
 import { RenameFolderModal } from "@renderer/components/modals/RenameFolderModal";
+import { useToast } from "@renderer/components/Toast";
 import { orpc } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/cn";
 
@@ -20,6 +22,7 @@ type ModalState =
 	| { kind: "rename-folder"; id: string; current: string }
 	| { kind: "create-task"; folderId: string }
 	| { kind: "purge-folder"; id: string; name: string }
+	| { kind: "bind-project"; id: string; name: string; current?: string }
 	| { kind: "manage-tags" };
 
 export function Sidebar() {
@@ -30,6 +33,18 @@ export function Sidebar() {
 	const queueActive = location.pathname === "/";
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const close = () => setModal({ kind: "none" });
+	const queryClient = useQueryClient();
+	const toast = useToast();
+
+	const { mutate: unbindProject } = useMutation(
+		orpc.folders.unbindProject.mutationOptions({
+			onSuccess: (folder) => {
+				queryClient.invalidateQueries({ queryKey: orpc.folders.list.key() });
+				toast.push("ok", `DESVINCULADO // ${folder.name}`);
+			},
+			onError: () => toast.push("err", "FALHA AO DESVINCULAR PROJETO"),
+		}),
+	);
 
 	return (
 		<>
@@ -56,6 +71,7 @@ export function Sidebar() {
 							id={folder.id}
 							name={folder.name}
 							active={activeId === folder.id}
+							hasProject={!!folder.projectPath}
 							onCreateTask={() =>
 								setModal({ kind: "create-task", folderId: folder.id })
 							}
@@ -66,6 +82,15 @@ export function Sidebar() {
 									current: folder.name,
 								})
 							}
+							onBindProject={() =>
+								setModal({
+									kind: "bind-project",
+									id: folder.id,
+									name: folder.name,
+									current: folder.projectPath,
+								})
+							}
+							onUnbindProject={() => unbindProject({ id: folder.id })}
 							onPurge={() =>
 								setModal({
 									kind: "purge-folder",
@@ -108,6 +133,14 @@ export function Sidebar() {
 			)}
 			{modal.kind === "create-task" && (
 				<CreateTaskModal folderId={modal.folderId} onClose={close} />
+			)}
+			{modal.kind === "bind-project" && (
+				<BindProjectModal
+					id={modal.id}
+					name={modal.name}
+					current={modal.current}
+					onClose={close}
+				/>
 			)}
 			{modal.kind === "manage-tags" && <ManageTagsModal onClose={close} />}
 		</>
@@ -181,8 +214,11 @@ type FolderRowProps = {
 	id: string;
 	name: string;
 	active: boolean;
+	hasProject: boolean;
 	onCreateTask: () => void;
 	onRename: () => void;
+	onBindProject: () => void;
+	onUnbindProject: () => void;
 	onPurge: () => void;
 };
 
@@ -190,8 +226,11 @@ function FolderRow({
 	id,
 	name,
 	active,
+	hasProject,
 	onCreateTask,
 	onRename,
+	onBindProject,
+	onUnbindProject,
 	onPurge,
 }: FolderRowProps) {
 	return (
@@ -220,6 +259,9 @@ function FolderRow({
 						aria-label="Folder actions"
 						items={[
 							{ label: "Rename", onSelect: onRename },
+							hasProject
+								? { label: "Unbind project", onSelect: onUnbindProject }
+								: { label: "Bind project...", onSelect: onBindProject },
 							{
 								label: "Purge",
 								onSelect: onPurge,

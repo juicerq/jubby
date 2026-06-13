@@ -6,6 +6,7 @@ const folderSchema = type({
 	id: "string",
 	name: "string > 0",
 	createdAt: "number",
+	"projectPath?": "string",
 });
 
 export const tagColorSchema = type(
@@ -44,7 +45,7 @@ type Data = typeof dataContract.infer;
 
 const store = new Store({
 	name: "data",
-	version: 2,
+	version: 3,
 	contract: dataContract,
 	migrators: {
 		1: (raw) => {
@@ -58,6 +59,7 @@ const store = new Store({
 				tags: [],
 			};
 		},
+		2: (raw) => raw,
 	},
 	seed: (): Data => ({ folders: [], tasks: [], tags: [] }),
 });
@@ -113,6 +115,54 @@ export const Folders = {
 		const next = await store.mutate((d) => ({
 			...d,
 			folders: d.folders.map((f) => (f.id === id ? { ...f, name } : f)),
+		}));
+		const updated = next.folders.find((f) => f.id === id);
+
+		if (!updated) {
+			throw new Error(`folder not found: ${id}`);
+		}
+
+		return updated;
+	},
+
+	bindProject: async ({
+		id,
+		projectPath,
+	}: {
+		id: string;
+		projectPath: string;
+	}): Promise<Folder> => {
+		const next = await store.mutate((d) => {
+			const owner = d.folders.find(
+				(f) => f.id !== id && f.projectPath === projectPath,
+			);
+
+			if (owner) {
+				throw new Error(`projeto já vinculado à pasta '${owner.name}'`);
+			}
+
+			return {
+				...d,
+				folders: d.folders.map((f) =>
+					f.id === id ? { ...f, projectPath } : f,
+				),
+			};
+		});
+		const updated = next.folders.find((f) => f.id === id);
+
+		if (!updated) {
+			throw new Error(`folder not found: ${id}`);
+		}
+
+		return updated;
+	},
+
+	unbindProject: async ({ id }: { id: string }): Promise<Folder> => {
+		const next = await store.mutate((d) => ({
+			...d,
+			folders: d.folders.map((f) =>
+				f.id === id ? { id: f.id, name: f.name, createdAt: f.createdAt } : f,
+			),
 		}));
 		const updated = next.folders.find((f) => f.id === id);
 
