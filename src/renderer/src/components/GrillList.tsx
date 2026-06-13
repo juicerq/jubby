@@ -3,10 +3,12 @@ import { useState } from "react";
 import type { RouterOutputs } from "@renderer/lib/api";
 import { Button } from "@renderer/components/Button";
 import { GrillReader } from "@renderer/components/GrillReader";
+import { ProgressBar } from "@renderer/components/ProgressBar";
 import { BindProjectModal } from "@renderer/components/modals/BindProjectModal";
 import { useToast } from "@renderer/components/Toast";
 import { cn } from "@renderer/lib/cn";
 import { orpc } from "@renderer/lib/api";
+import { pluralize } from "@renderer/lib/plural";
 
 type GrillSummary = RouterOutputs["grills"]["list"]["grills"][number];
 
@@ -70,14 +72,24 @@ export function GrillList({
 	}
 
 	return (
-		<div className="flex flex-1 flex-col gap-3 overflow-y-auto p-6">
-			{data.grills.map((grill) => (
-				<GrillCard
-					key={grill.dirName}
-					grill={grill}
-					onOpen={() => setOpenGrill(grill)}
-				/>
-			))}
+		<div className="flex flex-1 flex-col overflow-y-auto">
+			<div className="flex items-center justify-between border-b border-border px-6 py-2">
+				<span className="type-ui-label text-fg-dim">grill/</span>
+				<span className="type-mono-data text-fg-dim">
+					{pluralize(data.grills.length, "REGISTRO", "REGISTROS")}
+				</span>
+			</div>
+
+			<div className="flex flex-col gap-3 p-6">
+				{data.grills.map((grill, index) => (
+					<GrillCard
+						key={grill.dirName}
+						grill={grill}
+						index={index}
+						onOpen={() => setOpenGrill(grill)}
+					/>
+				))}
+			</div>
 		</div>
 	);
 }
@@ -150,43 +162,45 @@ function GrillDegenerate({
 
 function GrillCard({
 	grill,
+	index,
 	onOpen,
 }: {
 	grill: GrillSummary;
+	index: number;
 	onOpen: () => void;
 }) {
 	return (
 		<button
 			type="button"
 			onClick={onOpen}
-			className="flex flex-col gap-3 border border-border p-4 text-left transition-colors hover:border-accent cursor-pointer">
-			<div className="flex items-start justify-between gap-4">
-				<span className="type-task-title text-fg">
+			style={{ animationDelay: `${index * 45}ms` }}
+			className="group grill-card-in flex items-center gap-5 border border-border bg-surface-1/40 px-5 py-3 text-left transition-colors hover:bg-surface-2 cursor-pointer">
+			<span className="flex min-w-0 shrink items-baseline gap-2">
+				<span className="type-mono-data text-base text-fg-dim transition-colors group-hover:text-accent">
+					▸
+				</span>
+				<span className="type-task-title truncate text-fg">
 					{grill.title || grill.slug}
 				</span>
-				<span className="type-mono-data shrink-0 text-fg-muted">
-					{formatGrillDate(grill.date)}
-				</span>
-			</div>
+			</span>
 
-			<div className="flex items-center justify-between gap-4">
-				<StageLamps
-					temDecisions={grill.temDecisions}
-					temPrd={grill.temPrd}
-					temSlices={grill.temSlices}
-				/>
-				{grill.temSlices && (
-					<span className="type-mono-data text-fg-muted">
-						{formatProgress(grill.progress)}
-					</span>
-				)}
-			</div>
+			<StageLamps
+				temDecisions={grill.temDecisions}
+				temPrd={grill.temPrd}
+				temSlices={grill.temSlices}
+			/>
+
+			{grill.temSlices && (
+				<ProgressBar value={grill.progress.done} total={grill.progress.total} />
+			)}
+			{!grill.temSlices && <span className="flex-1" />}
+
+			<span className="type-mono-data shrink-0 text-fg-dim">
+				{"// "}
+				{formatGrillDate(grill.date)}
+			</span>
 		</button>
 	);
-}
-
-function formatProgress(progress: { done: number; total: number }): string {
-	return `${progress.done}/${progress.total} SLICES`;
 }
 
 function formatGrillDate(
@@ -211,13 +225,13 @@ function StageLamps({
 	temSlices: boolean;
 }) {
 	return (
-		<div className="flex items-center gap-1">
+		<span className="flex items-center gap-2">
 			<Lamp label="DEC" on={temDecisions} />
 			<Arrow />
 			<Lamp label="PRD" on={temPrd} />
 			<Arrow />
 			<Lamp label="SLICES" on={temSlices} />
-		</div>
+		</span>
 	);
 }
 
@@ -227,13 +241,21 @@ function Arrow() {
 
 function Lamp({ label, on }: { label: string; on: boolean }) {
 	return (
-		<span
-			className={cn(
-				"type-ui-label",
-				on ? "text-accent" : "text-fg-dim line-through",
-			)}
-		>
-			{label}
+		<span className="flex items-center gap-1.5">
+			<span
+				aria-hidden
+				className={cn(
+					"inline-block h-1.5 w-1.5",
+					on
+						? "bg-accent shadow-[0_0_5px_var(--color-accent)]"
+						: "bg-fg-dim",
+				)}
+			/>
+			<span
+				className={cn("type-ui-label", on ? "text-fg-muted" : "text-fg-dim")}
+			>
+				{label}
+			</span>
 		</span>
 	);
 }

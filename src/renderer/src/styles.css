@@ -333,3 +333,14 @@ body::after {
 	display: inline-flex;
 	animation: jubby-checkbox-pop 320ms ease-out;
 }
+
+/* Grill cards: staggered terminal-record reveal on mount */
+@keyframes jubby-grill-card-in {
+	0% { opacity: 0; transform: translateY(4px); }
+	100% { opacity: 1; transform: translateY(0); }
+}
+
+.grill-card-in {
+	opacity: 0;
+	animation: jubby-grill-card-in 260ms ease-out forwards;
+}

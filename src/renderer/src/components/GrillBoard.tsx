@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RouterOutputs } from "@renderer/lib/api";
 import { GrillMarkdown } from "@renderer/components/GrillMarkdown";
+import { ProgressBar } from "@renderer/components/ProgressBar";
 import { cn } from "@renderer/lib/cn";
 
 type Slice = RouterOutputs["grills"]["read"]["slices"][number];
@@ -106,44 +107,47 @@ function SliceCard({
 	onJump: (index: string) => void;
 }) {
 	return (
-		<div className="flex flex-col gap-2 border border-border">
+		<div className="group relative flex flex-col gap-2 border border-border px-5 py-3 transition-colors hover:bg-surface-2">
 			<button
 				type="button"
 				onClick={onOpen}
-				className="flex items-start justify-between gap-4 px-4 pt-4 text-left transition-colors hover:bg-surface-1 cursor-pointer"
-			>
-				<div className="flex items-baseline gap-3">
+				aria-label={`Abrir slice ${slice.title}`}
+				className="absolute inset-0 z-0 cursor-pointer"
+			/>
+
+			<div className="flex items-center gap-4">
+				<span className="flex min-w-0 shrink items-baseline gap-2">
 					{slice.index && (
 						<span className="type-mono-data text-fg-dim">{slice.index}</span>
 					)}
-					<span className="type-task-title text-fg">{slice.title}</span>
-				</div>
-
-				<div className="flex shrink-0 items-center gap-2">
-					{slice.type && <TypeBadge type={slice.type} />}
-					<StatusBadge status={slice.status} />
-				</div>
-			</button>
-
-			<div className="flex items-center justify-between gap-4 px-4 pb-4">
-				<span className="type-mono-data text-fg-muted">
-					{formatProgress(slice.criteria)}
+					<span className="type-task-title truncate text-fg">{slice.title}</span>
 				</span>
 
-				{slice.status === "BLOCKED" && slice.missingBlockers.length > 0 && (
-					<MissingBlockers blockers={slice.missingBlockers} onJump={onJump} />
-				)}
+				<SliceCriteria criteria={slice.criteria} />
+
+				<span className="flex shrink-0 items-center gap-2">
+					{slice.type && <TypeBadge type={slice.type} />}
+					<StatusBadge status={slice.status} />
+				</span>
 			</div>
+
+			{slice.status === "BLOCKED" && slice.missingBlockers.length > 0 && (
+				<MissingBlockers blockers={slice.missingBlockers} onJump={onJump} />
+			)}
 		</div>
 	);
 }
 
-function formatProgress(criteria: Slice["criteria"]): string {
+function SliceCriteria({ criteria }: { criteria: Slice["criteria"] }) {
 	if (!criteria) {
-		return "\u2014";
+		return (
+			<span className="flex flex-1 justify-end">
+				<span className="type-mono-data text-fg-dim">{"\u2014"}</span>
+			</span>
+		);
 	}
 
-	return `${criteria.checked}/${criteria.total}`;
+	return <ProgressBar value={criteria.checked} total={criteria.total} />;
 }
 
 function StatusBadge({ status }: { status: Slice["status"] }) {
@@ -172,7 +176,7 @@ function MissingBlockers({
 	onJump: (index: string) => void;
 }) {
 	return (
-		<span className="type-mono-data flex items-center gap-1 text-error">
+		<span className="type-mono-data relative z-10 flex items-center gap-1 text-error">
 			<span>blocked by</span>
 			{blockers.map((ref) => (
 				<button
