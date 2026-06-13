@@ -100,6 +100,87 @@ select {
 	}
 }
 
+/* Syntax highlighting: highlight.js tokens mapped to the jubby phosphor palette
+   (green/amber/red/cyan/magenta from tagColorSchema). Scoped to the reader's
+   markdown container so it never leaks into the rest of the CRT UI. */
+.grill-markdown {
+	--phosphor-green: #10b981;
+	--phosphor-amber: #f59e0b;
+	--phosphor-red: #ef4444;
+	--phosphor-cyan: #06b6d4;
+	--phosphor-magenta: #d946ef;
+}
+
+.grill-markdown .hljs {
+	color: var(--color-fg);
+}
+
+.grill-markdown .hljs-comment,
+.grill-markdown .hljs-quote {
+	color: var(--color-fg-dim);
+	font-style: italic;
+}
+
+.grill-markdown .hljs-keyword,
+.grill-markdown .hljs-selector-tag,
+.grill-markdown .hljs-literal,
+.grill-markdown .hljs-section,
+.grill-markdown .hljs-doctag,
+.grill-markdown .hljs-type,
+.grill-markdown .hljs-name,
+.grill-markdown .hljs-strong {
+	color: var(--phosphor-magenta);
+}
+
+.grill-markdown .hljs-string,
+.grill-markdown .hljs-regexp,
+.grill-markdown .hljs-meta .hljs-string,
+.grill-markdown .hljs-addition {
+	color: var(--phosphor-green);
+}
+
+.grill-markdown .hljs-number,
+.grill-markdown .hljs-symbol,
+.grill-markdown .hljs-bullet,
+.grill-markdown .hljs-link,
+.grill-markdown .hljs-deletion {
+	color: var(--phosphor-amber);
+}
+
+.grill-markdown .hljs-title,
+.grill-markdown .hljs-title.class_,
+.grill-markdown .hljs-title.function_,
+.grill-markdown .hljs-built_in,
+.grill-markdown .hljs-class .hljs-title {
+	color: var(--phosphor-cyan);
+}
+
+.grill-markdown .hljs-attr,
+.grill-markdown .hljs-attribute,
+.grill-markdown .hljs-variable,
+.grill-markdown .hljs-template-variable,
+.grill-markdown .hljs-property,
+.grill-markdown .hljs-params {
+	color: var(--phosphor-amber);
+}
+
+.grill-markdown .hljs-meta,
+.grill-markdown .hljs-tag,
+.grill-markdown .hljs-selector-id,
+.grill-markdown .hljs-selector-class,
+.grill-markdown .hljs-selector-attr,
+.grill-markdown .hljs-selector-pseudo {
+	color: var(--phosphor-cyan);
+}
+
+.grill-markdown .hljs-emphasis {
+	font-style: italic;
+}
+
+.grill-markdown .hljs-strong {
+	font-weight: 700;
+}
+
 /* Custom scrollbar (4px emerald track on hover) */
 ::-webkit-scrollbar {
 	width: 4px;

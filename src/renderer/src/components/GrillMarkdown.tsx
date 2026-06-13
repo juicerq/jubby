@@ -1,5 +1,6 @@
 import type { Components } from "react-markdown";
 import Markdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { cn } from "@renderer/lib/cn";
 
@@ -85,7 +86,7 @@ const components: Components = {
 	),
 	hr: () => <hr className="my-6 border-t border-border" />,
 	code: ({ children, className }) => {
-		if (className?.includes("language-")) {
+		if (className?.includes("language-") || className?.includes("hljs")) {
 			return <code className={className}>{children}</code>;
 		}
 
@@ -122,8 +123,14 @@ const components: Components = {
 
 export function GrillMarkdown({ source }: { source: string }) {
 	return (
-		<Markdown remarkPlugins={[remarkGfm]} components={components}>
-			{source}
-		</Markdown>
+		<div className="grill-markdown">
+			<Markdown
+				remarkPlugins={[remarkGfm]}
+				rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+				components={components}
+			>
+				{source}
+			</Markdown>
+		</div>
 	);
 }
