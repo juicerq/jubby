@@ -177,7 +177,7 @@ function GrillCard({
 				/>
 				{grill.temSlices && (
 					<span className="type-mono-data text-fg-muted">
-						{formatSliceCount(grill.sliceCount)}
+						{formatProgress(grill.progress)}
 					</span>
 				)}
 			</div>
@@ -185,12 +185,8 @@ function GrillCard({
 	);
 }
 
-function formatSliceCount(count: number): string {
-	if (count === 1) {
-		return "1 SLICE";
-	}
-
-	return `${count} SLICES`;
+function formatProgress(progress: { done: number; total: number }): string {
+	return `${progress.done}/${progress.total} SLICES`;
 }
 
 function formatGrillDate(

@@ -1,11 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import type { RouterOutputs } from "@renderer/lib/api";
+import { GrillBoard } from "@renderer/components/GrillBoard";
 import { GrillMarkdown } from "@renderer/components/GrillMarkdown";
 import { TabButton } from "@renderer/components/TabButton";
 import { orpc } from "@renderer/lib/api";
 
-type DocTab = "decisions" | "prd";
+type GrillDocs = RouterOutputs["grills"]["read"];
+
+type DocTab = "decisions" | "prd" | "slices";
 
 export function GrillReader({
 	projectPath,
@@ -70,13 +74,12 @@ function ReaderBody({
 	title,
 	onBack,
 }: {
-	docs: { decisions: string | null; prd: string | null };
+	docs: GrillDocs;
 	tabs: DocTab[];
 	title: string;
 	onBack: () => void;
 }) {
 	const [active, setActive] = useState<DocTab>(defaultTab(tabs));
-	const source = active === "prd" ? docs.prd : docs.decisions;
 
 	return (
 		<ReaderShell title={title} onBack={onBack}>
@@ -91,10 +94,18 @@ function ReaderBody({
 				))}
 			</div>
 
-			<div className="flex-1 overflow-y-auto px-8 py-6">
-				{source && (
+			<div className="flex flex-1 flex-col overflow-y-auto px-8 py-6">
+				{active === "slices" && (
+					<GrillBoard slices={docs.slices} />
+				)}
+				{active === "prd" && docs.prd && (
 					<div className="mx-auto max-w-3xl">
-						<GrillMarkdown source={source} />
+						<GrillMarkdown source={docs.prd} />
+					</div>
+				)}
+				{active === "decisions" && docs.decisions && (
+					<div className="mx-auto max-w-3xl">
+						<GrillMarkdown source={docs.decisions} />
 					</div>
 				)}
 			</div>
@@ -133,13 +144,14 @@ function tabLabel(tab: DocTab): string {
 		return "[PRD]";
 	}
 
+	if (tab === "slices") {
+		return "[SLICES]";
+	}
+
 	return "[DECISIONS]";
 }
 
-function availableTabs(docs: {
-	decisions: string | null;
-	prd: string | null;
-}): DocTab[] {
+function availableTabs(docs: GrillDocs): DocTab[] {
 	const tabs: DocTab[] = [];
 
 	if (docs.decisions) {
@@ -148,6 +160,10 @@ function availableTabs(docs: {
 
 	if (docs.prd) {
 		tabs.push("prd");
+	}
+
+	if (docs.slices.length > 0) {
+		tabs.push("slices");
 	}
 
 	return tabs;

@@ -76,6 +76,7 @@ export interface GrillSummary extends ParsedGrillFolder {
 	temPrd: boolean;
 	temSlices: boolean;
 	sliceCount: number;
+	progress: GrillProgress;
 }
 
 export type GrillsList = {
@@ -111,16 +112,7 @@ async function readGrill(grillDir: string, dirName: string): Promise<GrillSummar
 		isDir(tasksDir),
 	]);
 
-	let sliceCount = 0;
-
-	if (hasTasksDir) {
-		const entries = await readdir(tasksDir, { withFileTypes: true }).catch(
-			() => [],
-		);
-		sliceCount = entries.filter(
-			(e) => e.isFile() && e.name.endsWith(".md"),
-		).length;
-	}
+	const slices = hasTasksDir ? await readSlices(tasksDir) : [];
 
 	return {
 		...parseGrillFolder(dirName),
@@ -128,13 +120,231 @@ async function readGrill(grillDir: string, dirName: string): Promise<GrillSummar
 		temDecisions,
 		temPrd,
 		temSlices: hasTasksDir,
-		sliceCount,
+		sliceCount: slices.length,
+		progress: sliceProgress(slices),
 	};
+}
+
+type SliceType = "HITL" | "AFK";
+
+type SliceCriteria = {
+	checked: number;
+	total: number;
+};
+
+export type ParsedSliceBody = {
+	type: SliceType | null;
+	criteria: SliceCriteria | null;
+	blockedBy: string[];
+};
+
+const SECTION = /^##\s+(.+?)\s*$/;
+const CRITERION = /^\s*-\s+\[( |x|X)\]/;
+const BLOCKER_REF = /\.\/(\d{2,})-/g;
+
+function splitSections(body: string): Map<string, string[]> {
+	const sections = new Map<string, string[]>();
+	let current: string | null = null;
+
+	for (const line of body.split("\n")) {
+		const heading = line.match(SECTION);
+
+		if (heading) {
+			current = heading[1].toLowerCase();
+			sections.set(current, []);
+			continue;
+		}
+
+		if (current) {
+			sections.get(current)?.push(line);
+		}
+	}
+
+	return sections;
+}
+
+function parseType(lines: string[] | undefined): SliceType | null {
+	if (!lines) {
+		return null;
+	}
+
+	const text = lines.join("\n").toUpperCase();
+
+	if (text.includes("HITL")) {
+		return "HITL";
+	}
+
+	if (text.includes("AFK")) {
+		return "AFK";
+	}
+
+	return null;
+}
+
+function parseCriteria(lines: string[] | undefined): SliceCriteria | null {
+	if (!lines) {
+		return null;
+	}
+
+	let checked = 0;
+	let total = 0;
+
+	for (const line of lines) {
+		const match = line.match(CRITERION);
+
+		if (!match) {
+			continue;
+		}
+
+		total++;
+
+		if (match[1] !== " ") {
+			checked++;
+		}
+	}
+
+	if (total === 0) {
+		return null;
+	}
+
+	return { checked, total };
+}
+
+function parseBlockedBy(lines: string[] | undefined): string[] {
+	if (!lines) {
+		return [];
+	}
+
+	const refs = new Set<string>();
+
+	for (const line of lines) {
+		for (const match of line.matchAll(BLOCKER_REF)) {
+			refs.add(match[1]);
+		}
+	}
+
+	return [...refs];
+}
+
+export function parseSliceBody(body: string): ParsedSliceBody {
+	const sections = splitSections(body);
+
+	return {
+		type: parseType(sections.get("type")),
+		criteria: parseCriteria(sections.get("acceptance criteria")),
+		blockedBy: parseBlockedBy(sections.get("blocked by")),
+	};
+}
+
+const SLICE_INDEX = /^(\d{2,})-/;
+
+export function sliceIndexFromFile(fileName: string): string | null {
+	const match = fileName.match(SLICE_INDEX);
+	return match ? match[1] : null;
+}
+
+function sliceTitleFromFile(fileName: string): string {
+	const base = fileName.replace(/\.md$/, "");
+	const withoutIndex = base.replace(SLICE_INDEX, "");
+	return titleFromSlug(withoutIndex || base);
+}
+
+type SliceStatus = "DONE" | "READY" | "BLOCKED";
+
+export type ParsedSlice = {
+	fileName: string;
+	index: string | null;
+	title: string;
+	type: SliceType | null;
+	criteria: SliceCriteria | null;
+	blockedBy: string[];
+	done: boolean;
+	status: SliceStatus;
+	missingBlockers: string[];
+};
+
+function isDone(criteria: SliceCriteria | null): boolean {
+	return !!criteria && criteria.checked === criteria.total;
+}
+
+export function deriveSlices(
+	parsed: { fileName: string; body: ParsedSliceBody }[],
+): ParsedSlice[] {
+	const doneByIndex = new Map<string, boolean>();
+
+	for (const { fileName, body } of parsed) {
+		const index = sliceIndexFromFile(fileName);
+
+		if (index) {
+			doneByIndex.set(index, isDone(body.criteria));
+		}
+	}
+
+	return parsed.map(({ fileName, body }) => {
+		const done = isDone(body.criteria);
+		const missingBlockers = body.blockedBy.filter(
+			(ref) => doneByIndex.get(ref) !== true,
+		);
+
+		const status: SliceStatus = done
+			? "DONE"
+			: missingBlockers.length > 0
+				? "BLOCKED"
+				: "READY";
+
+		return {
+			fileName,
+			index: sliceIndexFromFile(fileName),
+			title: sliceTitleFromFile(fileName),
+			type: body.type,
+			criteria: body.criteria,
+			blockedBy: body.blockedBy,
+			done,
+			status,
+			missingBlockers,
+		};
+	});
+}
+
+export type GrillProgress = {
+	done: number;
+	total: number;
+};
+
+export function sliceProgress(slices: ParsedSlice[]): GrillProgress {
+	return {
+		done: slices.filter((s) => s.done).length,
+		total: slices.length,
+	};
+}
+
+async function readSlices(tasksDir: string): Promise<ParsedSlice[]> {
+	const entries = await readdir(tasksDir, { withFileTypes: true }).catch(
+		() => [],
+	);
+	const files = entries
+		.filter((e) => e.isFile() && e.name.endsWith(".md"))
+		.map((e) => e.name)
+		.sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+	const parsed = await Promise.all(
+		files.map(async (fileName) => {
+			const body = await readMd(join(tasksDir, fileName));
+			return {
+				fileName,
+				body: parseSliceBody(body ?? ""),
+			};
+		}),
+	);
+
+	return deriveSlices(parsed);
 }
 
 export type GrillDocs = {
 	decisions: string | null;
 	prd: string | null;
+	slices: ParsedSlice[];
+	progress: GrillProgress;
 };
 
 function readMd(path: string): Promise<string | null> {
@@ -150,13 +360,17 @@ export const Grills = {
 		slug: string;
 	}): Promise<GrillDocs> => {
 		const dir = join(projectPath, "grill", slug);
+		const tasksDir = join(dir, "tasks");
 
-		const [decisions, prd] = await Promise.all([
+		const [decisions, prd, hasTasksDir] = await Promise.all([
 			readMd(join(dir, "decisions.md")),
 			readMd(join(dir, "prd.md")),
+			isDir(tasksDir),
 		]);
 
-		return { decisions, prd };
+		const slices = hasTasksDir ? await readSlices(tasksDir) : [];
+
+		return { decisions, prd, slices, progress: sliceProgress(slices) };
 	},
 
 	list: async ({ projectPath }: { projectPath: string }): Promise<GrillsList> => {

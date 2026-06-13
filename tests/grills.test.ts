@@ -2,8 +2,150 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseGrillFolder } from "@main/store/grills";
+import {
+	deriveSlices,
+	parseGrillFolder,
+	parseSliceBody,
+	sliceIndexFromFile,
+	sliceProgress,
+} from "@main/store/grills";
 import { testClient } from "./utils/orpc";
+
+const CANONICAL_SLICE = `## Type
+
+AFK
+
+## What to build
+
+Algo aqui.
+
+## Acceptance criteria
+
+- [x] critério um
+- [x] critério dois
+- [ ] critério três
+
+## Blocked by
+
+- \`./02-foo.md\`
+- \`./07-bar.md\`
+`;
+
+describe("parseSliceBody", () => {
+	it("extracts type, criteria counts and blocked-by refs from a canonical slice", () => {
+		const parsed = parseSliceBody(CANONICAL_SLICE);
+
+		expect(parsed.type).toBe("AFK");
+		expect(parsed.criteria).toEqual({ checked: 2, total: 3 });
+		expect(parsed.blockedBy).toEqual(["02", "07"]);
+	});
+
+	it("reads HITL type", () => {
+		const parsed = parseSliceBody("## Type\n\nHITL\n");
+
+		expect(parsed.type).toBe("HITL");
+	});
+
+	it("degrades per field on a malformed slice without crashing", () => {
+		const parsed = parseSliceBody("# just a title\n\nno sections here");
+
+		expect(parsed.type).toBeNull();
+		expect(parsed.criteria).toBeNull();
+		expect(parsed.blockedBy).toEqual([]);
+	});
+
+	it("treats a section without checkbox lines as no criteria", () => {
+		const parsed = parseSliceBody(
+			"## Acceptance criteria\n\nfree prose, no boxes\n",
+		);
+
+		expect(parsed.criteria).toBeNull();
+	});
+});
+
+describe("sliceIndexFromFile", () => {
+	it("reads the leading index", () => {
+		expect(sliceIndexFromFile("05-board.md")).toBe("05");
+	});
+
+	it("returns null without a leading index", () => {
+		expect(sliceIndexFromFile("notes.md")).toBeNull();
+	});
+});
+
+describe("deriveSlices tri-state", () => {
+	it("derives DONE / READY / BLOCKED from criteria and blockers", () => {
+		const slices = deriveSlices([
+			{
+				fileName: "02-base.md",
+				body: { type: "AFK", criteria: { checked: 2, total: 2 }, blockedBy: [] },
+			},
+			{
+				fileName: "05-board.md",
+				body: {
+					type: "AFK",
+					criteria: { checked: 1, total: 3 },
+					blockedBy: ["02"],
+				},
+			},
+			{
+				fileName: "06-drill.md",
+				body: {
+					type: "HITL",
+					criteria: { checked: 0, total: 2 },
+					blockedBy: ["05"],
+				},
+			},
+		]);
+
+		const byIndex = new Map(slices.map((s) => [s.index, s]));
+
+		expect(byIndex.get("02")?.status).toBe("DONE");
+		expect(byIndex.get("05")?.status).toBe("READY");
+		expect(byIndex.get("06")?.status).toBe("BLOCKED");
+		expect(byIndex.get("06")?.missingBlockers).toEqual(["05"]);
+	});
+
+	it("counts a slice with no criteria as not-done", () => {
+		const [slice] = deriveSlices([
+			{
+				fileName: "01-x.md",
+				body: { type: null, criteria: null, blockedBy: [] },
+			},
+		]);
+
+		expect(slice.done).toBe(false);
+		expect(slice.status).toBe("READY");
+	});
+
+	it("blocks when a referenced blocker is not done", () => {
+		const slices = deriveSlices([
+			{
+				fileName: "02-base.md",
+				body: { type: "AFK", criteria: { checked: 1, total: 2 }, blockedBy: [] },
+			},
+			{
+				fileName: "03-dep.md",
+				body: { type: "AFK", criteria: { checked: 0, total: 1 }, blockedBy: ["02"] },
+			},
+		]);
+
+		expect(slices[1]?.status).toBe("BLOCKED");
+		expect(slices[1]?.missingBlockers).toEqual(["02"]);
+	});
+});
+
+describe("sliceProgress", () => {
+	it("counts done over total", () => {
+		const slices = deriveSlices([
+			{ fileName: "01-a.md", body: { type: null, criteria: { checked: 1, total: 1 }, blockedBy: [] } },
+			{ fileName: "02-b.md", body: { type: null, criteria: { checked: 0, total: 2 }, blockedBy: [] } },
+			{ fileName: "03-c.md", body: { type: null, criteria: null, blockedBy: [] } },
+		]);
+
+		expect(sliceProgress(slices)).toEqual({ done: 1, total: 3 });
+	});
+});
 
 describe("parseGrillFolder", () => {
 	it("parses slug and date from canonical layout", () => {
@@ -184,5 +326,38 @@ describe("grills.read", () => {
 
 		expect(docs.decisions).toBeNull();
 		expect(docs.prd).toBeNull();
+		expect(docs.slices).toEqual([]);
+		expect(docs.progress).toEqual({ done: 0, total: 0 });
+	});
+
+	function writeSlice(dirName: string, file: string, body: string): void {
+		const dir = join(projectPath, "grill", dirName, "tasks");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, file), body);
+	}
+
+	it("parses slices and progress through grills.read", async () => {
+		writeSlice(
+			"gamma-01012026",
+			"02-base.md",
+			"## Type\n\nAFK\n\n## Acceptance criteria\n\n- [x] a\n- [x] b\n",
+		);
+		writeSlice(
+			"gamma-01012026",
+			"05-board.md",
+			"## Type\n\nHITL\n\n## Acceptance criteria\n\n- [x] a\n- [ ] b\n\n## Blocked by\n\n- `./02-base.md`\n",
+		);
+
+		const docs = await testClient.grills.read({
+			projectPath,
+			slug: "gamma-01012026",
+		});
+
+		expect(docs.progress).toEqual({ done: 1, total: 2 });
+
+		const board = docs.slices.find((s) => s.index === "05");
+		expect(board?.status).toBe("READY");
+		expect(board?.type).toBe("HITL");
+		expect(board?.criteria).toEqual({ checked: 1, total: 1 + 1 });
 	});
 });
