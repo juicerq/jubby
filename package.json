@@ -1,6 +1,6 @@
 {
 	"name": "jubby",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"private": true,
 	"description": "Task manager with retro terminal aesthetic",
 	"author": {
