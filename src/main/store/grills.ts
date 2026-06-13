@@ -261,6 +261,7 @@ export type ParsedSlice = {
 	done: boolean;
 	status: SliceStatus;
 	missingBlockers: string[];
+	raw: string;
 };
 
 function isDone(criteria: SliceCriteria | null): boolean {
@@ -268,7 +269,7 @@ function isDone(criteria: SliceCriteria | null): boolean {
 }
 
 export function deriveSlices(
-	parsed: { fileName: string; body: ParsedSliceBody }[],
+	parsed: { fileName: string; body: ParsedSliceBody; raw?: string }[],
 ): ParsedSlice[] {
 	const doneByIndex = new Map<string, boolean>();
 
@@ -280,7 +281,7 @@ export function deriveSlices(
 		}
 	}
 
-	return parsed.map(({ fileName, body }) => {
+	return parsed.map(({ fileName, body, raw }) => {
 		const done = isDone(body.criteria);
 		const missingBlockers = body.blockedBy.filter(
 			(ref) => doneByIndex.get(ref) !== true,
@@ -302,6 +303,7 @@ export function deriveSlices(
 			done,
 			status,
 			missingBlockers,
+			raw: raw ?? "",
 		};
 	});
 }
@@ -329,10 +331,11 @@ async function readSlices(tasksDir: string): Promise<ParsedSlice[]> {
 
 	const parsed = await Promise.all(
 		files.map(async (fileName) => {
-			const body = await readMd(join(tasksDir, fileName));
+			const raw = (await readMd(join(tasksDir, fileName))) ?? "";
 			return {
 				fileName,
-				body: parseSliceBody(body ?? ""),
+				body: parseSliceBody(raw),
+				raw,
 			};
 		}),
 	);

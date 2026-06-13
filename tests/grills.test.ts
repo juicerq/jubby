@@ -360,4 +360,17 @@ describe("grills.read", () => {
 		expect(board?.type).toBe("HITL");
 		expect(board?.criteria).toEqual({ checked: 1, total: 1 + 1 });
 	});
+
+	it("carries the raw slice body for the drill-down reader", async () => {
+		const raw = "## Type\n\nAFK\n\n## What to build\n\nCorpo do slice.\n";
+		writeSlice("delta-01012026", "03-reader.md", raw);
+
+		const docs = await testClient.grills.read({
+			projectPath,
+			slug: "delta-01012026",
+		});
+
+		const slice = docs.slices.find((s) => s.index === "03");
+		expect(slice?.raw).toBe(raw);
+	});
 });
