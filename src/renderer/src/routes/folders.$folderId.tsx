@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { GrillList } from "@renderer/components/GrillList";
 import { PageHeader } from "@renderer/components/PageHeader";
 import { Scramble } from "@renderer/components/Scramble";
 import { TagFilterBar } from "@renderer/components/TagFilterBar";
@@ -58,7 +59,13 @@ function FolderPage() {
 			{hasProject && <FolderTabs active={activeTab} onSelect={setTab} />}
 
 			{activeTab === "tasks" && <FolderTasksTab folderId={folderId} />}
-			{activeTab === "grill" && <FolderGrillTab />}
+			{activeTab === "grill" && folder.projectPath && (
+				<GrillList
+					folderId={folderId}
+					folderName={folder.name}
+					projectPath={folder.projectPath}
+				/>
+			)}
 		</section>
 	);
 }
@@ -108,17 +115,6 @@ function TabButton({
 		>
 			{label}
 		</button>
-	);
-}
-
-function FolderGrillTab() {
-	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-2">
-			<p className="type-h2 text-fg-muted">
-				<span>GRILL VIEWER // EM BREVE</span>
-				<span className="cursor-blink" />
-			</p>
-		</div>
 	);
 }
 
