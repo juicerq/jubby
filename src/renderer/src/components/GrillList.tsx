@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { RouterOutputs } from "@renderer/lib/api";
 import { Button } from "@renderer/components/Button";
+import { GrillReader } from "@renderer/components/GrillReader";
 import { BindProjectModal } from "@renderer/components/modals/BindProjectModal";
 import { useToast } from "@renderer/components/Toast";
 import { cn } from "@renderer/lib/cn";
@@ -18,6 +19,8 @@ export function GrillList({
 	folderName: string;
 	projectPath: string;
 }) {
+	const [openGrill, setOpenGrill] = useState<GrillSummary | null>(null);
+
 	const { data, isLoading } = useQuery(
 		orpc.grills.list.queryOptions({
 			input: { projectPath },
@@ -25,6 +28,17 @@ export function GrillList({
 			refetchOnWindowFocus: true,
 		}),
 	);
+
+	if (openGrill) {
+		return (
+			<GrillReader
+				projectPath={projectPath}
+				dirName={openGrill.dirName}
+				title={openGrill.title || openGrill.slug}
+				onBack={() => setOpenGrill(null)}
+			/>
+		);
+	}
 
 	if (isLoading) {
 		return (
@@ -58,7 +72,11 @@ export function GrillList({
 	return (
 		<div className="flex flex-1 flex-col gap-3 overflow-y-auto p-6">
 			{data.grills.map((grill) => (
-				<GrillCard key={grill.dirName} grill={grill} />
+				<GrillCard
+					key={grill.dirName}
+					grill={grill}
+					onOpen={() => setOpenGrill(grill)}
+				/>
 			))}
 		</div>
 	);
@@ -130,9 +148,18 @@ function GrillDegenerate({
 	);
 }
 
-function GrillCard({ grill }: { grill: GrillSummary }) {
+function GrillCard({
+	grill,
+	onOpen,
+}: {
+	grill: GrillSummary;
+	onOpen: () => void;
+}) {
 	return (
-		<div className="flex flex-col gap-3 border border-border p-4 transition-colors hover:border-accent">
+		<button
+			type="button"
+			onClick={onOpen}
+			className="flex flex-col gap-3 border border-border p-4 text-left transition-colors hover:border-accent cursor-pointer">
 			<div className="flex items-start justify-between gap-4">
 				<span className="type-task-title text-fg">
 					{grill.title || grill.slug}
@@ -154,7 +181,7 @@ function GrillCard({ grill }: { grill: GrillSummary }) {
 					</span>
 				)}
 			</div>
-		</div>
+		</button>
 	);
 }
 

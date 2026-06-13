@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export type ProjectInspection = {
@@ -132,7 +132,33 @@ async function readGrill(grillDir: string, dirName: string): Promise<GrillSummar
 	};
 }
 
+export type GrillDocs = {
+	decisions: string | null;
+	prd: string | null;
+};
+
+function readMd(path: string): Promise<string | null> {
+	return readFile(path, "utf8").catch(() => null);
+}
+
 export const Grills = {
+	read: async ({
+		projectPath,
+		slug,
+	}: {
+		projectPath: string;
+		slug: string;
+	}): Promise<GrillDocs> => {
+		const dir = join(projectPath, "grill", slug);
+
+		const [decisions, prd] = await Promise.all([
+			readMd(join(dir, "decisions.md")),
+			readMd(join(dir, "prd.md")),
+		]);
+
+		return { decisions, prd };
+	},
+
 	list: async ({ projectPath }: { projectPath: string }): Promise<GrillsList> => {
 		const projectIsDir = await isDir(projectPath);
 

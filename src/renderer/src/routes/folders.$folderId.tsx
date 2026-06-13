@@ -5,9 +5,9 @@ import { useState } from "react";
 import { GrillList } from "@renderer/components/GrillList";
 import { PageHeader } from "@renderer/components/PageHeader";
 import { Scramble } from "@renderer/components/Scramble";
+import { TabButton } from "@renderer/components/TabButton";
 import { TagFilterBar } from "@renderer/components/TagFilterBar";
 import { TaskRow } from "@renderer/components/TaskRow";
-import { cn } from "@renderer/lib/cn";
 import { orpc } from "@renderer/lib/api";
 import { queryClient } from "@renderer/lib/query-client";
 import { useTagFilter, validateTagSearch } from "@renderer/lib/tag-filter";
@@ -90,31 +90,6 @@ function FolderTabs({
 				onClick={() => onSelect("grill")}
 			/>
 		</div>
-	);
-}
-
-function TabButton({
-	label,
-	active,
-	onClick,
-}: {
-	label: string;
-	active: boolean;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={cn(
-				"type-ui-label px-6 py-2 transition-colors cursor-pointer",
-				active
-					? "text-accent border-b border-accent"
-					: "text-fg-muted hover:text-fg",
-			)}
-		>
-			{label}
-		</button>
 	);
 }
 

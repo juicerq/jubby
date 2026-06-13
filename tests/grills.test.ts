@@ -133,3 +133,56 @@ describe("grills.list scan", () => {
 		expect(result.grills.at(-1)?.date).toBeNull();
 	});
 });
+
+describe("grills.read", () => {
+	let projectPath: string;
+
+	beforeEach(() => {
+		projectPath = mkdtempSync(join(tmpdir(), "jubby-grill-read-"));
+	});
+
+	afterEach(() => {
+		rmSync(projectPath, { recursive: true, force: true });
+	});
+
+	function writeDoc(dirName: string, file: string, body: string): void {
+		const dir = join(projectPath, "grill", dirName);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, file), body);
+	}
+
+	it("returns raw content of decisions.md and prd.md when present", async () => {
+		writeDoc("alpha-01012026", "decisions.md", "# decisions\n\n- one");
+		writeDoc("alpha-01012026", "prd.md", "# prd\n\n- two");
+
+		const docs = await testClient.grills.read({
+			projectPath,
+			slug: "alpha-01012026",
+		});
+
+		expect(docs.decisions).toBe("# decisions\n\n- one");
+		expect(docs.prd).toBe("# prd\n\n- two");
+	});
+
+	it("returns null for a document that does not exist", async () => {
+		writeDoc("beta-01012026", "decisions.md", "# only decisions");
+
+		const docs = await testClient.grills.read({
+			projectPath,
+			slug: "beta-01012026",
+		});
+
+		expect(docs.decisions).toBe("# only decisions");
+		expect(docs.prd).toBeNull();
+	});
+
+	it("returns both null when the grill folder is absent", async () => {
+		const docs = await testClient.grills.read({
+			projectPath,
+			slug: "missing-01012026",
+		});
+
+		expect(docs.decisions).toBeNull();
+		expect(docs.prd).toBeNull();
+	});
+});
