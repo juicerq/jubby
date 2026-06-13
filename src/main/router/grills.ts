@@ -7,6 +7,6 @@ export const grillsRouter = {
 		.input(type({ projectPath: "string > 0" }))
 		.handler(({ input }) => Grills.list(input)),
 	read: base
-		.input(type({ projectPath: "string > 0", slug: "string > 0" }))
+		.input(type({ projectPath: "string > 0", dirName: "string > 0" }))
 		.handler(({ input }) => Grills.read(input)),
 };

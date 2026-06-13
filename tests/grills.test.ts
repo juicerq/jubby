@@ -299,7 +299,7 @@ describe("grills.read", () => {
 
 		const docs = await testClient.grills.read({
 			projectPath,
-			slug: "alpha-01012026",
+			dirName: "alpha-01012026",
 		});
 
 		expect(docs.decisions).toBe("# decisions\n\n- one");
@@ -311,7 +311,7 @@ describe("grills.read", () => {
 
 		const docs = await testClient.grills.read({
 			projectPath,
-			slug: "beta-01012026",
+			dirName: "beta-01012026",
 		});
 
 		expect(docs.decisions).toBe("# only decisions");
@@ -321,7 +321,7 @@ describe("grills.read", () => {
 	it("returns both null when the grill folder is absent", async () => {
 		const docs = await testClient.grills.read({
 			projectPath,
-			slug: "missing-01012026",
+			dirName: "missing-01012026",
 		});
 
 		expect(docs.decisions).toBeNull();
@@ -350,7 +350,7 @@ describe("grills.read", () => {
 
 		const docs = await testClient.grills.read({
 			projectPath,
-			slug: "gamma-01012026",
+			dirName: "gamma-01012026",
 		});
 
 		expect(docs.progress).toEqual({ done: 1, total: 2 });
@@ -367,7 +367,7 @@ describe("grills.read", () => {
 
 		const docs = await testClient.grills.read({
 			projectPath,
-			slug: "delta-01012026",
+			dirName: "delta-01012026",
 		});
 
 		const slice = docs.slices.find((s) => s.index === "03");

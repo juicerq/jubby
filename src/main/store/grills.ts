@@ -357,12 +357,12 @@ function readMd(path: string): Promise<string | null> {
 export const Grills = {
 	read: async ({
 		projectPath,
-		slug,
+		dirName,
 	}: {
 		projectPath: string;
-		slug: string;
+		dirName: string;
 	}): Promise<GrillDocs> => {
-		const dir = join(projectPath, "grill", slug);
+		const dir = join(projectPath, "grill", dirName);
 		const tasksDir = join(dir, "tasks");
 
 		const [decisions, prd, hasTasksDir] = await Promise.all([

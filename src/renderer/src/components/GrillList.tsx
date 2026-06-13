@@ -110,7 +110,7 @@ function GrillDegenerate({
 		orpc.folders.unbindProject.mutationOptions({
 			onSuccess: () => {
 				queryClient.invalidateQueries({ queryKey: orpc.folders.list.key() });
-				toast.push("ok", "PROJETO DESVINCULADO");
+				toast.push("ok", `DESVINCULADO // ${folderName}`);
 			},
 			onError: (err) =>
 				toast.push("err", err.message || "FALHA AO DESVINCULAR PROJETO"),

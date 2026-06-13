@@ -24,7 +24,7 @@ export function GrillReader({
 }) {
 	const { data, isLoading } = useQuery(
 		orpc.grills.read.queryOptions({
-			input: { projectPath, slug: dirName },
+			input: { projectPath, dirName },
 			staleTime: 0,
 			refetchOnWindowFocus: true,
 		}),
