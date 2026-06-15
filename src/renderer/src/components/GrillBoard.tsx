@@ -3,7 +3,6 @@ import type { RouterOutputs } from "@renderer/lib/api";
 import { GrillMarkdown } from "@renderer/components/GrillMarkdown";
 import { ProgressBar } from "@renderer/components/ProgressBar";
 import { cn } from "@renderer/lib/cn";
-import { pluralize } from "@renderer/lib/plural";
 
 type Slice = RouterOutputs["grills"]["read"]["slices"][number];
 
@@ -48,25 +47,16 @@ export function GrillBoard({ slices }: { slices: Slice[] }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="flex items-center justify-between border-b border-border pb-2">
-				<span className="type-ui-label text-fg-dim">slices/</span>
-				<span className="type-mono-data text-fg-dim">
-					{pluralize(slices.length, "SLICE", "SLICES")}
-				</span>
-			</div>
-
-			<div className="flex flex-col gap-3">
-				{slices.map((slice, index) => (
-					<SliceCard
-						key={slice.fileName}
-						slice={slice}
-						index={index}
-						onOpen={() => setOpenFile(slice.fileName)}
-						onJump={openByIndex}
-					/>
-				))}
-			</div>
+		<div className="flex flex-col gap-3">
+			{slices.map((slice, index) => (
+				<SliceCard
+					key={slice.fileName}
+					slice={slice}
+					index={index}
+					onOpen={() => setOpenFile(slice.fileName)}
+					onJump={openByIndex}
+				/>
+			))}
 		</div>
 	);
 }

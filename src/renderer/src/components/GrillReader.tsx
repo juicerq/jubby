@@ -6,6 +6,7 @@ import { GrillBoard } from "@renderer/components/GrillBoard";
 import { GrillMarkdown } from "@renderer/components/GrillMarkdown";
 import { TabButton } from "@renderer/components/TabButton";
 import { orpc } from "@renderer/lib/api";
+import { pluralize } from "@renderer/lib/plural";
 
 type GrillDocs = RouterOutputs["grills"]["read"];
 
@@ -82,18 +83,32 @@ function ReaderBody({
 	const [active, setActive] = useState<DocTab>(defaultTab(tabs));
 
 	return (
-		<ReaderShell title={title} onBack={onBack}>
-			<div className="flex border-b border-border">
-				{tabs.map((tab) => (
-					<TabButton
-						key={tab}
-						label={tabLabel(tab)}
-						active={active === tab}
-						onClick={() => setActive(tab)}
-					/>
-				))}
-			</div>
+		<ReaderShell
+			title={title}
+			onBack={onBack}
+			right={
+				<>
+					{tabs.length > 1 && (
+						<div className="flex items-center">
+							{tabs.map((tab) => (
+								<TabButton
+									key={tab}
+									label={tabLabel(tab)}
+									active={active === tab}
+									onClick={() => setActive(tab)}
+								/>
+							))}
+						</div>
+					)}
 
+					{active === "slices" && (
+						<span className="type-mono-data text-fg-dim">
+							{pluralize(docs.slices.length, "SLICE", "SLICES")}
+						</span>
+					)}
+				</>
+			}
+		>
 			<div className="flex flex-1 flex-col overflow-y-auto px-8 py-6">
 				{active === "slices" && (
 					<GrillBoard slices={docs.slices} />
@@ -116,23 +131,33 @@ function ReaderBody({
 function ReaderShell({
 	title,
 	onBack,
+	right,
 	children,
 }: {
 	title: string;
 	onBack: () => void;
+	right?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
-			<div className="flex items-center gap-3 border-b border-border px-6 py-3">
-				<button
-					type="button"
-					onClick={onBack}
-					className="type-ui-label text-fg-muted transition-colors hover:text-accent cursor-pointer"
-				>
-					{"< GRILLS"}
-				</button>
-				<span className="type-mono-data truncate text-fg-dim">// {title}</span>
+			<div className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+				<div className="flex min-w-0 items-center gap-3">
+					<button
+						type="button"
+						onClick={onBack}
+						className="type-ui-label shrink-0 text-fg-muted transition-colors hover:text-accent cursor-pointer"
+					>
+						{"< GRILLS"}
+					</button>
+					<span className="type-mono-data truncate text-fg-dim">
+						// {title}
+					</span>
+				</div>
+
+				{!!right && (
+					<div className="flex shrink-0 items-center gap-4">{right}</div>
+				)}
 			</div>
 			{children}
 		</div>
