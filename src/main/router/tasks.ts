@@ -7,10 +7,6 @@ export const tasksRouter = {
 		.input(type({ folderId: "string", "tagIds?": "string[]" }))
 		.handler(({ input }) => Tasks.listByFolder(input)),
 
-	listPending: base
-		.input(type({ "tagIds?": "string[]" }))
-		.handler(({ input }) => Tasks.listPending(input)),
-
 	heatmap: base.handler(() => Tasks.heatmap()),
 
 	create: base

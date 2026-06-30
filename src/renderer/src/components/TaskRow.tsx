@@ -22,8 +22,6 @@ type TaskRowProps = {
 	description?: string;
 	done: boolean;
 	tagIds: string[];
-	folderBadge?: string;
-	ageLabel?: string;
 };
 
 type ModalState = { kind: "none" } | { kind: "edit" } | { kind: "delete" };
@@ -36,8 +34,6 @@ export function TaskRow({
 	description,
 	done,
 	tagIds,
-	folderBadge,
-	ageLabel,
 }: TaskRowProps) {
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const [completing, setCompleting] = useState(false);
@@ -103,9 +99,6 @@ export function TaskRow({
 
 	const visualDone = done || completing;
 
-	const hasMeta =
-		resolvedTags.length > 0 || !!folderBadge || !!ageLabel;
-
 	return (
 		<>
 			<div
@@ -144,22 +137,11 @@ export function TaskRow({
 							{description}
 						</span>
 					)}
-					{hasMeta && (
+					{resolvedTags.length > 0 && (
 						<div className="flex flex-wrap items-center gap-2">
 							{resolvedTags.map((tag) => (
 								<TagChip key={tag.id} name={tag.name} color={tag.color} />
 							))}
-							<span className="flex-1" />
-							{!!folderBadge && (
-								<span className="type-mono-data text-fg-dim">
-									[ {folderBadge} ]
-								</span>
-							)}
-							{!!ageLabel && (
-								<span className="type-mono-data text-accent-dim">
-									{ageLabel}
-								</span>
-							)}
 						</div>
 					)}
 				</div>

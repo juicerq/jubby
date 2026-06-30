@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
@@ -28,9 +28,7 @@ type ModalState =
 export function Sidebar() {
 	const folders = useQuery(orpc.folders.list.queryOptions());
 	const params = useParams({ strict: false });
-	const location = useLocation();
 	const activeId = params.folderId;
-	const queueActive = location.pathname === "/";
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
 	const close = () => setModal({ kind: "none" });
 	const queryClient = useQueryClient();
@@ -50,8 +48,6 @@ export function Sidebar() {
 		<>
 			<aside className="flex h-full w-[200px] flex-col border-r border-border bg-surface-1">
 				<Entity />
-
-				<QueueRow active={queueActive} />
 
 				<div className="group flex items-center justify-between border-b border-border px-3 py-2">
 					<span className="type-ui-label text-fg-muted">DIRECTORIES</span>
@@ -186,27 +182,6 @@ function SidebarRow({ active, link, icon, label, actions }: SidebarRowProps) {
 			</div>
 			{actions}
 		</div>
-	);
-}
-
-function QueueRow({ active }: { active: boolean }) {
-	return (
-		<SidebarRow
-			active={active}
-			link={<Link to="/" aria-label="QUEUE" className="absolute inset-0" />}
-			icon={
-				<span
-					aria-hidden
-					className={cn(
-						"type-ui-label",
-						active ? "text-accent" : "text-fg-muted",
-					)}
-				>
-					≡
-				</span>
-			}
-			label="QUEUE"
-		/>
 	);
 }
 

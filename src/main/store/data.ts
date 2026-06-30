@@ -251,13 +251,6 @@ export const Tasks = {
 			.sort((a, b) => b.createdAt - a.createdAt);
 	},
 
-	listPending: async (input?: { tagIds?: string[] }): Promise<Task[]> => {
-		const data = await store.read();
-		return data.tasks
-			.filter((t) => !t.done && matchesTagFilter(t.tagIds, input?.tagIds))
-			.sort((a, b) => a.createdAt - b.createdAt);
-	},
-
 	heatmap: async (): Promise<{ date: string; count: number }[]> => {
 		const data = await store.read();
 		const counts = new Map<string, number>();
