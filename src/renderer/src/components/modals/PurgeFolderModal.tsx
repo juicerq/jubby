@@ -49,7 +49,6 @@ export function PurgeFolderModal({ id, name, onClose }: Props) {
 						ABORT
 					</Button>
 					<ConfirmAction
-						mode="timed"
 						label="EXECUTE"
 						durationMs={3000}
 						onConfirm={() => remove.mutate({ id })}

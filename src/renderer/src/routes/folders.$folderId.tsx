@@ -9,6 +9,7 @@ import { TabButton } from "@renderer/components/TabButton";
 import { TagFilterBar } from "@renderer/components/TagFilterBar";
 import { TaskRow } from "@renderer/components/TaskRow";
 import { orpc } from "@renderer/lib/api";
+import { taskStatus } from "@shared/task-status";
 import { queryClient } from "@renderer/lib/query-client";
 import { useTagFilter, validateTagSearch } from "@renderer/lib/tag-filter";
 
@@ -44,7 +45,7 @@ function FolderPage() {
 	}
 
 	const taskList = tasks.data ?? [];
-	const pending = taskList.filter((t) => !t.done).length;
+	const pending = taskList.filter((t) => taskStatus(t) !== "done").length;
 	const done = taskList.length - pending;
 	const hasProject = !!folder.projectPath;
 	const activeTab = hasProject ? tab : "tasks";
@@ -104,8 +105,8 @@ function FolderTasksTab({ folderId }: { folderId: string }) {
 		!filter.isFiltering ||
 		tagIds.some((id) => filter.selectedTagIds.includes(id));
 
-	const allOpen = taskList.filter((t) => !t.done);
-	const allCompleted = taskList.filter((t) => t.done);
+	const allOpen = taskList.filter((t) => taskStatus(t) !== "done");
+	const allCompleted = taskList.filter((t) => taskStatus(t) === "done");
 	const open = allOpen.filter((t) => matchesFilter(t.tagIds));
 	const completed = allCompleted.filter((t) => matchesFilter(t.tagIds));
 
@@ -144,7 +145,7 @@ function FolderTasksTab({ folderId }: { folderId: string }) {
 						id={task.id}
 						title={task.title}
 						description={task.description}
-						done={false}
+						status={taskStatus(task)}
 						tagIds={task.tagIds}
 					/>
 				))}
@@ -201,7 +202,7 @@ function DoneSection({
 						id={task.id}
 						title={task.title}
 						description={task.description}
-						done
+						status="done"
 						tagIds={task.tagIds}
 					/>
 				))}

@@ -1,4 +1,3 @@
-import { ConfirmAction } from "@renderer/components/ConfirmAction";
 import { DropdownMenu } from "@renderer/components/DropdownMenu";
 import { DeleteTaskModal } from "@renderer/components/modals/DeleteTaskModal";
 import { EditTaskModal } from "@renderer/components/modals/EditTaskModal";
@@ -10,6 +9,7 @@ import { cn } from "@renderer/lib/cn";
 import { entityBus } from "@renderer/lib/entity-bus";
 import { shortHash } from "@renderer/lib/now";
 import { useTaskInvalidation } from "@renderer/lib/queries";
+import { type TaskStatus, taskStatus } from "@shared/task-status";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -20,9 +20,33 @@ type TaskRowProps = {
 	id: string;
 	title: string;
 	description?: string;
-	done: boolean;
+	status: TaskStatus;
 	tagIds: string[];
 };
+
+function statusGlyph(status: TaskStatus): string {
+	if (status === "done") {
+		return "[x]";
+	}
+
+	if (status === "ongoing") {
+		return "[>]";
+	}
+
+	return "[ ]";
+}
+
+function nextActionLabel(status: TaskStatus): string {
+	if (status === "done") {
+		return "Reabrir task";
+	}
+
+	if (status === "ongoing") {
+		return "Concluir task";
+	}
+
+	return "Iniciar task";
+}
 
 type ModalState = { kind: "none" } | { kind: "edit" } | { kind: "delete" };
 
@@ -32,7 +56,7 @@ export function TaskRow({
 	id,
 	title,
 	description,
-	done,
+	status,
 	tagIds,
 }: TaskRowProps) {
 	const [modal, setModal] = useState<ModalState>({ kind: "none" });
@@ -48,27 +72,34 @@ export function TaskRow({
 		.map((tid) => tagById.get(tid))
 		.filter((t): t is TagSummary => !!t);
 
-	const toggle = useMutation(
-		orpc.tasks.toggleDone.mutationOptions({
+	const cycle = useMutation(
+		orpc.tasks.cycleStatus.mutationOptions({
 			onSuccess: (task) => {
 				invalidate();
-				toast.push(
-					"ok",
-					task.done ? `DONE // ${task.title}` : `REOPEN // ${task.title}`,
-				);
-				if (task.done) {
-					const taskTags = task.tagIds
-						.map((tid) => tagById.get(tid)?.name)
-						.filter((n): n is string => !!n);
-					entityBus.emit("task:completed", {
-						taskTitle: task.title,
-						...(taskTags.length > 0 ? { taskTags } : {}),
-					});
+				const result = taskStatus(task);
+
+				if (result === "ongoing") {
+					toast.push("ok", `ONGOING // ${task.title}`);
+					return;
 				}
+
+				if (result === "todo") {
+					toast.push("ok", `REOPEN // ${task.title}`);
+					return;
+				}
+
+				toast.push("ok", `DONE // ${task.title}`);
+				const taskTags = task.tagIds
+					.map((tid) => tagById.get(tid)?.name)
+					.filter((n): n is string => !!n);
+				entityBus.emit("task:completed", {
+					taskTitle: task.title,
+					...(taskTags.length > 0 ? { taskTags } : {}),
+				});
 			},
 			onError: () => {
 				setCompleting(false);
-				toast.push("err", "TOGGLE FAILED");
+				toast.push("err", `FALHA // ${title}`);
 			},
 		}),
 	);
@@ -84,20 +115,25 @@ export function TaskRow({
 
 	const close = () => setModal({ kind: "none" });
 
-	const handleConfirm = () => {
-		if (done) {
-			toggle.mutate({ id });
+	const handleClick = () => {
+		if (completing) {
 			return;
 		}
 
-		setCompleting(true);
-		completeTimerRef.current = setTimeout(() => {
-			completeTimerRef.current = null;
-			toggle.mutate({ id });
-		}, COMPLETE_ANIM_MS);
+		if (status === "ongoing") {
+			setCompleting(true);
+			completeTimerRef.current = setTimeout(() => {
+				completeTimerRef.current = null;
+				cycle.mutate({ id });
+			}, COMPLETE_ANIM_MS);
+			return;
+		}
+
+		cycle.mutate({ id });
 	};
 
-	const visualDone = done || completing;
+	const visualDone = status === "done" || completing;
+	const glyph = completing ? "[x]" : statusGlyph(status);
 
 	return (
 		<>
@@ -113,11 +149,17 @@ export function TaskRow({
 						completing && "task-checkbox-pop",
 					)}
 				>
-					<ConfirmAction
-						mode="two-step"
-						checked={visualDone}
-						onConfirm={handleConfirm}
-					/>
+					<button
+						type="button"
+						aria-label={nextActionLabel(status)}
+						onClick={handleClick}
+						className={cn(
+							"type-mono-data inline-flex h-5 min-w-[28px] items-center justify-center transition-colors cursor-pointer",
+							visualDone ? "text-fg-muted" : "text-fg-muted hover:text-accent",
+						)}
+					>
+						{glyph}
+					</button>
 				</span>
 				<span className="type-mono-data w-12 shrink-0 pt-0.5 text-fg-dim">
 					#{shortHash(id)}

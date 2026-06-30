@@ -59,7 +59,6 @@ export function DeleteTagModal({
 					)}
 					{taskCount > 0 && (
 						<ConfirmAction
-							mode="timed"
 							label="PURGE"
 							durationMs={3000}
 							onConfirm={() => remove.mutate({ id })}

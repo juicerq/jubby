@@ -31,9 +31,9 @@ export const tasksRouter = {
 		)
 		.handler(({ input }) => Tasks.update(input)),
 
-	toggleDone: base
+	cycleStatus: base
 		.input(type({ id: "string" }))
-		.handler(({ input }) => Tasks.toggleDone(input)),
+		.handler(({ input }) => Tasks.cycleStatus(input)),
 
 	delete: base
 		.input(type({ id: "string" }))

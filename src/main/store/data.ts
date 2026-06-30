@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Store } from "@main/store/Store";
+import { taskStatus } from "@shared/task-status";
 import { type } from "arktype";
 
 const folderSchema = type({
@@ -25,8 +26,8 @@ const taskSchema = type({
 	folderId: "string",
 	title: "string > 0",
 	"description?": "string",
-	done: "boolean",
 	createdAt: "number",
+	"startedAt?": "number",
 	"completedAt?": "number",
 	tagIds: "string[]",
 });
@@ -45,7 +46,7 @@ type Data = typeof dataContract.infer;
 
 const store = new Store({
 	name: "data",
-	version: 3,
+	version: 4,
 	contract: dataContract,
 	migrators: {
 		1: (raw) => {
@@ -60,6 +61,17 @@ const store = new Store({
 			};
 		},
 		2: (raw) => raw,
+		3: (raw) => {
+			const prev = raw as {
+				folders: unknown[];
+				tags: unknown[];
+				tasks: { done?: boolean; [k: string]: unknown }[];
+			};
+			return {
+				...prev,
+				tasks: prev.tasks.map(({ done: _done, ...task }) => task),
+			};
+		},
 	},
 	seed: (): Data => ({ folders: [], tasks: [], tags: [] }),
 });
@@ -76,10 +88,10 @@ export const EntityStats = {
 		const todayKey = new Date().toLocaleDateString("en-CA");
 
 		return {
-			pendingTasks: data.tasks.filter((t) => !t.done).length,
+			pendingTasks: data.tasks.filter((t) => taskStatus(t) !== "done").length,
 			completedToday: data.tasks.filter(
 				(t) =>
-					t.done &&
+					taskStatus(t) === "done" &&
 					typeof t.completedAt === "number" &&
 					new Date(t.completedAt * 1000).toLocaleDateString("en-CA") ===
 						todayKey,
@@ -256,7 +268,7 @@ export const Tasks = {
 		const counts = new Map<string, number>();
 
 		for (const t of data.tasks) {
-			if (!t.done || typeof t.completedAt !== "number") {
+			if (taskStatus(t) !== "done" || typeof t.completedAt !== "number") {
 				continue;
 			}
 			const date = new Date(t.completedAt * 1000).toLocaleDateString("en-CA");
@@ -297,7 +309,6 @@ export const Tasks = {
 			folderId,
 			title,
 			...(description ? { description } : {}),
-			done: false,
 			createdAt: now(),
 			tagIds: selectedTagIds,
 		};
@@ -353,19 +364,40 @@ export const Tasks = {
 		return updated;
 	},
 
-	toggleDone: async ({ id }: { id: string }): Promise<Task> => {
-		const next = await store.mutate((d) => ({
-			...d,
-			tasks: d.tasks.map((t) => {
-				if (t.id !== id) {
+	cycleStatus: async ({ id }: { id: string }): Promise<Task> => {
+		const next = await store.mutate((d) => {
+			const current = d.tasks.find((t) => t.id === id);
+
+			if (!current) {
+				throw new Error(`task not found: ${id}`);
+			}
+
+			const status = taskStatus(current);
+			const ts = now();
+
+			return {
+				...d,
+				tasks: d.tasks.map((t) => {
+					if (t.id === id) {
+						if (status === "todo") {
+							return { ...t, startedAt: ts };
+						}
+
+						if (status === "ongoing") {
+							return { ...t, completedAt: ts };
+						}
+
+						return { ...t, startedAt: undefined, completedAt: undefined };
+					}
+
+					if (status === "todo" && taskStatus(t) === "ongoing") {
+						return { ...t, startedAt: undefined };
+					}
+
 					return t;
-				}
-				const done = !t.done;
-				return done
-					? { ...t, done, completedAt: now() }
-					: { ...t, done, completedAt: undefined };
-			}),
-		}));
+				}),
+			};
+		});
 		const updated = next.tasks.find((t) => t.id === id);
 
 		if (!updated) {
