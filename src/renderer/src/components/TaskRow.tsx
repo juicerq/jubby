@@ -48,6 +48,18 @@ function nextActionLabel(status: TaskStatus): string {
 	return "Iniciar task";
 }
 
+function titleColor(status: TaskStatus, visualDone: boolean): string {
+	if (visualDone) {
+		return "text-fg-muted";
+	}
+
+	if (status === "ongoing") {
+		return "text-accent";
+	}
+
+	return "text-fg";
+}
+
 type ModalState = { kind: "none" } | { kind: "edit" } | { kind: "delete" };
 
 type TagSummary = { id: string; name: string; color: TagColor };
@@ -133,6 +145,7 @@ export function TaskRow({
 	};
 
 	const visualDone = status === "done" || completing;
+	const isOngoing = status === "ongoing";
 	const glyph = completing ? "[x]" : statusGlyph(status);
 
 	return (
@@ -140,7 +153,9 @@ export function TaskRow({
 			<div
 				className={cn(
 					"group flex items-start gap-3 border-b border-border px-6 py-3 transition-all duration-300",
-					visualDone ? "opacity-50" : "hover:bg-surface-2",
+					visualDone && "opacity-50",
+					isOngoing && "border-l-2 border-l-accent bg-accent-dim/20",
+					!visualDone && !isOngoing && "hover:bg-surface-2",
 				)}
 			>
 				<span
@@ -167,8 +182,9 @@ export function TaskRow({
 				<div className="flex flex-1 flex-col gap-1 truncate">
 					<span
 						className={cn(
-							"type-task-title text-fg",
-							visualDone && "line-through text-fg-muted",
+							"type-task-title",
+							titleColor(status, visualDone),
+							visualDone && "line-through",
 							completing && "task-complete-flash",
 						)}
 					>
@@ -179,8 +195,13 @@ export function TaskRow({
 							{description}
 						</span>
 					)}
-					{resolvedTags.length > 0 && (
+					{(isOngoing || resolvedTags.length > 0) && (
 						<div className="flex flex-wrap items-center gap-2">
+							{isOngoing && (
+								<span className="type-ui-label inline-flex items-center border border-accent px-1.5 py-0.5 text-accent">
+									▶ ONGOING
+								</span>
+							)}
 							{resolvedTags.map((tag) => (
 								<TagChip key={tag.id} name={tag.name} color={tag.color} />
 							))}

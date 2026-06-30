@@ -109,6 +109,8 @@ function FolderTasksTab({ folderId }: { folderId: string }) {
 	const allCompleted = taskList.filter((t) => taskStatus(t) === "done");
 	const open = allOpen.filter((t) => matchesFilter(t.tagIds));
 	const completed = allCompleted.filter((t) => matchesFilter(t.tagIds));
+	const ongoing = open.filter((t) => taskStatus(t) === "ongoing");
+	const todo = open.filter((t) => taskStatus(t) === "todo");
 
 	return (
 		<>
@@ -139,7 +141,7 @@ function FolderTasksTab({ folderId }: { folderId: string }) {
 				)}
 
 				{/* jscpd:ignore-start */}
-				{open.map((task) => (
+				{[...ongoing, ...todo].map((task) => (
 					<TaskRow
 						key={task.id}
 						id={task.id}
