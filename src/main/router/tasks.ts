@@ -35,6 +35,10 @@ export const tasksRouter = {
 		.input(type({ id: "string" }))
 		.handler(({ input }) => Tasks.cycleStatus(input)),
 
+	stop: base
+		.input(type({ id: "string" }))
+		.handler(({ input }) => Tasks.stop(input)),
+
 	delete: base
 		.input(type({ id: "string" }))
 		.handler(({ input }) => Tasks.delete(input)),

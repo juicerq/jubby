@@ -116,6 +116,18 @@ export function TaskRow({
 		}),
 	);
 
+	const stop = useMutation(
+		orpc.tasks.stop.mutationOptions({
+			onSuccess: (task) => {
+				invalidate();
+				toast.push("ok", `STOP // ${task.title}`);
+			},
+			onError: () => {
+				toast.push("err", `FALHA // ${title}`);
+			},
+		}),
+	);
+
 	// Pending completion timer is an external resource; clear on unmount.
 	useEffect(() => {
 		return () => {
@@ -198,9 +210,23 @@ export function TaskRow({
 					{(isOngoing || resolvedTags.length > 0) && (
 						<div className="flex flex-wrap items-center gap-2">
 							{isOngoing && (
-								<span className="type-ui-label inline-flex items-center border border-accent px-1.5 py-0.5 text-accent">
-									▶ ONGOING
-								</span>
+								<button
+									type="button"
+									aria-label="Parar task"
+									onClick={() => {
+										if (!completing) {
+											stop.mutate({ id });
+										}
+									}}
+									className="group/badge type-ui-label inline-grid cursor-pointer border border-accent px-1.5 py-0.5 text-accent"
+								>
+									<span className="col-start-1 row-start-1 group-hover/badge:invisible">
+										▶ ONGOING
+									</span>
+									<span className="invisible col-start-1 row-start-1 text-left group-hover/badge:visible">
+										■ PARAR
+									</span>
+								</button>
 							)}
 							{resolvedTags.map((tag) => (
 								<TagChip key={tag.id} name={tag.name} color={tag.color} />

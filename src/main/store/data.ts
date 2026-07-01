@@ -407,6 +407,34 @@ export const Tasks = {
 		return updated;
 	},
 
+	stop: async ({ id }: { id: string }): Promise<Task> => {
+		const next = await store.mutate((d) => {
+			const current = d.tasks.find((t) => t.id === id);
+
+			if (!current) {
+				throw new Error(`task not found: ${id}`);
+			}
+
+			if (taskStatus(current) !== "ongoing") {
+				return d;
+			}
+
+			return {
+				...d,
+				tasks: d.tasks.map((t) =>
+					t.id === id ? { ...t, startedAt: undefined } : t,
+				),
+			};
+		});
+		const updated = next.tasks.find((t) => t.id === id);
+
+		if (!updated) {
+			throw new Error(`task not found: ${id}`);
+		}
+
+		return updated;
+	},
+
 	delete: async ({ id }: { id: string }): Promise<void> => {
 		await store.mutate((d) => ({
 			...d,

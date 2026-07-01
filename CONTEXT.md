@@ -12,6 +12,10 @@ _Avoid_: To-do, item, entry.
 A única Task em que o usuário está trabalhando agora — singleton global no app inteiro. Iniciar outra devolve a anterior para `todo`. Fica fixada no topo da listagem, com destaque visual.
 _Avoid_: In progress, ativa, current, WIP.
 
+**Parar**:
+Devolver a on-going task para `todo` sem concluí-la, por ação explícita do usuário (distinto da demoção automática ao iniciar outra).
+_Avoid_: Pausar, cancelar, remover do on-going.
+
 **Folder**:
 Container exclusivo e primário de Tasks. Toda Task pertence a uma única Folder. Estabelece "onde a Task mora".
 _Avoid_: List, project, category, group.

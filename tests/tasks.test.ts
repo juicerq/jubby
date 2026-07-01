@@ -110,6 +110,37 @@ describe("tasks", () => {
 		expect(taskStatus(bAfter)).toBe("ongoing");
 	});
 
+	it("stops an on-going task back to todo", async () => {
+		const folder = await testClient.folders.create({ name: "F" });
+		const task = await testClient.tasks.create({
+			folderId: folder.id,
+			title: "x",
+		});
+
+		await testClient.tasks.cycleStatus({ id: task.id });
+		const stopped = await testClient.tasks.stop({ id: task.id });
+
+		expect(taskStatus(stopped)).toBe("todo");
+		expect(stopped.startedAt).toBeUndefined();
+		expect(stopped.completedAt).toBeUndefined();
+	});
+
+	it("stop is a no-op on a task that is not on-going", async () => {
+		const folder = await testClient.folders.create({ name: "F" });
+		const task = await testClient.tasks.create({
+			folderId: folder.id,
+			title: "x",
+		});
+
+		await testClient.tasks.cycleStatus({ id: task.id });
+		await testClient.tasks.cycleStatus({ id: task.id });
+
+		const after = await testClient.tasks.stop({ id: task.id });
+
+		expect(taskStatus(after)).toBe("done");
+		expect(after.startedAt).toBeGreaterThan(0);
+	});
+
 	it("counts an on-going task as pending, not completed", async () => {
 		const folder = await testClient.folders.create({ name: "F" });
 		const task = await testClient.tasks.create({
