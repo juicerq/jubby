@@ -24,16 +24,14 @@ The CRT look is not a skin over a normal app — power-on animation, scanline ty
 
 Electron 33 + electron-vite, ORPC over MessagePort, React 19 with TanStack Router/Query, Tailwind v4, Arktype, JSON store (no native modules).
 
-## Commands
+## Development
 
 ```sh
 bun install
-bun run dev          # electron-vite (HMR)
-bun run test         # vitest
-bun run check        # lint + format
-bun run dist         # build + AppImage/exe for the current platform
-bun run dist:linux   # AppImage
-bun run dist:win     # NSIS
+bun run dev     # electron-vite with HMR
+bun run test    # vitest
+bun run check   # lint + format
+bun run dist    # installer for the current platform (dist:linux, dist:win)
 ```
 
 ## Release
@@ -43,15 +41,10 @@ npm version patch
 git push --follow-tags
 ```
 
-The tag triggers `.github/workflows/release.yml`, which builds Linux (AppImage) and Windows (NSIS) in parallel and publishes to GitHub Releases. Installed apps detect the release via `electron-updater`, download in the background, and apply on next quit. No code signing — the only update integrity is the SHA512 that `electron-builder` writes to `latest.yml`.
+The tag triggers a GitHub Actions workflow that builds the Linux AppImage and the Windows NSIS installer and publishes both to GitHub Releases. Installed apps pick the release up via `electron-updater`, download it in the background, and apply it on next quit. Update integrity is the SHA512 that `electron-builder` writes to `latest.yml`.
 
 ## Design decisions
 
-- **JSON instead of SQLite.** Tried it, reverted. The costs (ABI dance per Electron version, postinstall hooks, prebuilds on every dev↔test switch, `bun test` blocked, drizzle-kit + migrations duplicating the schema's source of truth) paid for capacity a personal app never uses: joins, FTS, indexes over thousands of rows, multi-process concurrency. Today each domain is one file (`folders.json`, `tasks.json`, `settings.json`) with a `{ version, data }` envelope validated by arktype, atomic writes (`writeFile + rename`), and a serial queue per file. Migrations in TS, not SQL.
-- **Derived task state.** No `done` or `status` field — `completedAt` → done, else `startedAt` → on-going, else todo. The timestamps the features already need (`startedAt` sorts the on-going task to the top, `completedAt` feeds the heatmap) double as the state, so there's no redundant field to keep in sync.
-- **No code signing.** Windows shows a SmartScreen warning on first install. Accepted — personal app, no budget for a cert.
-- **No macOS.** No hardware, no Developer ID. Shipping unsigned on macOS is worse than not shipping.
-
-## Not supported
-
-macOS, .deb, .rpm, MSI, arm64, code signing.
+- **JSON store instead of SQLite.** Tried SQLite, reverted. A native module in Electron meant ABI rebuilds per version, postinstall hooks, and a blocked `bun test`, while drizzle-kit migrations duplicated the schema's source of truth — all paying for joins, FTS, and indexes a personal app never uses. The store is now JSON files with a `{ version, data }` envelope validated by arktype, atomic writes (`writeFile` + `rename`), and a serial write queue per file. Migrations are TypeScript functions.
+- **Task state is derived, not stored.** There is no `done` or `status` field: `completedAt` means done, else `startedAt` means on-going, else todo. The timestamps the features already need (`startedAt` pins the on-going task, `completedAt` feeds the heatmap) double as the state, so nothing has to be kept in sync.
+- **No code signing, no macOS.** Windows shows a SmartScreen warning on first install — accepted for a personal app with no budget for a certificate. macOS isn't shipped at all: without hardware or a Developer ID, an unsigned macOS build is worse than none. Also out of scope: .deb, .rpm, MSI, arm64.
